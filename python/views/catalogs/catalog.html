@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ catalog_code }}{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="/css/catalogs.css?v=6">
+<link rel="stylesheet" href="/css/catalogs.css?v=7">
 <div class="pfcat"
      data-catalog="{{ catalog_code }}"
      data-alt-enabled="{{ 1 if alt_enabled else 0 }}">
@@ -38,6 +38,9 @@
     <button class="pfcat-chip" id="pfcat-upnow" aria-pressed="false"
             {% if not alt_enabled %}disabled title="{{ _('Disabled for large catalogs or without GPS lock') }}"{% endif %}>
       {{ _('Up now') }}</button>
+    <button type="button" class="pfcat-chip" id="pfcat-nearby" aria-pressed="false"
+            title="{{ _('Sort this catalog by estimated visibility, then distance from current pointing') }}">
+      {{ _('Nearby') }}</button>
     <select class="browser-default" id="pfcat-sort">
       <option value="seq">{{ _('Sort: Number') }}</option>
       {% if alt_enabled %}<option value="alt">{{ _('Sort: Altitude') }}</option>{% endif %}
@@ -58,6 +61,8 @@
           <th class="num">{{ _('Size') }}</th>
           <th class="num">{{ _('Alt') }}</th>
           <th>{{ _('Obs') }}</th>
+          <th data-nearby-column hidden>{{ _('Visibility (est.)') }}</th>
+          <th class="num" data-nearby-column hidden>{{ _('Distance') }}</th>
         </tr>
       </thead>
       <tbody id="pfcat-rows">
@@ -66,12 +71,12 @@
     </table>
   </div>
   <div class="pfcat-tablefoot">
-    <span id="pfcat-foot-note" class="pfcat-muted"></span>
+    <span id="pfcat-foot-note" class="pfcat-muted" role="status" aria-live="polite"></span>
     <div class="pfcat-pages" id="pfcat-pages"></div>
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/js/catalogs.js?v=5"></script>
+<script src="/js/catalogs.js?v=9"></script>
 <script>pfcatInitCatalog();</script>
 {% endblock %}

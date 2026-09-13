@@ -50,6 +50,35 @@ function pfcatInitHome() {
   });
 }
 
+function pfcatNearbyNote(data) {
+  let note = `RA ${data.center.ra.toFixed(3)}° / Dec ${data.center.dec.toFixed(3)}° · ` +
+    (data.ranking === "visibility_distance" ? "visibility, then distance" : "nearest first");
+  if (data.sky) {
+    const sky = data.sky;
+    if (sky.configured_bortle !== null) note += ` · Configured Bortle ${sky.configured_bortle}`;
+    if (sky.measured_bortle !== null) note += ` · Measured Bortle ≈${sky.measured_bortle} (SQM ${sky.measured_sqm.toFixed(2)})`;
+    if (sky.enabled) {
+      note += ` · Applied Bortle ≈${sky.bortle} · ${sky.aperture_mm} mm / ${sky.magnification.toFixed(0)}×`;
+    } else {
+      note += sky.sqm !== null ? " · Set telescope and eyepiece for visibility ranking"
+        : sky.measurement_state === "stale" ? " · SQM reading expired; using distance"
+          : " · No sky measurement or configured Bortle; using distance";
+    }
+  }
+  const sourceLabels = {
+    solve: "Plate solve",
+    pifinder_imu_estimate: "Solve + IMU",
+    mount: "Mount",
+    mount_imu_delta: "Mount + IMU",
+    imu_fallback: data.center.unaligned
+      ? "IMU estimate (heading not aligned)" : "IMU estimate",
+  };
+  if (sourceLabels[data.center.source]) {
+    note += " · " + sourceLabels[data.center.source];
+  }
+  return note;
+}
+
 /* ── catalog table ────────────────────────────────────────────── */
 
 function pfcatInitCatalog() {
@@ -59,6 +88,12 @@ function pfcatInitCatalog() {
   const state = { page: 1 };
   const el = (id) => document.getElementById(id);
   let timer = null;
+  let requestSerial = 0;
+  const nearbyOn = () => el("pfcat-nearby").getAttribute("aria-pressed") === "true";
+
+  function setNearbyColumns(show) {
+    root.querySelectorAll("[data-nearby-column]").forEach((column) => { column.hidden = !show; });
+  }
 
   function params() {
     const p = new URLSearchParams({ catalog: catalog, page: state.page });
@@ -69,14 +104,16 @@ function pfcatInitCatalog() {
     if (el("pfcat-mag").value) p.set("mag_max", el("pfcat-mag").value);
     if (el("pfcat-observed").value) p.set("observed", el("pfcat-observed").value);
     if (el("pfcat-upnow").getAttribute("aria-pressed") === "true") p.set("up_now", "1");
-    p.set("sort", el("pfcat-sort").value);
+    p.set("sort", nearbyOn() ? "nearby" : el("pfcat-sort").value);
     return p;
   }
 
   function render(data) {
     const rows = el("pfcat-rows");
+    const nearby = data.sort === "nearby";
+    setNearbyColumns(nearby);
     if (!data.objects.length) {
-      rows.innerHTML = '<tr><td colspan="7" class="pfcat-muted">No objects match</td></tr>';
+      rows.innerHTML = `<tr><td colspan="${nearby ? 9 : 7}" class="pfcat-muted">No objects match</td></tr>`;
     } else {
       rows.innerHTML = data.objects
         .map((o) => {
@@ -96,7 +133,10 @@ function pfcatInitCatalog() {
             `<td class="num">${pfcatEsc(o.mag)}</td>` +
             `<td class="num">${pfcatEsc(o.size)}</td>` +
             `<td class="num">${alt}</td>` +
-            `<td>${o.observed ? "✓" : ""}</td></tr>`
+            `<td>${o.observed ? "✓" : ""}</td>` +
+            (nearby ? `<td>${pfcatEsc(o.visibility.label)}</td>` +
+              `<td class="num">${o.distance == null ? "—" : o.distance.toFixed(2) + "°"}</td>` : "") +
+            `</tr>`
           );
         })
         .join("");
@@ -114,9 +154,10 @@ function pfcatInitCatalog() {
       });
     }
     el("pfcat-shown").textContent = `${data.total} shown`;
-    el("pfcat-foot-note").textContent = data.alt_available
-      ? ""
-      : "Altitude unavailable (waiting for GPS lock)";
+    const notes = [];
+    if (nearby) notes.push(pfcatNearbyNote(data));
+    if (!data.alt_available) notes.push("Altitude unavailable (waiting for GPS lock)");
+    el("pfcat-foot-note").textContent = notes.join(" · ");
 
     const pages = el("pfcat-pages");
     pages.innerHTML = "";
@@ -141,14 +182,27 @@ function pfcatInitCatalog() {
     }
   }
 
-  function load() {
-    fetch("/catalogs/api/objects?" + params().toString())
-      .then((r) => r.json())
-      .then(render)
-      .catch(() => {
-        el("pfcat-rows").innerHTML =
-          '<tr><td colspan="7" class="pfcat-muted">Load failed</td></tr>';
-      });
+  async function load() {
+    const serial = ++requestSerial;
+    const columns = nearbyOn() ? 9 : 7;
+    setNearbyColumns(nearbyOn());
+    el("pfcat-rows").innerHTML = `<tr><td colspan="${columns}" class="pfcat-muted">Loading…</td></tr>`;
+    el("pfcat-pages").innerHTML = "";
+    el("pfcat-shown").textContent = "";
+    el("pfcat-foot-note").textContent = "";
+    root.setAttribute("aria-busy", "true");
+    try {
+      const response = await fetch("/catalogs/api/objects?" + params().toString(), { cache: "no-store" });
+      const data = await response.json();
+      if (serial !== requestSerial) return;
+      if (!response.ok) throw new Error(data.error || "Load failed");
+      render(data);
+    } catch (error) {
+      if (serial !== requestSerial) return;
+      el("pfcat-rows").innerHTML = `<tr><td colspan="${columns}" class="pfcat-muted">${pfcatEsc(error.message || "Load failed")}</td></tr>`;
+    } finally {
+      if (serial === requestSerial) root.setAttribute("aria-busy", "false");
+    }
   }
 
   ["pfcat-type", "pfcat-const", "pfcat-mag", "pfcat-observed", "pfcat-sort"].forEach((id) =>
@@ -171,6 +225,15 @@ function pfcatInitCatalog() {
       "aria-pressed",
       btn.getAttribute("aria-pressed") === "true" ? "false" : "true"
     );
+    state.page = 1;
+    load();
+  });
+  el("pfcat-nearby").addEventListener("click", () => {
+    el("pfcat-nearby").setAttribute("aria-pressed", nearbyOn() ? "false" : "true");
+    el("pfcat-sort").disabled = nearbyOn();
+    // Nearby computes altitude for filtering even on large catalogs.
+    el("pfcat-upnow").disabled = !nearbyOn() && root.dataset.altEnabled !== "1";
+    if (el("pfcat-upnow").disabled) el("pfcat-upnow").setAttribute("aria-pressed", "false");
     state.page = 1;
     load();
   });

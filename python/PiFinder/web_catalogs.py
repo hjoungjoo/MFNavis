@@ -36,6 +36,7 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
+import numpy as np
 from flask import (
     Response,
     make_response,
@@ -50,6 +51,7 @@ from PiFinder import nonsidereal, utils
 from PiFinder.calc_utils import FastAltAz, dec_to_dms, ra_to_hms
 from PiFinder.composite_object import CompositeObject, MagnitudeObject, SizeObject
 from PiFinder.obj_types import OBJ_TYPES
+from PiFinder.web_catalog_visibility import sky_conditions, visibility
 
 logger = logging.getLogger("WebCatalogs")
 
@@ -292,6 +294,57 @@ def _finite(*values) -> Optional[float]:
     return None
 
 
+def _nearby_pointing() -> Optional[Dict[str, Any]]:
+    """Use the coordinate service's samples for catalog browsing.
+
+    The service may withhold `current` before the first solve/alignment even
+    though it publishes an IMU estimate. That estimate is useful for browsing
+    with an explicit unaligned-heading label; it is not a mount sync source.
+    Keep a selected solve/mount/fused coordinate authoritative when available.
+    """
+    status = _pointing_status()
+    for key in ("current", "solved", "imu"):
+        sample = status.get(key) or {}
+        if sample.get("valid") is False:
+            continue
+        ra, dec = _finite(sample.get("ra")), _finite(sample.get("dec"))
+        if ra is None or dec is None or not -90 <= dec <= 90:
+            continue
+        source = (
+            sample.get("source")
+            or {"current": "current", "solved": "solve", "imu": "imu_fallback"}[key]
+        )
+        metadata = sample.get("metadata") or {}
+        return {
+            "ra": ra % 360.0,
+            "dec": dec,
+            "source": source,
+            "unaligned": source == "imu_fallback"
+            and not (
+                metadata.get("uses_magnetometer") or metadata.get("alignment_applied")
+            ),
+        }
+    return None
+
+
+def _nearby_distances(pointing, coordinates):
+    """Great-circle distances in degrees; missing coordinates sort last."""
+    if not coordinates:
+        return np.array([])
+    coords = np.radians(np.asarray(coordinates, dtype=float))
+    ra, dec = math.radians(pointing["ra"]), math.radians(pointing["dec"])
+    with np.errstate(invalid="ignore"):
+        hav = (
+            np.sin((coords[:, 1] - dec) / 2) ** 2
+            + math.cos(dec)
+            * np.cos(coords[:, 1])
+            * np.sin((coords[:, 0] - ra) / 2) ** 2
+        )
+        distances = np.degrees(2 * np.arcsin(np.sqrt(np.clip(hav, 0, 1))))
+    valid = np.isfinite(coords).all(axis=1) & (np.abs(coords[:, 1]) <= math.pi / 2)
+    return np.where(valid, distances, np.inf)
+
+
 def _planet_observation_time(shared_state):
     try:
         dt = shared_state.datetime()
@@ -531,8 +584,25 @@ def register_catalog_routes(app, server_instance):
         catalog_code = request.args.get("catalog", "")
         if not catalog_code:
             return _json_response({"error": "catalog parameter required"}, 400)
+        sort = request.args.get("sort", "seq")
+        nearby = None
+        if sort == "nearby":
+            pointing = _nearby_pointing()
+            if pointing is None:
+                return _json_response(
+                    {
+                        "error": "Current pointing unavailable. No solve, selected mount position, or IMU estimate is available."
+                    },
+                    409,
+                )
+            sky = sky_conditions(server_instance.shared_state)
+            nearby = {
+                "center": pointing,
+                "sky": sky,
+                "ranking": "visibility_distance" if sky["enabled"] else "distance",
+            }
         if catalog_code == "PL":
-            return _planet_objects_response()
+            return _planet_objects_response(nearby)
 
         where = ["co.catalog_code = ?"]
         params: List[Any] = [catalog_code]
@@ -573,7 +643,6 @@ def register_catalog_routes(app, server_instance):
         page_size = min(
             MAX_PAGE_SIZE, max(1, int(request.args.get("page_size", DEFAULT_PAGE_SIZE)))
         )
-        sort = request.args.get("sort", "seq")
         up_now = request.args.get("up_now", "") == "1"
 
         calculator = _altaz_calculator(server_instance.shared_state)
@@ -613,7 +682,74 @@ def register_catalog_routes(app, server_instance):
             or observed_filter in ("yes", "no")
         )
 
-        if needs_python_pass:
+        if nearby is not None:
+            if up_now and calculator is None:
+                return _json_response(
+                    {
+                        "error": "Observer location unavailable. Set a location or wait for GPS lock."
+                    },
+                    409,
+                )
+            # Rank the entire filtered catalog before normal pagination. Read
+            # aliases/display data only for this page, including on WDS.
+            candidates = _query(
+                "SELECT co.id AS co_id, co.sequence, o.ra, o.dec, o.obj_type, o.size,"
+                " CASE WHEN json_valid(o.mag) THEN json_extract(o.mag, '$.filter_mag')"
+                " ELSE NULL END AS filter_mag"
+                + base_sql
+                + " ORDER BY co.sequence, co.id",
+                tuple(params),
+            )
+            distances = _nearby_distances(
+                nearby["center"], [(r["ra"], r["dec"]) for r in candidates]
+            )
+            ranked = []
+            for row, distance in zip(candidates, distances):
+                is_observed = (catalog_code, row["sequence"]) in observed
+                if observed_filter in ("yes", "no") and is_observed != (
+                    observed_filter == "yes"
+                ):
+                    continue
+                if up_now:
+                    if not math.isfinite(distance):
+                        continue
+                    alt, _az = calculator.radec_to_altaz(
+                        row["ra"], row["dec"], alt_only=True
+                    )
+                    if alt <= 0:
+                        continue
+                suitability = visibility(
+                    row["obj_type"], row["filter_mag"], row["size"], nearby["sky"]
+                )
+                ranked.append((row["co_id"], float(distance), suitability))
+            ranked.sort(key=lambda item: (item[2]["rank"], item[1]))
+            total = len(ranked)
+            page_rows = ranked[(page - 1) * page_size : page * page_size]
+            objects = []
+            if page_rows:
+                ids = tuple(item[0] for item in page_rows)
+                details = _query(
+                    select_cols
+                    + base_sql
+                    + " AND co.id IN ({})".format(",".join("?" for _ in ids)),
+                    tuple(params) + ids,
+                )
+                by_id = {row["co_id"]: row for row in details}
+                for co_id, distance, suitability in page_rows:
+                    row = by_id[co_id]
+                    alt = az = None
+                    if calculator is not None and math.isfinite(distance):
+                        alt, az = calculator.radec_to_altaz(row["ra"], row["dec"])
+                    obj = row_dict(row, alt, az)
+                    obj.update(
+                        distance=round(distance, 3)
+                        if math.isfinite(distance)
+                        else None,
+                        visibility=suitability,
+                    )
+                    objects.append(obj)
+            alt_allowed = calculator is not None
+        elif needs_python_pass:
             rows = _query(
                 select_cols + base_sql + " ORDER BY co.sequence", tuple(params)
             )
@@ -665,7 +801,7 @@ def register_catalog_routes(app, server_instance):
                     alt, az = calculator.radec_to_altaz(row["ra"], row["dec"])
                 objects.append(row_dict(row, alt, az))
 
-        return _json_response(
+        response = _json_response(
             {
                 "catalog": catalog_code,
                 "total": total,
@@ -676,8 +812,12 @@ def register_catalog_routes(app, server_instance):
                 "alt_available": calculator is not None,
                 "alt_enabled": alt_allowed,
                 "objects": objects,
+                **(nearby or {}),
             }
         )
+        if nearby is not None:
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.route("/catalogs/api/search")
     def catalogs_api_search():
@@ -1005,7 +1145,7 @@ def register_catalog_routes(app, server_instance):
     # Live planet catalog (PL)
     # ──────────────────────────────────────────────────────────────
 
-    def _planet_objects_response():
+    def _planet_objects_response(nearby=None):
         from PiFinder.calc_utils import sf_utils
 
         planets = _calc_planets(server_instance.shared_state)
@@ -1020,6 +1160,21 @@ def register_catalog_routes(app, server_instance):
             if up_now and (alt is None or alt <= 0.0):
                 continue
             ra, dec = planet["radec"]
+            if nearby is not None:
+                types = request.args.get("types", "")
+                if types and "Pla" not in types.split(","):
+                    continue
+                if request.args.get("observed") == "yes":
+                    continue
+                constellation = sf_utils.radec_to_constellation(ra, dec) or ""
+                if request.args.get("const") and request.args["const"] != constellation:
+                    continue
+                if request.args.get("mag_max"):
+                    try:
+                        if float(planet.get("mag")) > float(request.args["mag_max"]):
+                            continue
+                    except (ValueError, TypeError):
+                        continue
             rows.append(
                 {
                     "object_id": None,
@@ -1036,7 +1191,25 @@ def register_catalog_routes(app, server_instance):
                     "observed": False,
                 }
             )
-        if sort == "alt":
+            if nearby is not None:
+                distance = float(_nearby_distances(nearby["center"], [(ra, dec)])[0])
+                rows[-1].update(
+                    distance=distance if math.isfinite(distance) else None,
+                    visibility=visibility(
+                        "Pla", planet.get("mag"), None, nearby["sky"]
+                    ),
+                )
+        if nearby is not None:
+            rows.sort(
+                key=lambda row: (
+                    row["visibility"]["rank"],
+                    row["distance"] if row["distance"] is not None else math.inf,
+                )
+            )
+            for row in rows:
+                if row["distance"] is not None:
+                    row["distance"] = round(row["distance"], 3)
+        elif sort == "alt":
             rows.sort(
                 key=lambda r: r["alt"] if r["alt"] is not None else -99.0, reverse=True
             )
@@ -1049,19 +1222,33 @@ def register_catalog_routes(app, server_instance):
                     return 99.0
 
             rows.sort(key=planet_mag)
-        return _json_response(
+        total = len(rows)
+        page = max(1, int(request.args.get("page", 1))) if nearby else 1
+        page_size = (
+            min(
+                MAX_PAGE_SIZE,
+                max(1, int(request.args.get("page_size", DEFAULT_PAGE_SIZE))),
+            )
+            if nearby
+            else max(1, total)
+        )
+        response = _json_response(
             {
                 "catalog": "PL",
-                "total": len(rows),
-                "page": 1,
-                "page_size": max(1, len(rows)),
-                "pages": 1,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "pages": max(1, math.ceil(total / page_size)),
                 "sort": sort,
                 "alt_available": bool(rows),
                 "alt_enabled": True,
-                "objects": rows,
+                "objects": rows[(page - 1) * page_size : page * page_size],
+                **(nearby or {}),
             }
         )
+        if nearby is not None:
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     def _planet_bundle(name: str) -> Optional[Dict[str, Any]]:
         planets = _calc_planets(server_instance.shared_state)

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ obj.display }}{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="/css/catalogs.css?v=6">
+<link rel="stylesheet" href="/css/catalogs.css?v=7">
 <div class="pfcat"
      {% if obj.planet %}data-planet="{{ obj.planet | lower }}"{% else %}data-object-id="{{ obj.object_id }}"{% endif %}>
   <div class="pfcat-crumb">
@@ -99,6 +99,6 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/js/catalogs.js?v=5"></script>
+<script src="/js/catalogs.js?v=9"></script>
 <script>pfcatInitObject();</script>
 {% endblock %}

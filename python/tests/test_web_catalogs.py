@@ -92,6 +92,10 @@ def test_pages_and_apis_require_auth(web_app):
         assert "/login" in response.headers["Location"]
     assert client.get("/catalogs/api/objects?catalog=M").status_code == 401
     assert client.get("/catalogs/api/search?q=andromeda").status_code == 401
+    assert (
+        client.get("/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1").status_code
+        == 401
+    )
     assert client.get("/catalogs/api/altitude/224").status_code == 401
     assert client.get("/catalogs/image/224").status_code == 401
 
@@ -139,13 +143,503 @@ def test_home_page(web_app):
     assert response.status_code == 200
     body = response.get_data(as_text=True)
     assert "NGC" in body and "Messier" in body or "M" in body
+    assert 'id="pfcat-nearby"' not in body
+
+
+@pytest.fixture()
+def nearby_catalog(monkeypatch):
+    """Small isolated catalog, including cross-catalog duplicates."""
+    import sqlite3
+    from PiFinder import web_catalogs
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        "CREATE TABLE objects (id INTEGER PRIMARY KEY, ra REAL, dec REAL,"
+        " obj_type TEXT, const TEXT, mag TEXT, size TEXT);"
+        "CREATE TABLE catalog_objects (id INTEGER PRIMARY KEY, object_id INTEGER,"
+        " catalog_code TEXT, sequence INTEGER);"
+        "CREATE TABLE names (id INTEGER PRIMARY KEY, object_id INTEGER, common_name TEXT);"
+    )
+    for number in range(65, 0, -1):
+        conn.execute(
+            "INSERT INTO objects VALUES (?, ?, 0, 'Gx', 'And', NULL, NULL)",
+            (number, number),
+        )
+        conn.execute(
+            "INSERT INTO catalog_objects VALUES (?, ?, 'NGC', ?)",
+            (number, number, number),
+        )
+    conn.execute("INSERT INTO catalog_objects VALUES (100, 11, 'M', 11)")
+    monkeypatch.setattr(
+        web_catalogs,
+        "_query",
+        lambda sql, params=(): conn.execute(sql, params).fetchall(),
+    )
+    monkeypatch.setattr(
+        web_catalogs,
+        "_pointing_status",
+        lambda: {"current": {"ra": 0, "dec": 0, "valid": True}},
+    )
+    monkeypatch.setattr(
+        web_catalogs,
+        "_altaz_calculator",
+        lambda shared: SimpleNamespace(
+            radec_to_altaz=lambda ra, dec, alt_only=False: (25 if ra > 10 else -5, 90)
+        ),
+    )
+    monkeypatch.setattr(web_catalogs, "_calc_planets", lambda shared: {})
+    monkeypatch.setattr(web_catalogs, "_observed_set", lambda: set())
+    monkeypatch.setattr(
+        web_catalogs, "sky_conditions", lambda shared: {"enabled": False}
+    )
+    yield conn
+    conn.close()
+
+
+@pytest.mark.unit
+def test_nearby_sorted_visible_and_scoped(web_app, nearby_catalog):
+    app, _server = web_app
+    response = _login(app.test_client()).get(
+        "/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1"
+    )
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    data = response.get_json()
+    assert data["total"] == 55
+    assert data["pages"] == 2
+    assert "limit" not in data
+    objects = data["objects"]
+    assert [obj["object_id"] for obj in objects] == list(range(11, 61))
+    assert [obj["distance"] for obj in objects] == list(range(11, 61))
+    assert all(obj["alt"] > 0 for obj in objects)
+    assert objects[0]["display"] == "NGC 11"
+
+
+@pytest.mark.unit
+def test_nearby_preserves_full_catalog_and_pagination(web_app, nearby_catalog):
+    app, _server = web_app
+    client = _login(app.test_client())
+    base = "/catalogs/api/objects?catalog=NGC&sort=nearby"
+    first = client.get(base).get_json()
+    second = client.get(base + "&page=2").get_json()
+    assert first["total"] == second["total"] == 65
+    assert first["pages"] == second["pages"] == 2
+    assert [o["object_id"] for o in first["objects"] + second["objects"]] == list(
+        range(1, 66)
+    )
+    assert first["objects"][0]["alt"] < 0  # Up now is a separate filter.
+    assert len(client.get(base + "&page_size=200").get_json()["objects"]) == 65
+    messier = client.get("/catalogs/api/objects?catalog=M&sort=nearby").get_json()
+    assert messier["total"] == 1
+    assert messier["objects"][0]["display"] == "M 11"
+
+
+@pytest.mark.unit
+def test_nearby_combines_existing_filters(web_app, nearby_catalog, monkeypatch):
+    from PiFinder import web_catalogs
+
+    nearby_catalog.execute("INSERT INTO names VALUES (1, 11, 'Special target')")
+    nearby_catalog.execute(
+        'UPDATE objects SET mag = \'{"filter_mag": 6, "mags": [6]}\' WHERE id = 11'
+    )
+    monkeypatch.setattr(web_catalogs, "_observed_set", lambda: {("NGC", 11)})
+    app, _server = web_app
+    client = _login(app.test_client())
+    url = "/catalogs/api/objects?catalog=NGC&sort=nearby&q=Special&types=Gx&const=And&mag_max=7&up_now=1"
+    data = client.get(url + "&observed=yes").get_json()
+    assert data["total"] == 1
+    assert data["objects"][0]["display"] == "NGC 11"
+    assert data["objects"][0]["observed"] is True
+    assert client.get(url + "&observed=no").get_json()["total"] == 0
+    assert client.get(url.replace("types=Gx", "types=PN")).get_json()["total"] == 0
+
+
+@pytest.mark.unit
+def test_nearby_keeps_missing_coordinates_in_full_list(web_app, nearby_catalog):
+    nearby_catalog.execute("UPDATE objects SET ra = NULL WHERE id = 1")
+    app, _server = web_app
+    data = (
+        _login(app.test_client())
+        .get("/catalogs/api/objects?catalog=NGC&sort=nearby&page_size=200")
+        .get_json()
+    )
+    assert data["total"] == 65
+    assert data["objects"][-1]["object_id"] == 1
+    assert data["objects"][-1]["distance"] is None
+
+
+@pytest.mark.unit
+def test_nearby_without_location_can_sort_without_up_now(
+    web_app, nearby_catalog, monkeypatch
+):
+    from PiFinder import web_catalogs
+
+    monkeypatch.setattr(web_catalogs, "_altaz_calculator", lambda shared: None)
+    app, _server = web_app
+    client = _login(app.test_client())
+    url = "/catalogs/api/objects?catalog=NGC&sort=nearby"
+    data = client.get(url).get_json()
+    assert data["total"] == 65
+    assert data["alt_available"] is False
+    assert client.get(url + "&up_now=1").status_code == 409
+
+
+@pytest.mark.unit
+def test_nearby_has_no_large_catalog_altitude_limit(
+    web_app, nearby_catalog, monkeypatch
+):
+    from PiFinder import web_catalogs
+
+    monkeypatch.setattr(web_catalogs, "ALT_COMPUTE_LIMIT", 1)
+    app, _server = web_app
+    data = (
+        _login(app.test_client())
+        .get("/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1")
+        .get_json()
+    )
+    assert data["total"] == 55
+    assert data["alt_enabled"] is True
+
+
+@pytest.mark.unit
+def test_old_global_nearby_endpoint_removed(web_app):
+    app, _server = web_app
+    assert _login(app.test_client()).get("/catalogs/api/nearby").status_code == 404
+
+
+@pytest.mark.unit
+def test_nearby_visibility_ranks_before_pagination(
+    web_app, nearby_catalog, monkeypatch
+):
+    from PiFinder import web_catalogs
+
+    nearby_catalog.execute(
+        "UPDATE objects SET obj_type = '*', mag = '{\"filter_mag\": 16, \"mags\": [16]}'"
+    )
+    nearby_catalog.execute(
+        'UPDATE objects SET mag = \'{"filter_mag": 6, "mags": [6]}\' WHERE id > 60'
+    )
+    monkeypatch.setattr(
+        web_catalogs,
+        "sky_conditions",
+        lambda shared: {
+            "enabled": True,
+            "limiting_mag": 12,
+        },
+    )
+    app, _server = web_app
+    data = (
+        _login(app.test_client())
+        .get("/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1")
+        .get_json()
+    )
+    assert data["sort"] == "nearby"
+    assert data["ranking"] == "visibility_distance"
+    assert len(data["objects"]) == 50
+    # These targets lay beyond the old nearest-50 cutoff. Within each tier,
+    # distance still determines order, and the cross-catalog duplicate is one row.
+    assert [o["object_id"] for o in data["objects"][:5]] == list(range(61, 66))
+    assert all(o["visibility"]["label"] == "Favorable" for o in data["objects"][:5])
+    assert [o["object_id"] for o in data["objects"][5:]] == list(range(11, 56))
+    second = (
+        _login(app.test_client())
+        .get("/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1&page=2")
+        .get_json()
+    )
+    assert second["total"] == 55
+    assert [o["object_id"] for o in second["objects"]] == list(range(56, 61))
+
+
+@pytest.mark.unit
+def test_nearby_planets_use_same_visibility_rank(web_app, nearby_catalog, monkeypatch):
+    from PiFinder import web_catalogs
+
+    monkeypatch.setattr(
+        web_catalogs,
+        "sky_conditions",
+        lambda shared: {
+            "enabled": True,
+            "limiting_mag": 12,
+        },
+    )
+    monkeypatch.setattr(
+        web_catalogs,
+        "_calc_planets",
+        lambda shared: {
+            "MOON": {"radec": (90, 0), "altaz": (40, 90), "mag": -10},
+            "PLUTO": {"radec": (1, 0), "altaz": (40, 90), "mag": 15},
+        },
+    )
+    app, _server = web_app
+    data = (
+        _login(app.test_client())
+        .get("/catalogs/api/objects?catalog=PL&sort=nearby&up_now=1")
+        .get_json()
+    )
+    assert len(data["objects"]) == 2
+    assert data["objects"][0]["display"] == "Moon"
+    assert data["objects"][1]["display"] == "Pluto"
+
+
+@pytest.mark.unit
+def test_nearby_wrap_pole_and_current_position(web_app, nearby_catalog, monkeypatch):
+    from PiFinder import web_catalogs
+
+    nearby_catalog.execute("DELETE FROM objects WHERE id > 3")
+    nearby_catalog.executemany(
+        "UPDATE objects SET ra = ?, dec = ? WHERE id = ?",
+        [(359.9, 0, 1), (0.3, 0, 2), (180, 89.9, 3)],
+    )
+    monkeypatch.setattr(
+        web_catalogs,
+        "_altaz_calculator",
+        lambda shared: SimpleNamespace(radec_to_altaz=lambda *a, **kw: (30, 90)),
+    )
+    app, _server = web_app
+    client = _login(app.test_client())
+    objects = client.get(
+        "/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1"
+    ).get_json()["objects"]
+    assert [obj["object_id"] for obj in objects] == [1, 2, 3]
+    assert objects[0]["distance"] == pytest.approx(0.1)
+
+    monkeypatch.setattr(
+        web_catalogs, "_pointing_status", lambda: {"current": {"ra": 0, "dec": 90}}
+    )
+    data = client.get(
+        "/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1"
+    ).get_json()
+    assert data["center"]["dec"] == 90
+    assert data["objects"][0]["object_id"] == 3
+    assert data["objects"][0]["distance"] == pytest.approx(0.1)
+
+
+@pytest.mark.unit
+def test_nearby_planets_respect_up_now(web_app, nearby_catalog, monkeypatch):
+    from PiFinder import web_catalogs
+
+    monkeypatch.setattr(
+        web_catalogs,
+        "_calc_planets",
+        lambda shared: {
+            "MOON": {"radec": (10.5, 0), "altaz": (40, 90), "mag": -10},
+            "MARS": {"radec": (0, 0), "altaz": (-10, 90)},
+        },
+    )
+    app, _server = web_app
+    objects = (
+        _login(app.test_client())
+        .get("/catalogs/api/objects?catalog=PL&sort=nearby&up_now=1")
+        .get_json()["objects"]
+    )
+    assert len(objects) == 1
+    assert objects[0]["href"] == "/catalogs/planet/moon"
+    assert objects[0]["distance"] == 10.5
+    assert not any(obj["display"] == "Mars" for obj in objects)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "current",
+    [
+        {},
+        {"ra": None, "dec": 0},
+        {"ra": float("nan"), "dec": 0},
+        {"ra": 0, "dec": 91},
+        {"ra": 0, "dec": 0, "valid": False},
+    ],
+)
+def test_nearby_unavailable_pointing(web_app, nearby_catalog, monkeypatch, current):
+    from PiFinder import web_catalogs
+
+    monkeypatch.setattr(web_catalogs, "_pointing_status", lambda: {"current": current})
+    app, _server = web_app
+    response = _login(app.test_client()).get(
+        "/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1"
+    )
+    assert response.status_code == 409
+    assert "pointing unavailable" in response.get_json()["error"]
+
+
+@pytest.mark.unit
+def test_nearby_unsolved_imu_then_solved(web_app, nearby_catalog, monkeypatch):
+    """An unanchored IMUPLUS sample can browse, then yield to a plate solve."""
+    from PiFinder import web_catalogs
+
+    status = {
+        "current": {"valid": False, "ra": None, "dec": None},
+        "solved": {"valid": False},
+        "imu": {
+            "valid": True,
+            "ra": 15,
+            "dec": 0,
+            "source": "imu_fallback",
+            "metadata": {"uses_magnetometer": False, "alignment_applied": False},
+        },
+    }
+    monkeypatch.setattr(web_catalogs, "_pointing_status", lambda: status)
+    app, _server = web_app
+    client = _login(app.test_client())
+    response = client.get("/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["center"] == {
+        "ra": 15,
+        "dec": 0,
+        "source": "imu_fallback",
+        "unaligned": True,
+    }
+    assert len(data["objects"]) == 50
+    assert data["objects"][0]["object_id"] == 15
+
+    status["current"] = {"valid": True, "ra": 40, "dec": 0, "source": "solve"}
+    data = client.get(
+        "/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1"
+    ).get_json()
+    assert data["center"]["source"] == "solve"
+    assert data["center"]["unaligned"] is False
+    assert data["objects"][0]["object_id"] == 40
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "source", ["solve", "pifinder_imu_estimate", "mount", "mount_imu_delta"]
+)
+def test_nearby_preserves_selected_coordinate(
+    web_app, nearby_catalog, monkeypatch, source
+):
+    from PiFinder import web_catalogs
+
+    monkeypatch.setattr(
+        web_catalogs,
+        "_pointing_status",
+        lambda: {
+            "current": {"valid": True, "ra": 30, "dec": 0, "source": source},
+            "solved": {"valid": True, "ra": 40, "dec": 0, "source": "solve"},
+            "imu": {"valid": True, "ra": 15, "dec": 0, "source": "imu_fallback"},
+        },
+    )
+    app, _server = web_app
+    data = (
+        _login(app.test_client())
+        .get("/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1")
+        .get_json()
+    )
+    assert data["center"]["source"] == source
+    assert data["objects"][0]["object_id"] == 30
+
+
+@pytest.mark.unit
+def test_nearby_solved_fallback_precedes_imu(web_app, nearby_catalog, monkeypatch):
+    from PiFinder import web_catalogs
+
+    monkeypatch.setattr(
+        web_catalogs,
+        "_pointing_status",
+        lambda: {
+            "current": {"valid": False},
+            "solved": {"valid": True, "ra": 40, "dec": 0, "source": "solve"},
+            "imu": {"valid": True, "ra": 15, "dec": 0, "source": "imu_fallback"},
+        },
+    )
+    app, _server = web_app
+    data = (
+        _login(app.test_client())
+        .get("/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1")
+        .get_json()
+    )
+    assert data["center"]["source"] == "solve"
+    assert data["objects"][0]["object_id"] == 40
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"uses_magnetometer": True},
+        {"alignment_applied": True},
+    ],
+)
+def test_nearby_imu_absolute_heading(web_app, nearby_catalog, monkeypatch, metadata):
+    from PiFinder import web_catalogs
+
+    monkeypatch.setattr(
+        web_catalogs,
+        "_pointing_status",
+        lambda: {
+            "imu": {"valid": True, "ra": 15, "dec": 0, "metadata": metadata},
+        },
+    )
+    app, _server = web_app
+    data = (
+        _login(app.test_client())
+        .get("/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1")
+        .get_json()
+    )
+    assert data["center"]["source"] == "imu_fallback"
+    assert data["center"]["unaligned"] is False
+
+
+@pytest.mark.unit
+def test_nearby_rejects_invalid_imu_and_unselected_mount(
+    web_app, nearby_catalog, monkeypatch
+):
+    from PiFinder import web_catalogs
+
+    monkeypatch.setattr(
+        web_catalogs,
+        "_pointing_status",
+        lambda: {
+            "current": {"valid": False},
+            "imu": {"valid": False, "ra": 15, "dec": 0},
+            "mount": {"valid": True, "aligned": False, "ra": 40, "dec": 0},
+        },
+    )
+    app, _server = web_app
+    assert (
+        _login(app.test_client())
+        .get("/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1")
+        .status_code
+        == 409
+    )
+
+
+@pytest.mark.unit
+def test_nearby_unavailable_location_and_empty_sky(
+    web_app, nearby_catalog, monkeypatch
+):
+    from PiFinder import web_catalogs
+
+    app, _server = web_app
+    client = _login(app.test_client())
+    monkeypatch.setattr(web_catalogs, "_altaz_calculator", lambda shared: None)
+    response = client.get("/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1")
+    assert response.status_code == 409
+    assert "location unavailable" in response.get_json()["error"]
+
+    monkeypatch.setattr(
+        web_catalogs,
+        "_altaz_calculator",
+        lambda shared: SimpleNamespace(radec_to_altaz=lambda *a, **kw: (-5, 90)),
+    )
+    response = client.get("/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1")
+    assert response.status_code == 200
+    assert response.get_json()["objects"] == []
 
 
 @pytest.mark.unit
 def test_catalog_page_and_404(web_app):
     app, _server = web_app
     client = _login(app.test_client())
-    assert client.get("/catalogs/M").status_code == 200
+    page = client.get("/catalogs/M")
+    assert page.status_code == 200
+    body = page.get_data(as_text=True)
+    assert (
+        body.index('id="pfcat-upnow"')
+        < body.index('id="pfcat-nearby"')
+        < body.index('id="pfcat-sort"')
+    )
     assert client.get("/catalogs/NOPE").status_code == 404
 
 

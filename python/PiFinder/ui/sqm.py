@@ -1,6 +1,7 @@
 from PiFinder.ui.base import UIModule
 from PiFinder.ui.marking_menus import MarkingMenuOption, MarkingMenu
 from PiFinder import utils
+from PiFinder.sky_quality import BORTLE_SQM_RANGES
 from PiFinder.ui.ui_utils import TextLayouter
 from PiFinder.image_util import gamma_correct_med, subtract_background
 import time
@@ -344,7 +345,7 @@ class UISQM(UIModule):
                 "bortle_class": 1,
                 "title": _("Excellent Dark-Sky Site"),
                 "nelm_range": (7.6, 8.0),
-                "mag_arcsec_range": (21.76, 22.00),
+                "mag_arcsec_range": BORTLE_SQM_RANGES[1],
                 "description": [
                     _(
                         "The zodiacal light is visible and colorful. Gegenschein readily visible."
@@ -360,7 +361,7 @@ class UISQM(UIModule):
                 "bortle_class": 2,
                 "title": _("Typical Truly Dark Site"),
                 "nelm_range": (7.1, 7.5),
-                "mag_arcsec_range": (21.60, 21.76),
+                "mag_arcsec_range": BORTLE_SQM_RANGES[2],
                 "description": [
                     _(
                         "The zodiacal light is distinctly yellowish and bright enough to cast shadows at dusk and dawn."
@@ -373,7 +374,7 @@ class UISQM(UIModule):
                 "bortle_class": 3,
                 "title": _("Rural Sky"),
                 "nelm_range": (6.6, 7.0),
-                "mag_arcsec_range": (21.30, 21.60),
+                "mag_arcsec_range": BORTLE_SQM_RANGES[3],
                 "description": [
                     _(
                         "The zodiacal light is striking in spring and autumn, color still visible."
@@ -389,7 +390,7 @@ class UISQM(UIModule):
                 "bortle_class": 4,
                 "title": _("Brighter Rural"),
                 "nelm_range": (6.3, 6.5),
-                "mag_arcsec_range": (20.80, 21.30),
+                "mag_arcsec_range": BORTLE_SQM_RANGES[4],
                 "description": [
                     _(
                         "Zodiacal light still visible but doesn't extend halfway to zenith."
@@ -405,7 +406,7 @@ class UISQM(UIModule):
                 "bortle_class": 4.5,
                 "title": _("Semi-Suburban/Transition Sky"),
                 "nelm_range": (6.1, 6.3),
-                "mag_arcsec_range": (20.30, 20.80),
+                "mag_arcsec_range": BORTLE_SQM_RANGES[4.5],
                 "description": [
                     _(
                         "Clouds have a grayish glow at zenith and appear bright toward city domes."
@@ -418,7 +419,7 @@ class UISQM(UIModule):
                 "bortle_class": 5,
                 "title": _("Suburban Sky"),
                 "nelm_range": (5.6, 6.0),
-                "mag_arcsec_range": (19.25, 20.30),
+                "mag_arcsec_range": BORTLE_SQM_RANGES[5],
                 "description": [
                     _(
                         "Only hints of zodiacal light seen on best nights in autumn and spring."
@@ -432,7 +433,7 @@ class UISQM(UIModule):
                 "bortle_class": 6,
                 "title": _("Bright Suburban Sky"),
                 "nelm_range": (5.1, 5.5),
-                "mag_arcsec_range": (18.50, 19.25),
+                "mag_arcsec_range": BORTLE_SQM_RANGES[6],
                 "description": [
                     _("The zodiacal light is invisible."),
                     _(
@@ -448,7 +449,7 @@ class UISQM(UIModule):
                 "bortle_class": 7,
                 "title": _("Suburban/Urban Transition"),
                 "nelm_range": (4.6, 5.0),
-                "mag_arcsec_range": (18.00, 18.50),
+                "mag_arcsec_range": BORTLE_SQM_RANGES[7],
                 "description": [
                     _("Light pollution makes the entire sky light gray."),
                     _("Strong light sources evident in all directions."),
@@ -460,7 +461,7 @@ class UISQM(UIModule):
                 "bortle_class": 8,
                 "title": _("City Sky"),
                 "nelm_range": (4.1, 4.5),
-                "mag_arcsec_range": (17.00, 18.00),
+                "mag_arcsec_range": BORTLE_SQM_RANGES[8],
                 "description": [
                     _("The sky is light gray or orange—one can easily read."),
                     _("Stars forming recognizable patterns may vanish entirely."),
@@ -471,7 +472,7 @@ class UISQM(UIModule):
                 "bortle_class": 9,
                 "title": _("Inner-City Sky"),
                 "nelm_range": (0.0, 4.0),
-                "mag_arcsec_range": (0.00, 17.00),
+                "mag_arcsec_range": BORTLE_SQM_RANGES[9],
                 "description": [
                     _("The sky is brilliantly lit."),
                     _("Many stars forming constellations invisible."),

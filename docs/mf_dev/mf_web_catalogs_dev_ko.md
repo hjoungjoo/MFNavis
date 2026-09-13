@@ -107,6 +107,57 @@ CSS/JS 로드: `base.html`에는 head 확장 블록이 없으므로, 신규 템�
 - 문자가 카탈로그 코드가 아니면 자동으로 이름 검색으로 폴백.
 - 테스트: `test_search_api_designation_ordering` (m5/ngc1 순서 검증).
 
+### 2.2.2 주변 관측 대상 (2026-09-13)
+
+- M·NGC·WDS·PL 등 개별 카탈로그 목록의 `Up now` 옆 `Nearby` 버튼으로
+  `/catalogs/api/objects?catalog=코드&sort=nearby` 정렬을 선택한다.
+  다시 누르면 기존 정렬로 돌아간다. 홈의 별도 버튼·결과 목록과
+  `/catalogs/api/nearby` 전역 조회 API는 제거했다.
+- 기준은 pointing coordinate service의 `current` RA/Dec이다. 선택 좌표가
+  없으면 같은 서비스가 게시한 `solved` → `imu` 순으로 유효한 좌표를 사용한다.
+  솔빙 전 IMUPLUS 상태에서도 주변 조회가 가능하며, 절대 방위 정렬이 없는
+  IMU 좌표는 `IMU estimate (heading not aligned)`로 표시한다. 이 조회용
+  폴백은 마운트 제어나 SkySafari의 좌표 선택 규칙을 변경하지 않는다.
+  모든 좌표가 없으면 안내한다. 위치가 없어도 거리 정렬은 가능하지만
+  `Up now`를 함께 쓰려면 관측 위치가 필요하다.
+- 해당 카탈로그의 전체 필터 결과를 관측 난이도 → 구면 각거리 순으로 정렬한
+  뒤 기존 `page`/`page_size` 방식으로 표시한다. 총 개수 제한은 없다.
+  기본 페이지 크기 50, 최대 페이지 크기 200과 기존 전체 개수·페이지 수를 유지한다.
+  M에서는 M 지정번호, NGC에서는 NGC 지정번호로 표시하며 행성은 PL에만 포함된다.
+- `Up now`는 별도 필터로 유지한다. 함께 켜면 고도 > 0°만 남긴다.
+  이름·종류·별자리·등급·관측 여부 필터도 그대로 적용된다.
+  WDS도 Nearby 모드에서는 `Up now` 계산을 지원한다.
+- 기존 테이블에 Nearby 모드일 때만 예상 관측 난이도·각거리 열을 표시한다.
+  고도·크기·관측 여부·상세 페이지 이동은 기존 목록과 같다.
+- 대형 카탈로그도 좌표·측광 정보로 전체를 먼저 정렬하고 표시 정보는 현재
+  페이지에 해당하는 천체만 읽는다. 좌표 없는 행은 거리 없음으로 유지한다.
+  DB는 읽기 전용이다.
+
+보틀/SQM 정렬:
+
+- 기존 장치 설정에는 보틀 항목이 없었다. 선택 설정 키 `filter.bortle`가 있으면
+  1~9 및 장치의 4.5 등급을 읽는다. 이 기능은 값을 임의로 저장하지 않는다.
+- 실측은 `shared_state.sqm()`의 최근 60초 이내 유효한 값만 사용한다.
+  장치가 게시하는 로컬 ISO 시각과 시간대가 있는 ISO 시각을 모두 지원한다.
+  초기 기본값(측정 시각 없음)은 실측으로 취급하지 않는다.
+- 설정값과 실측값이 모두 있으면 더 밝은 하늘, 즉 낮은 SQM을 적용한다.
+  SQM↔보틀 구간은 `PiFinder/sky_quality.py`에서 LCD SQM 화면과 공유한다.
+  설정 보틀의 대표 SQM은 구간 중간값이며, 범위가 넓은 9등급은 16.5를 쓴다.
+- `web_catalog_visibility.py`가 활성 망원경·접안렌즈로 난이도를 추정한다.
+  확산 천체는 LCD 상세 화면과 같은 `pydeepskylog.contrast_reserve`를 사용한다.
+  CR ≥ 0.5는 Favorable, −0.2 이상은 Challenging, 그 이하는 Unlikely이다.
+- 별·다중성·행성은 SQM에서 얻은 맨눈 한계등급에 집광 면적 이득
+  `5 log10(min(구경, 배율×7)/7)`을 더하는 근사치를 쓴다(동공 7 mm 가정).
+  `filter.magnitude`가 있으면 점광원 한계등급을 그 값 이내로 제한한다.
+  한계보다 1등급 이상 밝으면 Favorable, 한계 이내면 Challenging이다.
+  이는 검출 우선순위 추정이며 이중성 분리나 행성 세부의 가시성 판정은 아니다.
+- 측광·크기가 없거나 모델이 적용되지 않는 대상은 Unknown으로 뒤에 둔다.
+  난이도가 같으면 가까운 순이다. 현재 페이지만 재정렬하지 않는다.
+  유효한 하늘 밝기나 장비 정보가 없으면 거리순으로 돌아가며 이유를 표시한다.
+- 참고: [pydeepskylog](https://pypi.org/project/pydeepskylog/),
+  집광 면적과 한계등급의 근사 관계는
+  [CAAA 관측 입문 자료](https://caao.ca/wp-content/uploads/2023/02/CAAO-tutorial.pdf).
+
 ### 2.3 고도/방위 계산 — skyfield 금지, FastAltAz 사용
 
 - `calc_utils.FastAltAz`(`calc_utils.py:23`, `radec_to_altaz`)는 순수 수식이라 가볍다.
