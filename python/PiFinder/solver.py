@@ -39,7 +39,8 @@ from PiFinder.mf_distortion_calibration import (
     DistortionCalibrationSession,
     measure_distortion_frame,
 )
-from PiFinder.mf_manual_lens import manual_focal_from_state
+from PiFinder.mf_manual_lens import manual_focal_from_state, calibration_lens_key
+from PiFinder.lens_measurement import LensMeasurement, measure_lens_frame
 from PiFinder.mf_livecam_tiles import active_focal_length_mm
 from PiFinder.mf_star_only_preprocess import preprocess_geometry_fingerprint
 from PiFinder.mf_wide_calibration import CalibrationProfileStore
@@ -76,6 +77,8 @@ from PiFinder.types.positioning import (
     AlignedResult,
     AlignmentResult,
     CancelDistortionCalibration,
+    StartLensMeasurement,
+    CancelLensMeasurement,
     FailedSolve,
     Pointing,
     ReloadSqmCalibration,
@@ -1463,6 +1466,24 @@ def solver(
         )
         return request_id, payload["source"], observation
 
+    def _measure_lens_task(request_id, payload, camera_type):
+        nonlocal distortion_calibration_t3
+        if distortion_calibration_t3 is None:
+            distortion_calibration_t3 = tetra3.Tetra3(
+                str(utils.tetra3_dir / "data" / "default_database.npz")
+            )
+        return request_id, measure_lens_frame(
+            distortion_calibration_t3, payload, camera_type
+        )
+
+    lens_measurement = LensMeasurement(
+        config_mod.Config(),
+        shared_state,
+        lambda request_id, payload, camera_type: distortion_calibration_executor.submit(
+            _measure_lens_task, request_id, payload, camera_type
+        ),
+    )
+
     align_ra = 0
     align_dec = 0
     last_solve_attempt: float = 0.0
@@ -1622,10 +1643,23 @@ def solver(
                         sqm_black_level = None
                         sqm_radiometer.reset()
                         last_stellar_diagnostic = 0.0
+                    elif isinstance(command, StartLensMeasurement):
+                        distortion_calibration_session = None
+                        shared_state.set_distortion_calibration_status(
+                            {"state": "cancelled"}
+                        )
+                        lens_measurement.start(command)
+                    elif isinstance(command, CancelLensMeasurement):
+                        lens_measurement.cancel(command.request_id)
                     elif isinstance(command, StartDistortionCalibration):
+                        if lens_measurement.active:
+                            lens_measurement.cancel()
                         current_camera = str(shared_state.camera_type() or "")
-                        current_lens = str(
-                            getattr(shared_state, "camera_lens", lambda: "")() or ""
+                        current_lens = calibration_lens_key(
+                            str(
+                                getattr(shared_state, "camera_lens", lambda: "")() or ""
+                            ),
+                            manual_focal_from_state(shared_state),
                         )
                         if (
                             command.camera_type != current_camera
@@ -2116,19 +2150,27 @@ def solver(
                     exposure_quality = None
                     distortion_calibration_input = None
                     if (
-                        distortion_calibration_session is not None
+                        (
+                            distortion_calibration_session is not None
+                            or lens_measurement.active
+                        )
                         and not frame_moving
-                        and used_fullframe
-                        and ff_frame_hw is not None
                         and cedar_ff_geometry is not None
                     ):
+                        crop_width = cedar_ff_geometry["crop_width_px"]
+                        native = used_fullframe and ff_frame_hw is not None
                         distortion_calibration_input = {
-                            "centroids": np.asarray(centroids, dtype=np.float64).copy(),
-                            "frame_hw": ff_frame_hw,
-                            "rotation_deg": cedar_ff_geometry["rotation_deg"],
-                            "crop_width_px": cedar_ff_geometry["crop_width_px"],
+                            "centroids": np.asarray(centroids, dtype=np.float64).copy()
+                            * (1.0 if native else crop_width / 512.0),
+                            "frame_hw": ff_frame_hw
+                            if native
+                            else (crop_width, crop_width),
+                            "rotation_deg": cedar_ff_geometry["rotation_deg"]
+                            if native
+                            else 0,
+                            "crop_width_px": crop_width,
                             "base_fov_degrees": cedar_ff_geometry["base_fov_degrees"],
-                            "source": "raw_cedar",
+                            "source": "raw_cedar" if native else "raw_cedar_512",
                         }
                     sep_can_solve = False
                     if sep_shadow is not None and sep_shadow_wanted:
@@ -2571,6 +2613,7 @@ def solver(
                                 align_ra != 0
                                 or align_dec != 0
                                 or distortion_calibration_session is not None
+                                or lens_measurement.active
                             )
                             execution = solve_scheduling.choose(
                                 raw_solved=raw_solved, forced_sync=forced_sync
@@ -2722,7 +2765,10 @@ def solver(
                                         )
                                     )
 
-                                if distortion_calibration_session is not None:
+                                if (
+                                    distortion_calibration_session is not None
+                                    or lens_measurement.active
+                                ):
                                     distortion_calibration_input = {
                                         "centroids": np.asarray(
                                             preprocessed_cedar, dtype=np.float64
@@ -3577,6 +3623,13 @@ def solver(
                                 or completed_request_id
                                 != distortion_calibration_session.request_id
                                 or latest_status.get("state") in {"cancelled", "reset"}
+                                or shared_state.camera_type()
+                                != distortion_calibration_session.camera_type
+                                or calibration_lens_key(
+                                    str(shared_state.camera_lens() or ""),
+                                    manual_focal_from_state(shared_state),
+                                )
+                                != distortion_calibration_session.lens_key
                             ):
                                 logger.info(
                                     "Discarding completed distortion fit after "
@@ -3654,13 +3707,22 @@ def solver(
                             )
                             distortion_calibration_session = None
 
+                    lens_measurement.observe(
+                        distortion_calibration_input,
+                        last_image_metadata.get("frame_id"),
+                        frame_moving,
+                    )
+
                     if (
                         distortion_calibration_session is not None
                         and distortion_calibration_future is None
                     ):
                         current_camera = str(shared_state.camera_type() or "")
-                        current_lens = str(
-                            getattr(shared_state, "camera_lens", lambda: "")() or ""
+                        current_lens = calibration_lens_key(
+                            str(
+                                getattr(shared_state, "camera_lens", lambda: "")() or ""
+                            ),
+                            manual_focal_from_state(shared_state),
                         )
                         if (
                             current_camera != distortion_calibration_session.camera_type

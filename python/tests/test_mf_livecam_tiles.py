@@ -20,7 +20,7 @@ def test_every_stated_lens_enables_its_livecam_tile_plan():
     assert wide_tiles_enabled("12mm")
     assert wide_tiles_enabled("12mm", 10.1)
     assert not wide_tiles_enabled("")
-    assert active_focal_length_mm("16mm", 7.64) == 7.6
+    assert active_focal_length_mm("16mm", 7.64) == 7.64
 
 
 def test_overlay_payload_is_normalized_and_keeps_exclusions():

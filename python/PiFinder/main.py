@@ -195,6 +195,8 @@ class PowerManager:
         self.last_activity = time.time()
         self._livecam_checked_at = 0.0
         self._livecam_wake_cached = False
+        self._measurement_checked_at = 0.0
+        self._measurement_wake_cached = False
 
     def register_activity(self):
         """
@@ -255,13 +257,34 @@ class PowerManager:
             self._livecam_wake_cached = False
         return self._livecam_wake_cached
 
+    def measurement_holds_wake(self) -> bool:
+        """Keep calibration progress visible and camera frames flowing."""
+        now = time.time()
+        if now - self._measurement_checked_at < LIVECAM_WAKE_POLL_SECONDS:
+            return self._measurement_wake_cached
+        self._measurement_checked_at = now
+        self._measurement_wake_cached = False
+        for name in ("lens_measurement_status", "distortion_calibration_status"):
+            try:
+                status = getattr(self.shared_state, name, lambda: {})() or {}
+                if status.get("state") in {
+                    "requested",
+                    "waiting_stars",
+                    "measuring",
+                    "collecting",
+                }:
+                    self._measurement_wake_cached = True
+            except Exception:
+                pass
+        return self._measurement_wake_cached
+
     def update(self):
         """
         Check IMU for activity
         go to sleep if needed
         if asleep, Introduce wait state
         """
-        if self.livecam_holds_wake():
+        if self.livecam_holds_wake() or self.measurement_holds_wake():
             # Also wakes a sleeping unit, so turning processing on from the
             # web UI starts producing frames immediately.
             self.register_activity()

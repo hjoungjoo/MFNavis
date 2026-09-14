@@ -18,6 +18,7 @@ import math
 from typing import Any, Final, Mapping
 
 from PiFinder.sqm.camera_profiles import CameraProfile
+from PiFinder.mf_manual_lens import calibration_lens_key
 
 
 CALIBRATION_STORE_OPTION: Final[str] = "wide_solver_calibration_store_v1"
@@ -226,6 +227,10 @@ class CalibrationProfileStore:
     ) -> dict[str, Any] | None:
         """Return only an active profile matching this exact optical geometry."""
 
+        lens_key = calibration_lens_key(
+            lens_key, self._cfg.get_option("camera_lens_focal_length_mm")
+        )
+
         store = self._load()
         context = calibration_context_key(camera_type, lens_key)
         profile_id = store["active"].get(context)
@@ -246,6 +251,10 @@ class CalibrationProfileStore:
         tv: ManualTvDistortion,
     ) -> dict[str, Any]:
         """Persist and select a new manual-TV profile for this camera/lens."""
+
+        lens_key = calibration_lens_key(
+            lens_key, self._cfg.get_option("camera_lens_focal_length_mm")
+        )
 
         store = self._load()
         context = calibration_context_key(camera_type, lens_key)
@@ -278,6 +287,10 @@ class CalibrationProfileStore:
         manual TV baselines.
         """
 
+        lens_key = calibration_lens_key(
+            lens_key, self._cfg.get_option("camera_lens_focal_length_mm")
+        )
+
         profile_id = candidate.get("id")
         if not isinstance(profile_id, str) or not profile_id:
             raise CalibrationValidationError("Calibration profile needs a non-empty id")
@@ -302,6 +315,10 @@ class CalibrationProfileStore:
     ) -> dict[str, Any]:
         """Persist and select a validated on-sky profile for this geometry."""
 
+        lens_key = calibration_lens_key(
+            lens_key, self._cfg.get_option("camera_lens_focal_length_mm")
+        )
+
         store = self._load()
         prefix = f"auto-{camera_type}-{lens_key}-"
         revisions = []
@@ -325,6 +342,10 @@ class CalibrationProfileStore:
 
     def clear(self, camera_type: str, lens_key: str, profile: CameraProfile) -> int:
         """Remove every saved profile for one exact camera/lens geometry."""
+
+        lens_key = calibration_lens_key(
+            lens_key, self._cfg.get_option("camera_lens_focal_length_mm")
+        )
 
         store = self._load()
         context = calibration_context_key(camera_type, lens_key)

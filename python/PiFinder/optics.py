@@ -82,7 +82,7 @@ def resolve_lens(
     manual_focal_length_mm: Optional[float] = None,
 ) -> Lens:
     """Use the configured lens if valid, otherwise the profile's safe default."""
-    manual_focal = normalise_manual_focal_length(manual_focal_length_mm)
+    manual_focal = normalise_manual_focal_length(manual_focal_length_mm, measured=True)
     if manual_focal is not None:
         return Lens(
             MANUAL_LENS_KEY,
@@ -165,7 +165,8 @@ def optical_train_for_profile(
         profile,
         resolve_lens(profile, lens_key, manual_focal_length_mm),
         lens_is_stated(lens_key)
-        or normalise_manual_focal_length(manual_focal_length_mm) is not None,
+        or normalise_manual_focal_length(manual_focal_length_mm, measured=True)
+        is not None,
     )
 
 
@@ -193,7 +194,9 @@ class OpticalTrainResolver:
         lens_key: Optional[str] = None,
         manual_focal_length_mm: Optional[float] = None,
     ) -> OpticalTrain:
-        manual_focal = normalise_manual_focal_length(manual_focal_length_mm)
+        manual_focal = normalise_manual_focal_length(
+            manual_focal_length_mm, measured=True
+        )
         key = (camera_type, lens_key, manual_focal)
         if key != self._key or self._train is None:
             self._train = optical_train_for_profile(

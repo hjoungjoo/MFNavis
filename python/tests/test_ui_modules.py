@@ -94,6 +94,7 @@ from PiFinder.nearby import NEAREST_LIST_CAP
 from PiFinder.ui.log import UILog
 from PiFinder.ui.dateentry import UIDateEntry
 from PiFinder.ui.distortion_calibration import UIDistortionCalibration
+from PiFinder.ui.lens_measurement import UILensMeasurement
 from PiFinder.ui.sqm_calibration import UISQMCalibration
 from PiFinder.ui.sqm_sweep import UISQMSweep
 from PiFinder.ui.software import UIMigrationConfirm, UIMigrationProgress
@@ -196,6 +197,7 @@ _DYNAMIC_IDS = [
     "UIMigrationConfirm",
     "UIMigrationProgress",
     "UIDistortionCalibration",
+    "UILensMeasurement",
 ]
 
 
@@ -253,6 +255,13 @@ def _build_dynamic_item_definition(spec_id: str, sample_object) -> dict:
             "class": UIMigrationProgress,
             "version_info": {"version": "2.5.0"},
             "label": "migration_progress",
+        }
+    if spec_id == "UILensMeasurement":
+        return {
+            "name": "Auto Lens",
+            "class": UILensMeasurement,
+            "request_id": 123,
+            "label": "lens_measurement_progress",
         }
     if spec_id == "UIDistortionCalibration":
         return {

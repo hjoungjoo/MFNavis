@@ -338,6 +338,7 @@ class SharedStateObj:
             "accepted_frames": 0,
             "required_frames": 5,
         }
+        self.__lens_measurement_status: dict[str, Any] = {"state": "idle"}
         self.__raw_live_frame = None
         # Latest SEP detection (small dict) for the LiveCam overlay
         self.__sep_overlay = None
@@ -655,6 +656,12 @@ class SharedStateObj:
 
     def set_solver_preprocess_status(self, v):
         self.__solver_preprocess_status = dict(v or {})
+
+    def lens_measurement_status(self):
+        return dict(self.__lens_measurement_status)
+
+    def set_lens_measurement_status(self, v):
+        self.__lens_measurement_status = dict(v or {})
 
     def distortion_calibration_status(self):
         return dict(self.__distortion_calibration_status)

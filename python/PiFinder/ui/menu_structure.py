@@ -2,6 +2,7 @@ from typing import Any
 from PiFinder.obj_types import OBJ_TYPES
 from PiFinder.ui.timeentry import UITimeEntry
 from PiFinder.ui.text_menu import UITextMenu
+from PiFinder.ui.lens_measurement import UILensMenu
 from PiFinder.ui.object_list import UIObjectList
 from PiFinder.ui.status import UIStatus
 from PiFinder.ui.console import UIConsole
@@ -1369,18 +1370,16 @@ pifinder_menu = {
                             ],
                         },
                         {
-                            # This is a declaration only.  It is not consumed
-                            # by the solver until optical-train validation has
-                            # passed on real sky; see mf_optical_train_fov...
                             "name": _("Lens"),
-                            "class": UITextMenu,
+                            "class": UILensMenu,
                             "select": "single",
                             "config_option": "camera_lens",
                             "post_callback": callbacks.set_camera_lens,
                             "items": [
                                 {
-                                    "name": _("Automatic (not set)"),
+                                    "name": _("Auto (Measure)"),
                                     "value": "",
+                                    "callback": callbacks.start_lens_measurement,
                                 },
                                 {
                                     "name": _("4mm"),
@@ -1412,11 +1411,7 @@ pifinder_menu = {
                                 },
                                 {
                                     "name": _("Manual (mm)"),
-                                    # UITextMenu needs a value on every item
-                                    # in a configured single-select list.  The
-                                    # callback opens the entry before this is
-                                    # ever treated as a selected lens value.
-                                    "value": None,
+                                    "value": "manual",
                                     "callback": callbacks.edit_manual_lens_focal_length,
                                     "name_suffix_callback": callbacks.manual_lens_focal_length_suffix,
                                 },

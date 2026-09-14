@@ -109,3 +109,30 @@ produced/on-sky coefficients, plus the correction algorithm that consumes them.
   returned unchanged.
 - A profile is not loaded when its fingerprint does not match the camera,
   lens, RAW/crop geometry, and pixel pitch.
+
+## Auto measurement and manual lenses (2026-09-14)
+
+Advanced → Lens → **Auto (Measure)** opens a live progress page. A separate blind
+plate solve measures the central crop without the previous FOV or distortion
+correction. Five fresh, stationary, quality-qualified frames with consistent
+focal lengths (within 1%) are required before the measured scale is saved as a
+**Manual** lens. The effective focal length is derived from sensor pixel pitch
+and crop width and retained to four decimal places in mm. The completion page
+shows the measured crop FOV and applied manual focal length.
+
+The page reports accepted frames, stars and waiting/measuring status. Back cancels
+without changing the current optics. Motion resets confirmation; camera/lens
+changes invalidate pending results. A session times out after three minutes of
+processing without a stable fit. If the camera stops delivering frames entirely,
+the page remains waiting and Back can cancel it.
+
+Both entered and automatically measured manual lenses support **Distortion →
+Measure Sky**. Their calibration profiles are isolated by camera and precise
+manual focal length, persist across restarts, and are not reused for another
+manual value or a named lens. Selecting a named lens clears the manual override.
+Auto measures optical scale; distortion fitting and eyepiece alignment remain
+separate measurements.
+
+While Auto or distortion measurement is active, automatic sleep is held so the
+progress page remains visible and camera frames keep arriving. Normal sleep
+policy resumes after completion or cancellation.

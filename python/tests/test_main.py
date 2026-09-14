@@ -121,3 +121,20 @@ def test_livecam_wake_check_is_throttled():
     assert manager.livecam_holds_wake() is True
     manager._livecam_checked_at = 0.0
     assert manager.livecam_holds_wake() is False
+
+
+@pytest.mark.parametrize(
+    "status_name", ["lens_measurement_status", "distortion_calibration_status"]
+)
+def test_active_measurement_keeps_progress_awake_until_completion(status_name):
+    shared_state = _PowerSharedState({"processing_enabled": False}, power_state=0)
+    status = {"state": "measuring"}
+    setattr(shared_state, status_name, lambda: status)
+    manager = _power_manager(shared_state)
+    manager.update()
+    assert shared_state.power_state() == 1
+    status["state"] = "completed"
+    manager._measurement_checked_at = 0.0
+    manager.last_activity = 0.0
+    manager.update()
+    assert shared_state.power_state() == 0

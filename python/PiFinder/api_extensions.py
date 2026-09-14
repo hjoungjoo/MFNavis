@@ -1068,7 +1068,7 @@ def register_api_routes(app, server_instance, require_auth=False):
                 if "enabled" in body:
                     cfg.set_option("wide_solver_enabled", bool(body["enabled"]))
                 if "manual_tv" in body:
-                    if not lens_key:
+                    if not lens_key and manual_focal is None:
                         return _json_response(
                             {
                                 "error": "Select a named lens before saving TV distortion"
@@ -1096,7 +1096,7 @@ def register_api_routes(app, server_instance, require_auth=False):
             profile = get_camera_profile(camera_type)
             active = (
                 CalibrationProfileStore(cfg).load_active(camera_type, lens_key, profile)
-                if lens_key
+                if lens_key or manual_focal is not None
                 else None
             )
             enabled = bool(cfg.get_option("wide_solver_enabled"))

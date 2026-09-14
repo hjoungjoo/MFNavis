@@ -55,6 +55,18 @@ class _State:
     def set_camera_lens_focal_length_mm(self, focal_length):
         self.focal_length = focal_length
 
+    def camera_lens(self):
+        return self.lens
+
+    def camera_lens_focal_length_mm(self):
+        return getattr(self, "focal_length", None)
+
+    def lens_measurement_status(self):
+        return getattr(self, "lens_status", {})
+
+    def set_lens_measurement_status(self, value):
+        self.lens_status = dict(value)
+
     def distortion_calibration_status(self):
         return dict(self.distortion_status)
 
@@ -126,7 +138,7 @@ def test_lens_menu_is_a_single_config_declaration():
         "12mm",
         "16mm",
         "25mm",
-        None,
+        "manual",
     ]
     manual_item = menu["items"][-1]
     assert manual_item["name"] == "Manual (mm)"
@@ -151,18 +163,18 @@ def test_set_camera_lens_rejects_unrecognised_config_value():
 def test_manual_lens_menu_opens_one_decimal_entry_and_publishes_value():
     ui = _UI()
     callbacks.edit_manual_lens_focal_length(ui)
-    assert ui.pushed["max_length"] == 4
+    assert ui.pushed["max_length"] == 7
     assert ui.pushed["initial_text"] == ""
 
     ui.pushed["callback"]("7.64")
-    assert ui.config_object.saved["camera_lens_focal_length_mm"] == 7.6
-    assert ui.shared_state.focal_length == 7.6
+    assert ui.config_object.saved["camera_lens_focal_length_mm"] == 7.64
+    assert ui.shared_state.focal_length == 7.64
 
 
 def test_manual_lens_menu_displays_the_active_focal_length():
     ui = _UI()
     ui.config_object.focal_length = 7.6
-    assert callbacks.manual_lens_focal_length_suffix(ui) == "  7.6"
+    assert callbacks.manual_lens_focal_length_suffix(ui) == "  7.60"
 
 
 def test_distortion_menu_exposes_status_measure_cancel_and_confirmed_reset():
@@ -280,3 +292,34 @@ def test_measure_sky_requires_a_named_lens():
 
     assert ui.command_queues["align_command"].empty()
     assert "Select a named lens" in ui.messages[-1][0]
+
+
+def test_auto_opens_progress_without_clearing_current_optics():
+    from PiFinder.ui.lens_measurement import UILensMeasurement
+    from PiFinder.types.positioning import StartLensMeasurement
+
+    ui = _UI("8mm")
+    callbacks.start_lens_measurement(ui)
+    assert ui.config_object.get_option("camera_lens") == "8mm"
+    assert ui.pushed["class"] is UILensMeasurement
+    assert ui.shared_state.lens_status["state"] == "requested"
+    assert isinstance(
+        ui.command_queues["align_command"].get_nowait(), StartLensMeasurement
+    )
+
+
+def test_manual_lens_allows_distortion_measurement_with_its_own_identity():
+    ui = _UI("manual")
+    ui.config_object.focal_length = 10.5234
+    callbacks.start_distortion_calibration(ui)
+    command = ui.command_queues["align_command"].get_nowait()
+    assert command.lens_key == "manual-10.5234mm"
+    assert ui.pushed["class"] is UIDistortionCalibration
+
+
+def test_selecting_named_lens_clears_manual_override():
+    ui = _UI("8mm")
+    ui.config_object.focal_length = 10.5234
+    callbacks.set_camera_lens(ui)
+    assert ui.config_object.get_option("camera_lens_focal_length_mm") is None
+    assert ui.shared_state.focal_length is None

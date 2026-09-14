@@ -754,7 +754,22 @@ class CancelDistortionCalibration:
     request_id: int | None = None
 
 
+@dataclass
+class StartLensMeasurement:
+    """Measure the optical scale without changing the current lens first."""
+
+    camera_type: str
+    request_id: int
+
+
+@dataclass
+class CancelLensMeasurement:
+    request_id: int | None = None
+
+
 SolverCommand = Union[
+    StartLensMeasurement,
+    CancelLensMeasurement,
     AlignOnRaDec,
     AlignCancel,
     ReloadSqmCalibration,

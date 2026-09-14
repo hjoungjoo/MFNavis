@@ -24,13 +24,14 @@ from PiFinder import timez
 from PiFinder import utils, calc_utils
 from PiFinder.boot_config import get_boot_config_path
 from PiFinder.locations import Location as SavedLocation
-from PiFinder.mf_manual_lens import normalise_manual_focal_length
+from PiFinder.mf_manual_lens import normalise_manual_focal_length, calibration_lens_key
 from PiFinder.mf_wide_calibration import CalibrationProfileStore
 from PiFinder.optics import LENSES
 from PiFinder.sqm.camera_profiles import get_camera_profile
 from PiFinder.state import Location
 from PiFinder.types.positioning import (
     CancelDistortionCalibration,
+    StartLensMeasurement,
     StartDistortionCalibration,
 )
 from PiFinder.ui.base import UIModule
@@ -518,34 +519,68 @@ def get_camera_type(ui_module: UIModule) -> list[str]:
 
 
 def set_camera_lens(ui_module: UIModule) -> None:
-    """Publish the lens statement saved by the Advanced > Lens menu.
-
-    This is intentionally configuration/state only.  No camera restart and no
-    solver message are sent here: the current solver and SQM paths still use
-    their established FOV values until the separate night-validated stage.
-    """
+    """Select a named lens and clear any previous manual override."""
     lens_key = ui_module.config_object.get_option("camera_lens", "")
     if lens_key and lens_key not in LENSES:
         logger.warning("Ignoring unsupported configured lens %r", lens_key)
         lens_key = ""
+    ui_module.config_object.set_option("camera_lens_focal_length_mm", None)
+    ui_module.shared_state.set_camera_lens_focal_length_mm(None)
     ui_module.shared_state.set_camera_lens(lens_key)
     logger.info("Camera lens statement updated: %s", lens_key or "automatic")
 
 
+def start_lens_measurement(ui_module: UIModule) -> None:
+    """Open live progress; keep the previous optics until a fit is accepted."""
+    command_queue = ui_module.command_queues.get("align_command")
+    if command_queue is None:
+        ui_module.message(_("Solver unavailable"), 3)
+        return
+    request_id = time.time_ns()
+    ui_module.shared_state.set_lens_measurement_status(
+        {
+            "state": "requested",
+            "request_id": request_id,
+            "accepted_frames": 0,
+            "required_frames": 5,
+            "last_reason": "waiting_stars",
+        }
+    )
+    command_queue.put(
+        StartLensMeasurement(
+            camera_type=str(ui_module.shared_state.camera_type() or ""),
+            request_id=request_id,
+        )
+    )
+    from PiFinder.ui.lens_measurement import UILensMeasurement
+
+    ui_module.add_to_stack(
+        {
+            "name": _("Auto Lens"),
+            "class": UILensMeasurement,
+            "label": "lens_measurement_progress",
+            "request_id": request_id,
+        }
+    )
+
+
 def edit_manual_lens_focal_length(ui_module: UIModule) -> None:
-    """Open a one-decimal millimetre focal-length override entry."""
+    """Edit a manual lens without rounding away an automatic measurement."""
 
     current = ui_module.config_object.get_option("camera_lens_focal_length_mm")
-    initial = "" if current is None else f"{float(current):.1f}"
+    initial = "" if current is None else f"{float(current):.4f}".rstrip("0").rstrip(".")
 
     def _save(value: str) -> None:
         try:
-            focal_length = normalise_manual_focal_length(value)
+            focal_length = normalise_manual_focal_length(value, measured=True)
         except ValueError as exc:
             ui_module.message(str(exc), 3)
             return
         ui_module.config_object.set_option("camera_lens_focal_length_mm", focal_length)
         ui_module.shared_state.set_camera_lens_focal_length_mm(focal_length)
+        lens_key = "manual" if focal_length is not None else ""
+        ui_module.config_object.set_option("camera_lens", lens_key)
+        ui_module.shared_state.set_camera_lens(lens_key)
         message = (
             _("Manual lens cleared")
             if focal_length is None
@@ -556,10 +591,11 @@ def edit_manual_lens_focal_length(ui_module: UIModule) -> None:
     ui_module.add_to_stack(
         {
             "name": _("Manual Lens (mm)"),
+            "entry_title": _("Lens (mm)"),
             "class": UITextEntry,
             "mode": "text_entry",
             "initial_text": initial,
-            "max_length": 4,
+            "max_length": 7,
             "callback": _save,
         }
     )
@@ -572,7 +608,7 @@ def manual_lens_focal_length_suffix(ui_module: UIModule) -> str:
     if focal_length is None:
         return ""
     try:
-        return f"  {float(focal_length):.1f}"
+        return f"  {float(focal_length):.2f}"
     except (TypeError, ValueError):
         return ""
 
@@ -580,8 +616,11 @@ def manual_lens_focal_length_suffix(ui_module: UIModule) -> str:
 def _distortion_context(ui_module: UIModule):
     camera_type = str(ui_module.shared_state.camera_type() or "")
     lens_key = str(ui_module.config_object.get_option("camera_lens", "") or "")
-    if lens_key not in LENSES:
-        raise ValueError(_("Select a named lens first"))
+    lens_key = calibration_lens_key(
+        lens_key, ui_module.config_object.get_option("camera_lens_focal_length_mm")
+    )
+    if lens_key not in LENSES and not lens_key.startswith("manual-"):
+        raise ValueError(_("Select a named lens first or measure Auto"))
     return camera_type, lens_key, get_camera_profile(camera_type)
 
 

@@ -103,6 +103,16 @@ class UIDistortionCalibration(UIModule):
                 fill=self.colors.get(192),
             )
 
+    def _completed_detail(self, status):
+        return f"{status['accepted']} / {status['required']} frames"
+
+    def _result_text(self, status):
+        return (
+            f"k1 {status['k1']:+.4f}"
+            if status["k1"] is not None
+            else "Calibration saved"
+        )
+
     def update(self, force=False):
         self.clear_screen()
         status = self._status()
@@ -118,15 +128,11 @@ class UIDistortionCalibration(UIModule):
             )
             self.draw.text(
                 (8, tb + 28),
-                f"{status['accepted']} / {status['required']} frames",
+                self._completed_detail(status),
                 font=self.fonts.large.font,
                 fill=self.colors.get(192),
             )
-            result = (
-                f"k1 {status['k1']:+.4f}"
-                if status["k1"] is not None
-                else "Calibration saved"
-            )
+            result = self._result_text(status)
             self.draw.text(
                 (8, tb + 55),
                 result,

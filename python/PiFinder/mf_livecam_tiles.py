@@ -27,7 +27,7 @@ def active_focal_length_mm(
     """Return the selected focal length, preferring a valid manual override."""
 
     try:
-        manual = normalise_manual_focal_length(manual_focal_length_mm)
+        manual = normalise_manual_focal_length(manual_focal_length_mm, measured=True)
     except ValueError:
         manual = None
     if manual is not None:
@@ -58,7 +58,7 @@ def optics_key(
     focal_length = active_focal_length_mm(lens_key, manual_focal_length_mm)
     focal = "unknown" if focal_length is None else f"{focal_length:.1f}mm"
     try:
-        manual = normalise_manual_focal_length(manual_focal_length_mm)
+        manual = normalise_manual_focal_length(manual_focal_length_mm, measured=True)
     except ValueError:
         manual = None
     lens = "manual" if manual is not None else (lens_key or "auto")
@@ -128,7 +128,9 @@ def overlay_payload(
         # effective focal length. ``focal_length`` is also the nominal value
         # of a selected 12mm/16mm lens, so passing it here would silently
         # discard that calibration.
-        manual_override = normalise_manual_focal_length(manual_focal_length_mm)
+        manual_override = normalise_manual_focal_length(
+            manual_focal_length_mm, measured=True
+        )
         full_train = optical_train_for_profile(profile, lens_key, manual_override)
         sixteen_train = optical_train_for_profile(profile, "16mm")
         plan = plan_tiles_for_focal(
