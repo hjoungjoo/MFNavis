@@ -453,36 +453,36 @@ class MFStarOnlyAccumulator:
             config=self.config,
             scale_executor=self._scale_executor,
         )
-        # float16 halves the fixed five-frame buffer to about 20 MiB for an
-        # IMX462 frame; arithmetic is promoted back to float32 below.
-        self._signals.append(signal.astype(np.float16))
-        self._evidence.append(evidence.astype(np.float16))
+        # Preserve the reference float16 quantization, but promote only once
+        # when a frame enters the window. This trades ~40 MiB retained memory
+        # for avoiding repeated half->float conversion on every later solve.
+        self._signals.append(signal.astype(np.float16).astype(np.float32))
+        self._evidence.append(evidence.astype(np.float16).astype(np.float32))
         del self._signals[: -self.config.temporal_frames]
         del self._evidence[: -self.config.temporal_frames]
 
-        evidences = np.stack(self._evidence).astype(np.float32)
-        capped = np.clip(evidences, 0.0, self.config.evidence_cap_sigma)
-        support = np.clip(
-            evidences / max(self.config.weak_evidence_sigma, 1e-6), 0.0, 1.0
-        )
-        # Integrate supported point-source residuals instead of averaging
-        # them.  A repeatedly visible faint star therefore gains strength
-        # with time, whereas a one-frame glint remains permission-capped.
-        # Sum in temporal order, just like NumPy's reduction over axis 0.
-        # Materializing both the float32 signal stack and its weighted copy
-        # costs two full temporal windows, although only their sum is needed.
+        # Stream the temporal reduction: do not materialize three float32
+        # windows (evidence, capped evidence, support). Keep exactly the same
+        # temporal addition order and each frame's component classification.
         combined_signal = np.zeros(raw_frame.shape, dtype=np.float32)
-        for signal_frame, support_frame in zip(self._signals, support):
-            combined_signal += signal_frame.astype(np.float32) * support_frame
-        evidence_sum = np.sum(capped, axis=0)
-        persistence = np.count_nonzero(
-            evidences >= self.config.weak_evidence_sigma, axis=0
-        )
+        evidence_sum = np.zeros(raw_frame.shape, dtype=np.float32)
+        persistence = np.zeros(raw_frame.shape, dtype=np.int32)
+        single_core = np.zeros(raw_frame.shape, dtype=bool)
+        for signal_frame, evidence_frame in zip(self._signals, self._evidence):
+            evidence = evidence_frame
+            support = np.clip(
+                evidence / max(self.config.weak_evidence_sigma, 1e-6), 0.0, 1.0
+            )
+            combined_signal += signal_frame * support
+            evidence_sum += np.clip(evidence, 0.0, self.config.evidence_cap_sigma)
+            persistence += evidence >= self.config.weak_evidence_sigma
+            single_core |= _point_component_mask(
+                evidence >= self.config.single_frame_evidence_sigma, self.config
+            )
         repeated_core = _point_component_mask(persistence >= 2, self.config)
         repeated_keep = ndimage.binary_dilation(
             repeated_core, iterations=self.config.psf_dilation_px
         )
-        single_core = _single_frame_component_mask(evidences, self.config)
         single_core &= ~repeated_keep
         single_keep = ndimage.binary_dilation(
             single_core, iterations=self.config.psf_dilation_px
@@ -504,9 +504,9 @@ class MFStarOnlyAccumulator:
             np.rint(combined_signal + detector_floor), 0, saturation_level
         ).astype(np.uint16)
 
-        combined_evidence = evidence_sum / np.sqrt(len(evidences))
+        combined_evidence = evidence_sum / np.sqrt(len(self._evidence))
         final_diagnostics = MFStarOnlyDiagnostics(
-            frame_count=len(evidences),
+            frame_count=len(self._evidence),
             hard_mask_fraction=diagnostics.hard_mask_fraction,
             saturation_fraction=diagnostics.saturation_fraction,
             background_median=diagnostics.background_median,

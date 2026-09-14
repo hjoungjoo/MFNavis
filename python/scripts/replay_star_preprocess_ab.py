@@ -30,6 +30,7 @@ from PiFinder import sep_detect, solver_frame_map as sfm, utils
 from PiFinder.config import Config
 from PiFinder.mf_star_only_preprocess import MFStarOnlyAccumulator
 from PiFinder.mf_manual_lens import calibration_lens_key
+from PiFinder.mf_cloud_gate import wide_cloud_gate_enabled
 from PiFinder.mf_wide_calibration import CalibrationProfileStore
 from PiFinder.mf_wide_distortion import (
     active_coefficients,
@@ -315,7 +316,7 @@ def main() -> int:
                 sigma=float(cfg.get_option("solver_sep_sigma") or 4.0),
                 saturation_level=float(2**profile.bit_depth - 1),
                 warm_pixel_map=warm_map,
-                cloud_window_gate=True,
+                cloud_window_gate=wide_cloud_gate_enabled(args.lens, args.manual_focal),
             )
             raw_sep_ms = (time.perf_counter() - raw_sep_started) * 1000.0
             raw_sep = (

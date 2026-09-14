@@ -25,6 +25,8 @@ def main():
     if args.limit:
         files = files[: args.limit]
     t3 = tetra3.Tetra3(str(utils.tetra3_dir / "data/default_database.npz"))
+    warm_path = utils.data_dir / "sep_warm_pixels.npy"
+    warm_map = np.load(warm_path) if warm_path.exists() else None
     rows = []
     for path in files:
         meta = json.loads(path.with_suffix(".json").read_text())
@@ -35,13 +37,20 @@ def main():
             os.environ["PIFINDER_DETECTOR"] = "sep" if mode == "sep" else "mf"
             if mode != "sep":
                 os.environ["MF_DETECT_BINNING"] = mode[2]
+                os.environ["MF_DETECT_RANKING"] = (
+                    "response" if mode.endswith("q") else "flux"
+                )
                 os.environ["MF_DETECT_REFINE"] = "1" if mode.endswith("r") else "0"
+                os.environ["MF_DETECT_MAX_STARS"] = (
+                    mode.split("n")[1] if "n" in mode else "48"
+                )
             started = time.perf_counter()
             detection = star_detect.detect_stars(
                 frame,
                 sigma=4.0,
                 saturation_level=None,
                 cloud_window_gate=False,
+                warm_pixel_map=warm_map,
             )
             detect_ms = (time.perf_counter() - started) * 1000
             solution, route, reason, solve_ms = _cascade(

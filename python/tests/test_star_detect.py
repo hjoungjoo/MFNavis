@@ -23,7 +23,9 @@ def star_field():
 
 
 @pytest.mark.parametrize("backend", ["sep", "mf"])
-def test_real_centroids_and_hot_pixel_rejection(monkeypatch, backend):
+@pytest.mark.parametrize("refine", ["0", "1"])
+def test_real_centroids_and_hot_pixel_rejection(monkeypatch, backend, refine):
+    monkeypatch.setenv("MF_DETECT_REFINE", refine)
     if (
         backend == "mf"
         and not (

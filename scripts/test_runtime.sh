@@ -23,7 +23,7 @@ Environment=PIFINDER_DETECTOR=$backend
 Environment=MF_DETECT_LIBRARY=/home/pifinder/mf_detect_star_test/build/libmf_detect_star.so
 EOF
     systemctl daemon-reload
-    if ! systemctl restart pifinder.service; then
+    if ! (systemctl restart pifinder.service && sleep 2 && systemctl is-active --quiet pifinder.service); then
       rm -f "$override_file"
       systemctl daemon-reload
       systemctl restart pifinder.service

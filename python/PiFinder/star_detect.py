@@ -1,8 +1,9 @@
 """Cedar-free detector selection; SEP is the test branch default.
 
 The optional native library is loaded only with PIFINDER_DETECTOR=mf.
-Both backends return full sensor (y, x), descending flux, with the same
-PiFinder quality filters. No sockets, services or camera access are needed.
+Both backends return full sensor (y, x), descending flux. Native morphology
+is followed by PiFinder's geometric/saturation gates. No sockets or camera
+access are needed.
 """
 
 import ctypes
@@ -84,7 +85,11 @@ def detect_stars(raw_frame, **kwargs):
         raise RuntimeError(f"native detector failed: {count}")
     points = output[:count, :2].astype(np.float64)
     flux = output[:count, 2].astype(np.float64)
-    order = np.argsort(-flux, kind="stable")
+    order = (
+        np.arange(len(flux))
+        if os.environ.get("MF_DETECT_RANKING") == "response"
+        else np.argsort(-flux, kind="stable")
+    )
     points, flux = points[order], flux[order]
     # Reuse project-owned point-source/warm/saturation/cluster gates.
     filtered = sep_detect.filter_plain_centroids(
@@ -98,7 +103,16 @@ def detect_stars(raw_frame, **kwargs):
         [np.any(np.all(filtered == point, axis=1)) for point in points], dtype=bool
     )
     points, flux = points[keep], flux[keep]
-    max_stars = int(kwargs.get("max_stars", 48))
+    if kwargs.get("cloud_window_gate", False) and len(points):
+        from PiFinder.mf_cloud_gate import select_clear_window_candidates
+        from PiFinder.mf_star_only_preprocess import _robust_cell_background
+
+        background = _robust_cell_background(sep_detect.bin2x2(arr), 32)
+        selection = select_clear_window_candidates(
+            background, (points - 0.5) / 2, enabled=True
+        )
+        points, flux = points[selection.keep], flux[selection.keep]
+    max_stars = int(os.environ.get("MF_DETECT_MAX_STARS", kwargs.get("max_stars", 48)))
     return sep_detect.SepDetection(
         centroids=points[:max_stars],
         fluxes=flux[:max_stars],
