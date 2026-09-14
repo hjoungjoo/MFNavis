@@ -162,7 +162,7 @@ def test_solver_preprocessor_requires_two_matching_frames(monkeypatch, tmp_path)
             elapsed_ms=1.0,
         )
 
-    monkeypatch.setattr("PiFinder.sep_shadow.sep_detect.detect_stars", fake_detect)
+    monkeypatch.setattr("PiFinder.sep_shadow.star_detect.detect_stars", fake_detect)
     frame = np.zeros((128, 128), dtype=np.uint16)
 
     assert runner.preprocess_frame(frame, fingerprint=("same",), frame_id=1) is None

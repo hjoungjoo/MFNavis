@@ -312,11 +312,9 @@ fi
 # Enable service
 pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/pifinder.service" /lib/systemd/system/pifinder.service
 pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/pifinder_splash.service" /lib/systemd/system/pifinder_splash.service
-pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/cedar_detect.service" /lib/systemd/system/cedar_detect.service
 pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/pifinder_apsta_prepare.service" /lib/systemd/system/pifinder_apsta_prepare.service
 pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/pifinder_apsta_monitor.service" /lib/systemd/system/pifinder_apsta_monitor.service
 sudo systemctl daemon-reload
-sudo systemctl enable cedar_detect
 sudo systemctl enable pifinder
 sudo systemctl enable pifinder_splash
 

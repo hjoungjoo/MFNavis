@@ -18,13 +18,7 @@ import logging
 import sys
 from time import perf_counter as precision_timestamp
 import os
-import platform
-import shutil
-import socket
-import subprocess
 import threading
-from multiprocessing import shared_memory
-import grpc
 from typing import Optional
 
 from PiFinder import config as config_mod
@@ -89,7 +83,6 @@ from PiFinder.types.positioning import (
 
 sys.path.append(str(utils.tetra3_dir))
 import tetra3
-from tetra3 import cedar_detect_client
 
 logger = logging.getLogger("Solver")
 
@@ -867,228 +860,6 @@ def update_sqm(
     return False
 
 
-class CedarConnectionError(Exception):
-    """Raised when Cedar gRPC connection fails."""
-
-    pass
-
-
-# Must match the hard-coded segment name in
-# tetra3/cedar_detect_client.py:_alloc_shmem(). The segment is unlinked on a
-# clean close(), but a solver process that is killed (or crashes) leaves it in
-# /dev/shm, so the next run's create=True fails with FileExistsError.
-_CEDAR_DETECT_SHMEM_NAME = "/cedar_detect_image"
-
-
-class PFCedarDetectClient(cedar_detect_client.CedarDetectClient):
-    def __init__(self, port=50551):
-        """Connect to cedar-detect-server.
-
-        On the PiFinder the server runs as a systemd service, so normally we
-        just connect to it. In a development checkout no service is running;
-        rather than require a manual start, if nothing is listening on the
-        port we spawn the bundled ``bin/cedar-detect-server-<arch>`` ourselves
-        and tear it down again in ``__del__``.
-
-        Also changes this to a different default port.
-        """
-        self._port = port
-        self._subprocess = None
-        # Will initialize on first use.
-        self._stub = None
-        self._shmem = None
-        self._shmem_size = 0
-        # Try shared memory, fall back if an error occurs.
-        self._use_shmem = True
-        # A killed solver leaves its shmem segment behind; clear any stale one
-        # so this run can re-create it instead of dying on FileExistsError.
-        self._clear_stale_shmem()
-        if self._server_reachable():
-            # An external server (systemd service) is already running.
-            time.sleep(2)
-        else:
-            self._spawn_server()
-
-    def _server_reachable(self):
-        """True if cedar-detect-server is already listening on our port."""
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.settimeout(0.2)
-            return sock.connect_ex(("127.0.0.1", self._port)) == 0
-
-    def _spawn_server(self):
-        """Spawn the bundled cedar-detect-server (development fallback)."""
-        binary = self._find_server_binary()
-        if binary is None:
-            raise FileNotFoundError(
-                f"cedar-detect-server is not listening on port {self._port} "
-                "and no bundled binary was found in bin/; start it manually."
-            )
-        env = os.environ.copy()
-        env["RUST_BACKTRACE"] = "1"
-        logger.info("Spawning cedar-detect-server: %s", binary)
-        self._subprocess = subprocess.Popen(
-            [str(binary), "--port", str(self._port)], env=env
-        )
-        time.sleep(1)
-
-    @staticmethod
-    def _find_server_binary():
-        """Locate the bin/cedar-detect-server binary matching this arch.
-
-        Falls back to a ``cedar-detect-server`` found on ``PATH``.
-        """
-        machine = platform.machine().lower()
-        if machine in ("aarch64", "arm64"):
-            prefer = ("aarch64", "arm64")
-        else:
-            prefer = ("x86_64", "amd64", "x86")
-        candidates = sorted((utils.pifinder_dir / "bin").glob("cedar-detect-server*"))
-        for suffix in prefer:
-            for candidate in candidates:
-                if candidate.name.endswith(suffix) and os.access(candidate, os.X_OK):
-                    return candidate
-        for candidate in candidates:  # any executable cedar binary
-            if os.access(candidate, os.X_OK):
-                return candidate
-        on_path = shutil.which("cedar-detect-server")
-        return on_path if on_path else None
-
-    def _clear_stale_shmem(self):
-        """Unlink a leaked cedar_detect_image segment from a prior solver.
-
-        Makes solver restarts self-healing. Safe because PiFinder runs a
-        single solver process, so any existing segment is necessarily stale.
-        """
-        try:
-            stale = shared_memory.SharedMemory(_CEDAR_DETECT_SHMEM_NAME)
-        except FileNotFoundError:
-            return
-        stale.close()
-        stale.unlink()
-        logger.warning(
-            "Cleared stale %s shared memory segment from a prior solver",
-            _CEDAR_DETECT_SHMEM_NAME,
-        )
-
-    def _del_shmem(self):
-        """Release the shared-memory segment, tolerating one that has
-        already vanished from /dev/shm.
-
-        systemd-logind's ``RemoveIPC=yes`` (the default) deletes every
-        POSIX shared-memory segment a user owns the moment that user's
-        last login session ends — an SSH logout is enough, because the
-        PiFinder service runs as the same user but holds no login
-        session of its own. The upstream cleanup then raises
-        ``FileNotFoundError`` from ``unlink()``, which escaped before
-        ``extract_centroids`` could flip ``_use_shmem`` off — so instead
-        of falling back to passing the image over gRPC, every subsequent
-        solve repeated the crash until restart. A segment that is
-        already gone is this method's goal state: treat it as released.
-        """
-        try:
-            super()._del_shmem()
-        except FileNotFoundError:
-            self._shmem = None
-
-    def _get_stub(self):
-        if self._stub is None:
-            channel = grpc.insecure_channel("127.0.0.1:%d" % self._port)
-            self._stub = cedar_detect_client.cedar_detect_pb2_grpc.CedarDetectStub(
-                channel
-            )
-        return self._stub
-
-    def extract_centroids(
-        self, image, sigma, max_size, use_binned, detect_hot_pixels=True
-    ):
-        """Override to raise CedarConnectionError on gRPC failure instead of returning empty list."""
-        import numpy as np
-        from tetra3 import cedar_detect_pb2
-
-        np_image = np.asarray(image, dtype=np.uint8)
-        (height, width) = np_image.shape
-        centroids_result = None
-
-        # Use shared memory path (same machine)
-        if self._use_shmem:
-            self._alloc_shmem(size=width * height)
-            shimg = np.ndarray(
-                np_image.shape, dtype=np_image.dtype, buffer=self._shmem.buf
-            )
-            shimg[:] = np_image[:]
-
-            im = cedar_detect_pb2.Image(
-                width=width, height=height, shmem_name=self._shmem.name
-            )
-            req = cedar_detect_pb2.CentroidsRequest(
-                input_image=im,
-                sigma=sigma,
-                max_size=max_size,
-                return_binned=False,
-                use_binned_for_star_candidates=use_binned,
-                detect_hot_pixels=detect_hot_pixels,
-            )
-            try:
-                centroids_result = self._get_stub().ExtractCentroids(req)
-            except grpc.RpcError as err:
-                if err.code() == grpc.StatusCode.INTERNAL:
-                    # Shared memory issue, fall back to non-shmem. The flag
-                    # latches for the life of the process, so this logs once --
-                    # but without it the downgrade is silent and the only
-                    # symptom is a slower extract time.
-                    logger.warning(
-                        "Cedar shared-memory handoff failed (%s); passing the "
-                        "image inline over gRPC from now on. If %s was removed "
-                        "out from under us, check for the RemoveIPC=no drop-in "
-                        "in /etc/systemd/logind.conf.d/.",
-                        err.details(),
-                        _CEDAR_DETECT_SHMEM_NAME,
-                    )
-                    self._del_shmem()
-                    self._use_shmem = False
-                else:
-                    raise CedarConnectionError(
-                        f"Cedar gRPC failed: {err.details()}"
-                    ) from err
-
-        if not self._use_shmem:
-            im = cedar_detect_pb2.Image(
-                width=width, height=height, image_data=np_image.tobytes()
-            )
-            req = cedar_detect_pb2.CentroidsRequest(
-                input_image=im,
-                sigma=sigma,
-                max_size=max_size,
-                return_binned=False,
-                use_binned_for_star_candidates=use_binned,
-                # Must be passed here too: detect_hot_pixels is a proto3 bool,
-                # so leaving it out sends false and hot pixels start being
-                # detected as stars. Losing the shared-memory handoff should
-                # cost throughput, not detection quality.
-                detect_hot_pixels=detect_hot_pixels,
-            )
-            try:
-                centroids_result = self._get_stub().ExtractCentroids(req)
-            except grpc.RpcError as err:
-                raise CedarConnectionError(
-                    f"Cedar gRPC failed: {err.details()}"
-                ) from err
-
-        tetra_centroids = []
-        if centroids_result is not None:
-            for sc in centroids_result.star_candidates:
-                tetra_centroids.append((sc.centroid_position.y, sc.centroid_position.x))
-        return tetra_centroids
-
-    def __del__(self):
-        # __del__ can run on a partially-constructed instance (e.g. if __init__
-        # raised), so attributes may be missing -- access defensively.
-        subprocess_handle = getattr(self, "_subprocess", None)
-        if subprocess_handle is not None:
-            subprocess_handle.kill()
-        self._del_shmem()
-
-
 def _build_successful_solve(
     solution: dict,
     last_image_metadata: dict,
@@ -1504,7 +1275,6 @@ def solver(
     )
 
     centroids = []
-    log_no_stars_found = True
     # Failed pattern matches log once per streak (same idiom as the
     # no-stars message): under an unsolvable sky the per-attempt WARNING
     # was 93% of the whole log (5,011 lines in one evening, 2026-08-04).
@@ -1535,10 +1305,7 @@ def solver(
     _sep_cfg = config_mod.Config()
     field_capture = CaptureRecorder("solver", _sep_cfg)
     sep_shadow = None
-    sep_shadow_wanted = bool(
-        _sep_cfg.get_option("solver_shadow_detect")
-        or _sep_cfg.get_option("solver_sep_fallback")
-    )
+    sep_shadow_wanted = True
     # Optical-train FOV gating is deliberately opt-in for the first field
     # phase. It applies only to the ordinary 512 path below; full-frame
     # cedar/SEP have their own crop/canvas validation stage.
@@ -1554,7 +1321,7 @@ def solver(
     # feed cedar the uncropped 12-bit raw (>>4, detection is invariant to the
     # affine stretch) and solve at native FOV via solver_frame_map. The SEP
     # fallback below is unchanged; flag off = byte-identical 512 path.
-    cedar_fullframe_wanted = bool(_sep_cfg.get_option("solver_cedar_fullframe"))
+    cedar_fullframe_wanted = True  # retained geometry flag; no Cedar execution
     # MF tiles are a separately opt-in rescue tier.  Below 10 mm it uses the
     # wide grid; at/above 10 mm it uses the 3x3 recovery grid.  The
     # false default leaves every established Cedar/SEP path in control.
@@ -1593,7 +1360,7 @@ def solver(
     logger.info("Solver preprocessing scheduling: %s", scheduling_mode)
     if cedar_fullframe_wanted:
         logger.info(
-            "Cedar full-frame primary path enabled "
+            "Cedar-free full-frame SEP path enabled "
             "(gates=%s, horizon_mask=%s, center_first=%s)",
             cedar_ff_gates_wanted,
             horizon_mask_wanted,
@@ -1602,18 +1369,7 @@ def solver(
 
     while True:
         logger.info("Starting Solver Loop")
-        # Try to start cedar detect server, fall back to tetra3 centroider if unavailable
-        cedar_detect = None
-        try:
-            cedar_detect = PFCedarDetectClient()
-        except FileNotFoundError as e:
-            logger.warning(
-                "Not using cedar_detect, as corresponding file '%s' could not be found",
-                e.filename,
-            )
-        except ValueError:
-            logger.exception("Not using cedar_detect")
-
+        # Cedar-free test branch: raw and preprocessed frames use SEP.
         try:
             while True:
                 # Drain any pending command queue messages.
@@ -1881,7 +1637,6 @@ def solver(
                     used_fullframe = False
                     ff_frame = None
                     ff_frame_hw = None
-                    ff_center_solved = False
                     cedar_raw_count = None
                     cedar_gated_count = None
                     cedar_center_count = None
@@ -1890,135 +1645,39 @@ def solver(
                     sep_thread_result = {}
                     ff_entry = None
                     prefer_preprocessed_fast = False
-                    if cedar_detect is not None:
+                    # Read the same fresh RAW exposure for SEP and preprocessing.
+                    centroids = np.empty((0, 2), dtype=np.float64)
+                    if cedar_ff_geometry is not None:
+                        ff_entry = solver_raw_entry
+                        if ff_entry is None and solver_frame_entry is None:
+                            ff_entry = shared_state.solver_raw()
                         if (
-                            cedar_fullframe_wanted or solver_preprocess_enabled
-                        ) and cedar_ff_geometry is not None:
-                            ff_entry = solver_raw_entry
-                            if ff_entry is None and solver_frame_entry is None:
-                                ff_entry = shared_state.solver_raw()
-                            if (
-                                not ff_entry
-                                or "frame" not in ff_entry
-                                or time.time() - float(ff_entry.get("timestamp") or 0)
-                                > MAX_FRAME_AGE_S
-                                or (
-                                    last_image_metadata.get("frame_id") is not None
-                                    and ff_entry.get("frame_id")
-                                    != last_image_metadata.get("frame_id")
-                                )
-                            ):
-                                # No fresh raw: fall back to the 512 path for
-                                # this attempt rather than skipping it.
-                                ff_entry = None
-                            if ff_entry is not None:
-                                ff_frame = np.asarray(ff_entry["frame"])
-                                ff_frame_hw = (
-                                    int(ff_frame.shape[0]),
-                                    int(ff_frame.shape[1]),
-                                )
-                        # Centre-first: overlap the SEP detection with the
-                        # cedar tiers (accepted CPU cost for latency).
-                        if (
-                            center_first_wanted
-                            and ff_entry is not None
-                            and sep_shadow is None
-                            and (sep_shadow_wanted or solver_preprocess_enabled)
+                            not ff_entry
+                            or "frame" not in ff_entry
+                            or time.time() - float(ff_entry.get("timestamp") or 0)
+                            > MAX_FRAME_AGE_S
+                            or (
+                                last_image_metadata.get("frame_id") is not None
+                                and ff_entry.get("frame_id")
+                                != last_image_metadata.get("frame_id")
+                            )
                         ):
-                            sep_shadow = SepShadowRunner.create_if_enabled(
-                                _sep_cfg,
-                                shared_state.camera_type(),
-                                fullframe_base_fov,
-                                getattr(shared_state, "camera_lens", lambda: "")(),
-                                force_create=solver_preprocess_enabled,
+                            # No fresh raw: fall back to the 512 path for
+                            # this attempt rather than skipping it.
+                            ff_entry = None
+                        if ff_entry is not None:
+                            ff_frame = np.asarray(ff_entry["frame"])
+                            ff_frame_hw = (
+                                int(ff_frame.shape[0]),
+                                int(ff_frame.shape[1]),
                             )
-                        prefer_preprocessed_fast = _preprocessed_fast_path_allowed(
-                            enabled=(
-                                solver_preprocess_enabled
-                                and skip_slow_raw_fallbacks_wanted
-                            ),
-                            trusted=preprocessed_fast_trusted,
-                            moving=frame_moving,
-                            aligning=align_ra != 0 and align_dec != 0,
-                        )
-                        if (
-                            center_first_wanted
-                            and ff_entry is not None
-                            and sep_shadow is not None
-                            and sep_shadow_wanted
-                            and not prefer_preprocessed_fast
-                        ):
-
-                            def _sep_detect_bg():
-                                try:
-                                    sep_thread_result["run"] = sep_shadow.detect(
-                                        shared_state,
-                                        expected_frame_id=last_image_metadata.get(
-                                            "frame_id"
-                                        ),
-                                    )
-                                except Exception:
-                                    logger.exception("Parallel SEP detect failed")
-
-                            sep_thread = threading.Thread(
-                                target=_sep_detect_bg, daemon=True
-                            )
-                            sep_thread.start()
-                        try:
-                            if ff_entry is not None and cedar_fullframe_wanted:
-                                centroids = cedar_detect.extract_centroids(
-                                    (ff_frame >> 4).astype(np.uint8),
-                                    sigma=8,
-                                    max_size=10,
-                                    use_binned=True,
-                                )
-                                used_fullframe = True
-                                ff_raw_count = len(centroids)
-                                cedar_raw_count = ff_raw_count
-                                if cedar_ff_gates_wanted and len(centroids):
-                                    centroids = sep_detect.filter_plain_centroids(
-                                        centroids,
-                                        ff_frame,
-                                        saturation_level=cedar_ff_geometry[
-                                            "saturation_level"
-                                        ],
-                                        warm_pixel_map=cedar_ff_geometry["warm_map"],
-                                    )
-                                if horizon_mask_wanted and len(centroids):
-                                    centroids, ground_dropped = (
-                                        horizon_mask.filter_ground_centroids(
-                                            centroids,
-                                            ff_frame_hw,
-                                            cedar_ff_geometry["rotation_deg"],
-                                            last_image_metadata.get("imu"),
-                                            cedar_ff_geometry["screen_direction"],
-                                            cedar_ff_geometry["crop_width_px"],
-                                        )
-                                    )
-                                else:
-                                    ground_dropped = 0
-                                cedar_gated_count = len(centroids)
-                                if ff_raw_count != len(centroids):
-                                    logger.debug(
-                                        "FF gates: %d -> %d centroids "
-                                        "(%d below horizon)",
-                                        ff_raw_count,
-                                        len(centroids),
-                                        ground_dropped,
-                                    )
-                            else:
-                                centroids = cedar_detect.extract_centroids(
-                                    np_image, sigma=8, max_size=10, use_binned=True
-                                )
-                        except CedarConnectionError as e:
-                            logger.warning(
-                                f"Cedar connection failed: {e}, falling back to tetra3"
-                            )
-                            used_fullframe = False
-                            centroids = tetra3.get_centroids_from_image(np_image)
-                    else:
-                        # Cedar not available, use tetra3
-                        centroids = tetra3.get_centroids_from_image(np_image)
+                    prefer_preprocessed_fast = _preprocessed_fast_path_allowed(
+                        enabled=solver_preprocess_enabled
+                        and skip_slow_raw_fallbacks_wanted,
+                        trusted=preprocessed_fast_trusted,
+                        moving=frame_moving,
+                        aligning=align_ra != 0 and align_dec != 0,
+                    )
                     t_extract = (precision_timestamp() - t0) * 1000
 
                     logger.debug(
@@ -2031,85 +1690,6 @@ def solver(
                     if align_ra != 0 and align_dec != 0:
                         _solver_args["target_sky_coord"] = [[align_ra, align_dec]]
 
-                    if len(centroids) == 0:
-                        if log_no_stars_found:
-                            logger.info("No stars found, skipping (Logged only once)")
-                            log_no_stars_found = False
-                    else:
-                        log_no_stars_found = True
-
-                        if used_fullframe:
-                            solution = {}
-                            if center_first_wanted:
-                                subset = _center_square_subset(centroids, ff_frame_hw)
-                                cedar_center_count = len(subset)
-                                if 4 <= len(subset) < len(centroids):
-                                    solution = _solve_cedar_fullframe(
-                                        t3,
-                                        subset,
-                                        ff_frame_hw,
-                                        cedar_ff_geometry["rotation_deg"],
-                                        cedar_ff_geometry["crop_width_px"],
-                                        shared_state,
-                                        target_sky_coord=_solver_args.get(
-                                            "target_sky_coord"
-                                        ),
-                                        base_fov_degrees=cedar_ff_geometry[
-                                            "base_fov_degrees"
-                                        ],
-                                        distortion_coefficients=cedar_ff_geometry[
-                                            "distortion_coefficients"
-                                        ],
-                                        solve_path="cedar_center",
-                                    )
-                                    ff_center_solved = bool(
-                                        solution and solution.get("RA") is not None
-                                    )
-                            # With centre-first enabled, defer Cedar full until
-                            # SEP centre has also had a chance.  Full-frame
-                            # coordinates are the last resort because edge
-                            # distortion, horizon glow and obstructions are
-                            # concentrated outside the centre square.
-                            if not center_first_wanted and (
-                                not solution or solution.get("RA") is None
-                            ):
-                                solution = _solve_cedar_fullframe(
-                                    t3,
-                                    centroids,
-                                    ff_frame_hw,
-                                    cedar_ff_geometry["rotation_deg"],
-                                    cedar_ff_geometry["crop_width_px"],
-                                    shared_state,
-                                    target_sky_coord=_solver_args.get(
-                                        "target_sky_coord"
-                                    ),
-                                    base_fov_degrees=cedar_ff_geometry[
-                                        "base_fov_degrees"
-                                    ],
-                                    distortion_coefficients=cedar_ff_geometry[
-                                        "distortion_coefficients"
-                                    ],
-                                )
-                        else:
-                            fov_estimate, fov_max_error = (
-                                _optical_fov_gate_params(shared_state)
-                                if optics_fov_gate_wanted
-                                else (12.0, 4.0)
-                            )
-                            solution = t3.solve_from_centroids(
-                                centroids,
-                                (512, 512),
-                                fov_estimate=fov_estimate,
-                                fov_max_error=fov_max_error,
-                                match_max_error=0.005,
-                                return_matches=True,  # Required for SQM calculation
-                                target_pixel=shared_state.target_pixel(),
-                                solve_timeout=1000,
-                                **_solver_args,
-                            )
-                            if solution and solution.get("RA") is not None:
-                                solution["_alignment_frame"] = (512, 512, 512)
-
                     ff_matched_for_overlay = None
                     ff_in_crop_count = 0
                     if used_fullframe:
@@ -2117,13 +1697,7 @@ def solver(
                             centroids, ff_frame_hw, cedar_ff_geometry["crop_width_px"]
                         )
 
-                    solve_path = (
-                        ("cedar_full" if used_fullframe else "cedar_512")
-                        if cedar_detect is not None
-                        else "tetra3"
-                    )
-                    if used_fullframe and ff_center_solved:
-                        solve_path = "cedar_center"
+                    solve_path = "sep_full"
 
                     capture_sep_started_ns = (
                         time.monotonic_ns() if capture_token is not None else 0
@@ -2304,18 +1878,8 @@ def solver(
                                 )
 
                             def _wide_cedar_detect(tile_frame):
-                                try:
-                                    if cedar_detect is None:
-                                        return ()
-                                    return cedar_detect.extract_centroids(
-                                        (np.asarray(tile_frame) >> 4).astype(np.uint8),
-                                        sigma=8,
-                                        max_size=10,
-                                        use_binned=True,
-                                    )
-                                except Exception:
-                                    logger.exception("Wide Cedar tile detection failed")
-                                    return ()
+                                # Historical primary tier is absent in this branch.
+                                return ()
 
                             def _wide_sep_detect(tile_frame):
                                 detection = sep_detect.detect_stars(
@@ -2731,12 +2295,9 @@ def solver(
                                 raw_overlay = sep_shadow._last_overlay
                                 sep_shadow.use_preprocessed_overlay(preprocessed_run)
                                 preprocessed_frame = preprocessed_run.frame
-                                preprocessed_cedar = cedar_detect.extract_centroids(
-                                    (preprocessed_frame >> 4).astype(np.uint8),
-                                    sigma=8,
-                                    max_size=10,
-                                    use_binned=True,
-                                )
+                                # SEP was already extracted by preprocess_frame().
+                                # Leave the historical Cedar tier empty; use SEP once.
+                                preprocessed_cedar = np.empty((0, 2), dtype=np.float64)
                                 preprocessed_raw_count = len(preprocessed_cedar)
                                 if cedar_ff_gates_wanted and len(preprocessed_cedar):
                                     preprocessed_cedar = (

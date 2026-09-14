@@ -16,7 +16,9 @@ pifinder_dir = Path(__file__).resolve().parents[2]
 assert (pifinder_dir / "astro_data").is_dir(), f"repo root not at {pifinder_dir}"
 astro_data_dir = pifinder_dir / "astro_data"
 tetra3_dir = pifinder_dir / "python/PiFinder/tetra3/tetra3"
-data_dir = Path(Path.home(), "PiFinder_data")
+data_dir = Path(
+    os.environ.get("PIFINDER_DATA_DIR", str(Path.home() / "PiFinder_test_data"))
+)
 pifinder_db = astro_data_dir / "pifinder_objects.db"
 observations_db = data_dir / "observations.db"
 debug_dump_dir = data_dir / "solver_debug_dumps"
@@ -34,7 +36,7 @@ def _resolve_runtime_dir() -> Path:
     """
     shm = Path("/dev/shm")
     if shm.is_dir() and os.access(shm, os.W_OK):
-        return shm / "pifinder"
+        return Path(os.environ.get("PIFINDER_RUNTIME_DIR", str(shm / "pifinder_test")))
     return data_dir
 
 

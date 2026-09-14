@@ -5,9 +5,8 @@ The two arms consume the same lossless frames.  The preprocessed arm uses a
 temporal window ending at the current frame, matching the live solver; frame 1
 is therefore a warm-up frame and is not counted as a preprocessed attempt.
 
-The script talks to an already-running cedar-detect server by inline gRPC.  It
-does not construct CedarDetectClient because that client owns and may unlink
-the production solver's shared-memory segment.
+This test-branch script uses only SEP. Historical Cedar CSV columns are zero
+for comparison with saved baseline reports; no Cedar imports or sockets exist.
 """
 
 from __future__ import annotations
@@ -15,21 +14,22 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import csv
+import hashlib
 import json
 from pathlib import Path
 import statistics
 import time
 from typing import Any, Iterable
 
-import grpc
 import numpy as np
 from PIL import Image
 import tetra3
-from tetra3 import cedar_detect_pb2, cedar_detect_pb2_grpc
 
+from PiFinder import star_detect
 from PiFinder import sep_detect, solver_frame_map as sfm, utils
 from PiFinder.config import Config
 from PiFinder.mf_star_only_preprocess import MFStarOnlyAccumulator
+from PiFinder.mf_manual_lens import calibration_lens_key
 from PiFinder.mf_wide_calibration import CalibrationProfileStore
 from PiFinder.mf_wide_distortion import (
     active_coefficients,
@@ -50,8 +50,11 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--glob", default="raw_*.tiff", help="input filename glob")
     parser.add_argument("--camera", default="imx462_color")
     parser.add_argument("--lens", default="6mm")
+    parser.add_argument("--manual-focal", type=float)
     parser.add_argument("--display-rotation", type=int, default=90)
     parser.add_argument("--cedar-address", default="127.0.0.1:50551")
+    parser.add_argument("--limit", type=int)
+    parser.add_argument("--cache-dir", type=Path)
     parser.add_argument("--output", type=Path, help="CSV output path")
     return parser.parse_args()
 
@@ -80,41 +83,17 @@ def _frame_controls(path: Path) -> tuple[float | None, float | None]:
         return None, None
 
 
-class InlineCedar:
-    """Non-owning Cedar client safe to use beside the production solver."""
+class DisabledCedar:
+    """Empty historical tier: this replay never connects to Cedar Detect."""
 
-    def __init__(self, address: str) -> None:
-        self._channel = grpc.insecure_channel(address)
-        self._stub = cedar_detect_pb2_grpc.CedarDetectStub(self._channel)
+    def __init__(self, address=None):
+        pass
 
-    def close(self) -> None:
-        self._channel.close()
+    def close(self):
+        pass
 
-    def detect(self, frame: np.ndarray) -> tuple[np.ndarray, float]:
-        image = (np.asarray(frame, dtype=np.uint16) >> 4).astype(np.uint8)
-        request = cedar_detect_pb2.CentroidsRequest(
-            input_image=cedar_detect_pb2.Image(
-                width=int(image.shape[1]),
-                height=int(image.shape[0]),
-                image_data=image.tobytes(),
-            ),
-            sigma=8,
-            max_size=10,
-            return_binned=False,
-            use_binned_for_star_candidates=True,
-            detect_hot_pixels=True,
-        )
-        started = time.perf_counter()
-        response = self._stub.ExtractCentroids(request, timeout=5.0)
-        elapsed_ms = (time.perf_counter() - started) * 1000.0
-        centroids = np.asarray(
-            [
-                (item.centroid_position.y, item.centroid_position.x)
-                for item in response.star_candidates
-            ],
-            dtype=np.float64,
-        ).reshape(-1, 2)
-        return centroids, elapsed_ms
+    def detect(self, frame):
+        return np.empty((0, 2)), 0.0
 
 
 def _center_square(centroids: np.ndarray, frame_hw: tuple[int, int]) -> np.ndarray:
@@ -281,6 +260,10 @@ def _route_summary(rows: list[dict[str, Any]], name: str) -> dict[str, Any]:
 def main() -> int:
     args = _arguments()
     files = sorted(args.corpus.glob(args.glob))
+    if args.limit:
+        files = files[: args.limit]
+    if args.cache_dir:
+        args.cache_dir.mkdir(parents=True, exist_ok=True)
     if not files:
         raise SystemExit(f"no input files matched {args.corpus / args.glob}")
 
@@ -288,14 +271,16 @@ def main() -> int:
     crop_width = int(profile.raw_size[0] - sum(profile.crop_x))
     cfg = Config()
     calibration = CalibrationProfileStore(cfg).load_active(
-        args.camera, args.lens, profile
+        args.camera, calibration_lens_key(args.lens, args.manual_focal), profile
     )
     geometry = {
         "rotation_deg": sfm.stage5_rotation_deg(
             cfg.get_option("screen_direction"), cfg.get_option("camera_rotation")
         ),
         "crop_width_px": crop_width,
-        "base_fov_degrees": build_optical_train(args.camera, args.lens).fov_degrees,
+        "base_fov_degrees": build_optical_train(
+            args.camera, args.lens, args.manual_focal
+        ).fov_degrees,
         "distortion": active_coefficients(calibration),
     }
     warm_map = None
@@ -304,7 +289,7 @@ def main() -> int:
         warm_map = np.asarray(np.load(warm_map_path), dtype=np.int32)
 
     t3 = tetra3.Tetra3(str(utils.tetra3_dir / "data" / "default_database.npz"))
-    cedar_client = InlineCedar(args.cedar_address)
+    cedar_client = DisabledCedar()
     accumulator = MFStarOnlyAccumulator()
     raw_continuity = SolveContinuityGate()
     pre_continuity = SolveContinuityGate()
@@ -325,7 +310,7 @@ def main() -> int:
                 warm_pixel_map=warm_map,
             )
             raw_sep_started = time.perf_counter()
-            raw_sep_result = sep_detect.detect_stars(
+            raw_sep_result = star_detect.detect_stars(
                 frame,
                 sigma=float(cfg.get_option("solver_sep_sigma") or 4.0),
                 saturation_level=float(2**profile.bit_depth - 1),
@@ -359,6 +344,22 @@ def main() -> int:
             )
             preprocess_ms = (time.perf_counter() - pre_started) * 1000.0
             pre_attempted = pre_result.diagnostics.frame_count >= 2
+            if args.cache_dir:
+                np.save(args.cache_dir / (path.stem + ".npy"), pre_result.frame)
+                (args.cache_dir / (path.stem + ".json")).write_text(
+                    json.dumps(
+                        {
+                            "source_sha256": hashlib.sha256(
+                                path.read_bytes()
+                            ).hexdigest(),
+                            "frame_count": pre_result.diagnostics.frame_count,
+                            "preprocess_ms": preprocess_ms,
+                            "geometry": geometry,
+                            "exposure_us": exposure_us,
+                            "gain": gain,
+                        }
+                    )
+                )
             pre_cedar_all = np.empty((0, 2))
             pre_cedar = np.empty((0, 2))
             pre_sep = np.empty((0, 2))
@@ -377,7 +378,7 @@ def main() -> int:
                     warm_pixel_map=warm_map,
                 )
                 pre_sep_started = time.perf_counter()
-                pre_sep_result = sep_detect.detect_stars(
+                pre_sep_result = star_detect.detect_stars(
                     pre_result.frame,
                     sigma=float(cfg.get_option("solver_sep_sigma") or 4.0),
                     saturation_level=None,

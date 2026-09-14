@@ -40,7 +40,8 @@ from typing import Optional
 
 import numpy as np
 
-from PiFinder import sep_detect, utils
+from PiFinder import star_detect
+from PiFinder import utils
 from PiFinder import solver_frame_map as sfm
 from PiFinder.mf_cloud_gate import wide_cloud_gate_enabled
 from PiFinder.mf_manual_lens import manual_focal_from_state
@@ -315,7 +316,7 @@ class SepShadowRunner:
                 return None
             frame = np.asarray(entry["frame"])
             lens_key = getattr(shared_state, "camera_lens", lambda: "")()
-            detection = sep_detect.detect_stars(
+            detection = star_detect.detect_stars(
                 frame,
                 sigma=self.sigma,
                 saturation_level=self.saturation_level,
@@ -401,7 +402,7 @@ class SepShadowRunner:
             }
             if result.diagnostics.frame_count < 2:
                 return None
-            detection = sep_detect.detect_stars(
+            detection = star_detect.detect_stars(
                 result.frame,
                 sigma=self.sigma,
                 # Keep tetra3's proven brightest-48 input unchanged while
