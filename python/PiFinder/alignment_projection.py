@@ -47,6 +47,37 @@ def make_projection(solution, captured_at, context):
     }
 
 
+def _plate_rotation(plate):
+    ra, dec, roll = np.radians([plate["RA"], plate["Dec"], plate["Roll"]])
+    east = np.array([-np.sin(ra), np.cos(ra), 0.0])
+    north = np.array(
+        [-np.sin(dec) * np.cos(ra), -np.sin(dec) * np.sin(ra), np.cos(dec)]
+    )
+    forward = np.array(
+        [np.cos(dec) * np.cos(ra), np.cos(dec) * np.sin(ra), np.sin(dec)]
+    )
+    return np.array(
+        [
+            forward,
+            np.cos(roll) * east + np.sin(roll) * north,
+            -np.sin(roll) * east + np.cos(roll) * north,
+        ]
+    )
+
+
+def target_pixel_pointing(plate, target_pixel):
+    """Re-evaluate the eyepiece axis on the accepted camera plate."""
+    h, w, crop = plate["frame"]
+    y, x = sfm.map_target_pixel_to_frame(target_pixel, (h, w), crop)
+    focal = w / (2 * math.tan(math.radians(plate["FOV"]) / 2))
+    vector = np.array([1.0, (w / 2 - x) / focal, (h / 2 - y) / focal])
+    sky = vector @ _plate_rotation(plate)
+    sky /= np.linalg.norm(sky)
+    return math.degrees(math.atan2(sky[1], sky[0])) % 360, math.degrees(
+        math.asin(sky[2])
+    )
+
+
 def project_target(plate, ra_deg, dec_deg):
     """Same pinhole projection and 512 mapping as tetra3 target_sky_coord.
 
@@ -62,21 +93,7 @@ def project_target(plate, ra_deg, dec_deg):
     h, w, crop = plate["frame"]
     if min(h, w, crop) <= 0:
         raise ValueError("invalid solver canvas")
-    ra, dec, roll = np.radians([plate["RA"], plate["Dec"], plate["Roll"]])
-    east = np.array([-np.sin(ra), np.cos(ra), 0.0])
-    north = np.array(
-        [-np.sin(dec) * np.cos(ra), -np.sin(dec) * np.sin(ra), np.cos(dec)]
-    )
-    forward = np.array(
-        [np.cos(dec) * np.cos(ra), np.cos(dec) * np.sin(ra), np.sin(dec)]
-    )
-    rotation = np.array(
-        [
-            forward,
-            np.cos(roll) * east + np.sin(roll) * north,
-            -np.sin(roll) * east + np.cos(roll) * north,
-        ]
-    )
+    rotation = _plate_rotation(plate)
     target_ra, target_dec = np.radians([ra_deg, dec_deg])
     target = np.array(
         [

@@ -40,7 +40,7 @@ from multiprocessing import Queue
 from typing import Any, Optional
 
 from PiFinder import config, utils
-from PiFinder.calc_utils import sf_utils
+from PiFinder.calc_utils import sf_utils, pointing_axis_errors
 from PiFinder.multiproclogging import MultiprocLogging
 
 
@@ -143,6 +143,7 @@ class IndiGotoGuideService:
         self.current_ra: Optional[float] = None
         self.current_dec: Optional[float] = None
         self.last_error_arcmin: Optional[float] = None
+        self.alignment_target_pixel = None
         self.goto_plan: Optional[dict[str, Any]] = None
         self.final_goto_sent_at = 0.0
         self.final_goto_idle_since = 0.0
@@ -285,8 +286,26 @@ class IndiGotoGuideService:
             # mount control). Does not move the mount; it just lets the
             # tracking guide resume auto-correction.
             try:
-                self.tracking_target_ra = float(command["ra"]) % 360.0
-                self.tracking_target_dec = float(command["dec"])
+                ra, dec = float(command["ra"]) % 360.0, float(command["dec"])
+                if (
+                    not math.isfinite(ra)
+                    or not math.isfinite(dec)
+                    or not -90 <= dec <= 90
+                ):
+                    raise ValueError("invalid tracking target")
+                self._disable_tracking_guide("tracking target changed")
+                self._disable_pulse_align()
+                self.tracking_target_ra, self.tracking_target_dec = ra, dec
+                self.active_target_ra, self.active_target_dec = ra, dec
+                self.alignment_target_pixel = command.get("alignment_target_pixel")
+                self.phase = "tracking"
+                self.service_state = "idle"
+                self.goto_plan = None
+                self.last_error_arcmin = None
+                self.final_sync_sent = False
+                self.tracking_motion_ra = self.tracking_motion_dec = None
+                self.tracking_last_motion_at = time.monotonic()
+                self.tracking_last_imu_motion_at = 0.0
                 self.tracking_guide_suspended = False
                 self.manual_retarget_pending = False
                 self._reset_tracking_recovery()
@@ -351,6 +370,7 @@ class IndiGotoGuideService:
         return True
 
     def _handle_goto_target(self, command: dict[str, Any]) -> None:
+        self.alignment_target_pixel = None
         try:
             target_ra = float(command["ra"])
             target_dec = float(command["dec"])
@@ -437,7 +457,7 @@ class IndiGotoGuideService:
         current = self.pointing_status.get("current") or {}
         self.current_ra = self._finite_float(current.get("ra"))
         self.current_dec = self._finite_float(current.get("dec"))
-        self.last_error_arcmin = self._angular_error_arcmin(
+        self.last_error_arcmin = self._target_error_arcmin(
             self.current_ra,
             self.current_dec,
             target_ra,
@@ -719,7 +739,7 @@ class IndiGotoGuideService:
         current = pointing.get("current") or {}
         self.current_ra = self._finite_float(current.get("ra"))
         self.current_dec = self._finite_float(current.get("dec"))
-        self.last_error_arcmin = self._angular_error_arcmin(
+        self.last_error_arcmin = self._target_error_arcmin(
             self.current_ra,
             self.current_dec,
             self.active_target_ra,
@@ -728,7 +748,14 @@ class IndiGotoGuideService:
         self._update_goto_plan()
 
         accuracy = self._final_accuracy_arcmin()
-        if self.last_error_arcmin is not None and self.last_error_arcmin <= accuracy:
+        pulse_end = float(mount_status.get("guide_pulse_until_wall") or 0.0)
+        if (
+            self.last_error_arcmin is not None
+            and self.last_error_arcmin <= accuracy
+            and self._is_recent_solve(current)
+            and float(current.get("timestamp") or 0.0) >= pulse_end
+            and not self._mount_summary_reports_motion(mount_status)
+        ):
             self._disable_pulse_align()
             self._send_final_sync_once()
             return
@@ -821,7 +848,7 @@ class IndiGotoGuideService:
         self.solve_anchor_wait_since = 0.0
         self.current_ra = self._finite_float(current.get("ra"))
         self.current_dec = self._finite_float(current.get("dec"))
-        self.last_error_arcmin = self._angular_error_arcmin(
+        self.last_error_arcmin = self._target_error_arcmin(
             self.current_ra,
             self.current_dec,
             self.active_target_ra,
@@ -942,6 +969,20 @@ class IndiGotoGuideService:
             self.tracking_guide_last_action = "waiting for tracking target"
             return
 
+        if self.alignment_target_pixel is not None:
+            solution = self.shared_state.solution()
+            plate = getattr(solution, "alignment_projection", None) or {}
+            current = self._refresh_pointing_status().get("current") or {}
+            published_pixel = (current.get("metadata") or {}).get("target_pixel")
+            if tuple(plate.get("target_pixel") or ()) != tuple(
+                self.alignment_target_pixel
+            ) or tuple(published_pixel or ()) != tuple(self.alignment_target_pixel):
+                self._disable_tracking_guide("waiting for aligned pointing")
+                self.tracking_guide_state = "settling"
+                self.tracking_guide_last_action = "waiting for aligned pointing"
+                return
+            self.alignment_target_pixel = None
+
         if self.phase in {"pifinder_goto", "pifinder_pulse_align"}:
             self._disable_tracking_guide(f"paused during {self.phase}")
             self._reset_tracking_recovery()
@@ -1024,7 +1065,7 @@ class IndiGotoGuideService:
             )
             return
 
-        self.tracking_guide_error_arcmin = self._angular_error_arcmin(
+        self.tracking_guide_error_arcmin = self._target_error_arcmin(
             current_ra,
             current_dec,
             self.tracking_target_ra,
@@ -1643,6 +1684,30 @@ class IndiGotoGuideService:
             return True
         return "manual_motion" in str(status.get("state", "")).strip().lower()
 
+    def _target_error_arcmin(self, ra, dec, target_ra, target_dec):
+        separation = self._angular_error_arcmin(ra, dec, target_ra, target_dec)
+        if separation is None or self.shared_state is None:
+            return separation
+        # Arrival/hold must also satisfy the actual LCD axes. Use its raw
+        # aligned estimate rather than allowing the moving average to hide
+        # a residual that the observer can still see on the push screen.
+        solution = self.shared_state.solution()
+        if not solution or not solution.has_pointing():
+            return separation
+        aligned = solution.pointing.aligned.estimate
+        errors = pointing_axis_errors(
+            aligned.RA,
+            aligned.Dec,
+            target_ra,
+            target_dec,
+            self.config_values.get("mount_type", "Alt/Az"),
+            self.shared_state.location(),
+            self.shared_state.datetime(),
+        )
+        if errors is None:
+            return None
+        return max(separation, *(abs(value) * 60.0 for value in errors))
+
     def _angular_error_arcmin(
         self,
         current_ra: Optional[float],
@@ -1683,6 +1748,7 @@ class IndiGotoGuideService:
         cfg = config.Config()
         cfg.load_config()
         self.config_values = {
+            "mount_type": cfg.get_option("mount_type", "Alt/Az"),
             "mount_control": bool(cfg.get_option("mount_control", False)),
             "indi_goto_method": str(cfg.get_option("indi_goto_method", "pifinder")),
             "indi_tracking_guide_enabled": bool(
@@ -1748,6 +1814,7 @@ class IndiGotoGuideService:
             "goto_motion_active": status.get("goto_motion_active"),
             "manual_motion_direction": status.get("manual_motion_direction"),
             "manual_motion_origin": status.get("manual_motion_origin"),
+            "guide_pulse_until_wall": status.get("guide_pulse_until_wall"),
             "target_ra": status.get("target_ra"),
             "target_dec": status.get("target_dec"),
             "sync_goto": status.get("sync_goto"),

@@ -48,6 +48,8 @@ import quaternion  # numpy-quaternion
 import PiFinder.calc_utils as calc_utils
 from PiFinder import config
 from PiFinder import state_utils
+from PiFinder.alignment_projection import target_pixel_pointing
+from PiFinder.types.coordinates import RaDecRoll
 from PiFinder.multiproclogging import MultiprocLogging
 from PiFinder.pointing_model.imu_dead_reckoning import ImuDeadReckoning
 import PiFinder.pointing_model.quaternion_transforms as qt
@@ -98,6 +100,7 @@ def integrator(
         estimate = PointingEstimate()
         # Epoch of the last estimate we published; gate re-publishing on it.
         last_published_time = time.time()
+        applied_target_pixel = None
 
         was_replaying = False
         telemetry = TelemetryManager(
@@ -149,6 +152,8 @@ def integrator(
                     solve_result, predicted=estimate.pointing.aligned.estimate
                 )
                 estimate = _apply_successful_solve(estimate, solve_result, idr)
+                if not telemetry.replaying:
+                    _realign_estimate(estimate, shared_state.target_pixel(), idr)
                 pointing_updated = True
             elif isinstance(solve_result, FailedSolve):
                 telemetry.record_solve(
@@ -194,11 +199,21 @@ def integrator(
                 if _advance_with_imu(estimate, idr, imu):
                     pointing_updated = True
 
+            # Reproject a cached camera plate as soon as alignment changes.
+            # The integrator remains the only writer; an in-flight solve is
+            # also reprojected above, so it cannot restore the old alignment.
+            target_pixel = tuple(shared_state.target_pixel())
+            alignment_updated = False
+            if target_pixel != applied_target_pixel and not telemetry.replaying:
+                alignment_updated = _realign_estimate(estimate, target_pixel, idr)
+                if alignment_updated:
+                    applied_target_pixel = target_pixel
+
             # 3. Publish if we updated something newer than what we last sent.
             if (
-                pointing_updated
+                (pointing_updated or alignment_updated)
                 and estimate.estimate_time is not None
-                and estimate.estimate_time > last_published_time
+                and (estimate.estimate_time > last_published_time or alignment_updated)
                 and estimate.pointing.aligned.estimate is not None
             ):
                 aligned = estimate.pointing.aligned.estimate
@@ -294,6 +309,33 @@ def _apply_successful_solve(
     )
 
     return estimate
+
+
+def _realign_estimate(estimate, target_pixel, idr):
+    """Change the eyepiece calibration without inventing a new observation."""
+    plate = estimate.alignment_projection
+    if not plate or estimate.pointing.camera.solve is None:
+        return False
+    ra, dec = target_pixel_pointing(plate, target_pixel)
+    camera = estimate.pointing.camera.solve
+    aligned = Pointing(RA=ra, Dec=dec, Roll=camera.Roll)
+    camera_now = estimate.pointing.camera.estimate or camera
+    q_delta = (
+        camera_now.as_radecroll().as_quaternion()
+        * camera.as_radecroll().as_quaternion().conjugate()
+    )
+    estimate.pointing.aligned = PointingAxis(
+        solve=aligned,
+        estimate=Pointing.from_radecroll(
+            RaDecRoll.from_quaternion(q_delta * aligned.as_radecroll().as_quaternion())
+        ),
+    )
+    estimate.alignment_projection = {**plate, "target_pixel": tuple(target_pixel)}
+    anchor = estimate.imu_anchor
+    if anchor is None:
+        anchor = quaternion.quaternion(np.nan)
+    idr.solve(camera.as_radecroll(), aligned.as_radecroll(), anchor)
+    return True
 
 
 def _apply_failed_solve(

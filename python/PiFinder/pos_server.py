@@ -11,6 +11,7 @@ coordinate receipt separate from GoTo/Align and routes motor control via INDI.
 """
 
 import socket
+import copy
 import logging
 import math
 import re
@@ -22,7 +23,13 @@ from multiprocessing import Queue
 from typing import Any, Optional, Tuple, Union
 from PiFinder import config, gps_time_sync, utils
 from PiFinder.alignment_projection import cached_target_pixel, projection_context
-from PiFinder.calc_utils import FastAltAz, ra_to_deg, sf_utils
+from PiFinder.calc_utils import (
+    FastAltAz,
+    ra_to_deg,
+    sf_utils,
+    equinox_of_date_to_catalog,
+    catalog_to_equinox_of_date,
+)
 from PiFinder.composite_object import CompositeObject, MagnitudeObject, SizeObject
 from PiFinder.multiproclogging import MultiprocLogging
 from PiFinder.pointing_coordinate_service import PointingCoordinateService
@@ -689,7 +696,23 @@ def _current_pointing(_shared_state) -> Optional[Tuple[float, float]]:
     if state is None:
         logger.debug("No published pointing coordinate state yet")
         return None
-    return state.radec()
+    pointing = state.radec()
+    if (
+        pointing is not None
+        and not is_stellarium
+        and state.current.source in {"solve", "pifinder_imu_estimate"}
+    ):
+        return catalog_to_equinox_of_date(*pointing, _current_datetime(_shared_state))
+    return pointing
+
+
+def _catalog_target(shared_state, ra, dec):
+    # SkySafari LX200 uses equinox of date; Stellarium's existing J2000
+    # handshake path already supplies catalog axes. Keep raw protocol targets
+    # for reconnects and native INDI alignment, convert at the PiFinder boundary.
+    if is_stellarium:
+        return ra, dec
+    return equinox_of_date_to_catalog(ra, dec, _current_datetime(shared_state))
 
 
 def get_telescope_ra(shared_state, _):
@@ -907,6 +930,8 @@ def _queue_indi_goto_if_enabled(shared_state, ra_deg: float, dec_deg: float) -> 
     else:
         if guide_queue is None:
             return False
+        if goto_method == "pifinder":
+            ra_deg, dec_deg = _catalog_target(shared_state, ra_deg, dec_deg)
         command = {
             "type": "goto_target",
             "ra": ra_deg,
@@ -1057,6 +1082,8 @@ def _align_pifinder_if_enabled(shared_state, ra_deg: float, dec_deg: float) -> b
         mount = _mount_control_status()
         if mount.get("mount_motion_active") or mount.get("goto_motion_active"):
             raise ValueError("mount is moving")
+        if float(mount.get("guide_pulse_until_wall") or 0.0) > time.time():
+            raise ValueError("guide pulse is still settling")
         estimate = shared_state.solution()
         target_pixel = cached_target_pixel(
             estimate,
@@ -1072,6 +1099,8 @@ def _align_pifinder_if_enabled(shared_state, ra_deg: float, dec_deg: float) -> b
         logger.warning("SkySafari cached align unavailable: %s", exc)
         return False
 
+    if mountcontrol_queue is not None and _mount_control_enabled():
+        mountcontrol_queue.put({"type": "toggle_guide_correction", "enabled": False})
     shared_state.set_target_pixel(target_pixel)
     if pos_server_config is not None:
         pos_server_config.set_option("target_pixel", target_pixel)
@@ -1346,6 +1375,7 @@ def handle_sync_command(shared_state, _input_str: str):
         # indi_mount mode only the mount sync goes out; the PiFinder align
         # (target_pixel) changes through the LCD menu alone.
         if goto_method == "pifinder":
+            ra_deg, dec_deg = _catalog_target(shared_state, ra_deg, dec_deg)
             pifinder_aligned = _align_pifinder_if_enabled(shared_state, ra_deg, dec_deg)
             if (
                 _get_config_option("skysafari_pifinder_align", True)
@@ -1365,10 +1395,15 @@ def handle_sync_command(shared_state, _input_str: str):
         and goto_guide_queue is not None
         and (pifinder_aligned or imu_aligned or indi_synced)
     ):
-        goto_guide_queue.put(
-            {"type": "set_tracking_target", "ra": ra_deg, "dec": dec_deg}
-        )
+        tracking_command = {"type": "set_tracking_target", "ra": ra_deg, "dec": dec_deg}
+        if pifinder_aligned:
+            tracking_command["alignment_target_pixel"] = list(
+                shared_state.target_pixel()
+            )
+        goto_guide_queue.put(tracking_command)
         tracking_target_set = True
+    if pifinder_aligned:
+        _publish_push_target(shared_state, ra_deg, dec_deg, preserve_name=True)
     logger.info(
         "SkySafari sync handled: target_source=%s goto_method=%s "
         "pifinder_aligned=%s imu_aligned=%s indi_synced=%s "
@@ -1390,7 +1425,6 @@ def handle_goto_command(shared_state, ra_parsed, dec_parsed):
     ra = ra_to_deg(*ra_parsed)
     dec = _sd_to_deg(dec_parsed)
     target_ra, target_dec = ra % 360.0, dec
-    sequence += 1
     last_target_coordinates = (target_ra, target_dec)
     logger.debug("Goto target coordinates: %s, %s", target_ra, target_dec)
     if _multipoint_align_active():
@@ -1403,6 +1437,17 @@ def handle_goto_command(shared_state, ra_parsed, dec_parsed):
         _queue_indi_goto_if_enabled(shared_state, target_ra, target_dec)
         return "1"
 
+    _publish_push_target(
+        shared_state, *_catalog_target(shared_state, target_ra, target_dec)
+    )
+    _queue_indi_goto_if_enabled(shared_state, target_ra, target_dec)
+    return "1"
+
+
+def _publish_push_target(shared_state, target_ra, target_dec, preserve_name=False):
+    """Show the exact target used for alignment and tracking on the LCD."""
+    global sequence
+    sequence += 1
     constellation = sf_utils.radec_to_constellation(target_ra, target_dec)
     obj = CompositeObject.from_dict(
         {
@@ -1419,12 +1464,23 @@ def handle_goto_command(shared_state, ra_parsed, dec_parsed):
             "description": f"Pushed object nr {sequence}",
         }
     )
+    if preserve_name:
+        previous = getattr(shared_state.ui_state(), "target", lambda: None)()
+        if previous is not None:
+            from PiFinder.track_freq_policy import _angular_separation_deg
+
+            if (
+                _angular_separation_deg(
+                    previous.ra, previous.dec, target_ra, target_dec
+                )
+                < 0.1
+            ):
+                obj = copy.deepcopy(previous)
+                obj.ra, obj.dec = target_ra, target_dec
     logger.debug("handle_goto_command: Pushing object: %s", obj)
     shared_state.ui_state().add_recent(obj)
     shared_state.ui_state().set_new_pushto(True)
     ui_queue.put("push_object")
-    _queue_indi_goto_if_enabled(shared_state, target_ra, target_dec)
-    return "1"
 
 
 # Site and clock commands.  Stellarium runs through these during its connection

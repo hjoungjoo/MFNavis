@@ -385,6 +385,7 @@ class PointingCoordinateService:
         self._fusion_location: Optional[Tuple[float, float, float]] = None
         self._solve_average_samples: list[CoordinateSample] = []
         self._solve_average_frame: Optional[str] = None
+        self._solve_alignment_pixel: Optional[tuple] = None
         self._last_health_mount_radec: Optional[Tuple[float, float]] = None
         self._last_health_imu_altaz: Optional[Tuple[float, float]] = None
         self._state_lock = threading.RLock()
@@ -452,6 +453,14 @@ class PointingCoordinateService:
             )
 
         aligned = solution.pointing.aligned.estimate
+        plate = getattr(solution, "alignment_projection", None) or {}
+        pixel = plate.get("target_pixel")
+        pixel = tuple(pixel) if pixel is not None else None
+        if pixel != self._solve_alignment_pixel:
+            self._reset_solve_average()
+            self._mount_imu_anchor = None
+            self._imu_delta_tracker = None
+            self._solve_alignment_pixel = pixel
         radec = valid_radec(getattr(aligned, "RA", None), getattr(aligned, "Dec", None))
         if radec is None:
             return CoordinateSample.invalid(SOURCE_SOLVE, "invalid solved RA/Dec")
@@ -480,6 +489,7 @@ class PointingCoordinateService:
                 "has_plate_anchor": has_plate_anchor,
                 "source_ra": radec[0],
                 "source_dec": radec[1],
+                "target_pixel": pixel,
                 "source_alt": _as_float(getattr(solution, "Alt", None)),
                 "source_az": _as_float(getattr(solution, "Az", None)),
             },

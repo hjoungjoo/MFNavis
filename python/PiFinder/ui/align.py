@@ -71,6 +71,19 @@ def align_on_radec(ra, dec, command_queues, config_object, shared_state) -> bool
     command_queues["console"].put(_("Alignment Set"))
     shared_state.set_target_pixel(target_pixel)
     config_object.set_option("target_pixel", target_pixel)
+    guide_queue = command_queues.get("goto_guide")
+    if (
+        guide_queue is not None
+        and config_object.get_option("indi_goto_method", "pifinder") == "pifinder"
+    ):
+        guide_queue.put(
+            {
+                "type": "set_tracking_target",
+                "ra": ra,
+                "dec": dec,
+                "alignment_target_pixel": list(target_pixel),
+            }
+        )
     return True
 
 

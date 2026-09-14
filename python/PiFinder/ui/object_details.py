@@ -420,6 +420,44 @@ class UIObjectDetails(UIModule):
         self._push_last_attempt = None
         self._push_solve_interval = None
 
+    def _tracking_status_label(self, guide):
+        tracking_state = guide.get("tracking_guide_state")
+        if tracking_state in {"failed", "waiting_coordinate", "waiting_mount"}:
+            return _("WAIT")
+        if tracking_state in {"suspended", "paused", "off", "waiting_target"}:
+            return _("Paused")
+        if tracking_state in {"settling", "disturbed", "manual_move"}:
+            return _("Settling")
+        target_ra, target_dec = (
+            guide.get("tracking_target_ra"),
+            guide.get("tracking_target_dec"),
+        )
+        if target_ra is not None and target_dec is not None:
+            if (
+                abs((target_ra - self.object.ra + 180) % 360 - 180) > 1e-6
+                or abs(target_dec - self.object.dec) > 1e-6
+            ):
+                return _("Other target")
+        errors = calc_utils.aim_degrees(
+            self.shared_state, self.mount_type, self.screen_direction, self.object
+        )
+        if any(value is None for value in errors):
+            return _("WAIT")
+        accuracy = (
+            min(
+                self.config_object.get_option("indi_goto_refine_accuracy_arcmin", 3.0),
+                self.config_object.get_option(
+                    "indi_tracking_guide_threshold_arcmin", 3.0
+                ),
+            )
+            / 60.0
+        )
+        if all(abs(value) <= accuracy for value in errors):
+            return (
+                _("Tracking") if guide.get("tracking_guide_enabled") else _("Complete")
+            )
+        return _("Adjusting") if tracking_state == "enabled" else _("Off target")
+
     def _render_push_status(self):
         now = time.time()
         if time.monotonic() >= self._push_status_next_read:
@@ -461,8 +499,8 @@ class UIObjectDetails(UIModule):
             movement = _("WAIT")
         elif phase == "stopped":
             movement = _("Stopped")
-        elif phase == "complete":
-            movement = _("Complete")
+        elif phase in {"complete", "tracking"}:
+            movement = self._tracking_status_label(guide)
         elif mount or (imu and imu.is_usable()):
             movement = _("Idle")
         else:

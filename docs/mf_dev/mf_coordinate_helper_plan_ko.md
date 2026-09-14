@@ -1,5 +1,9 @@
 # MF PiFinder Pointing Coordinate Service
 
+2026-09-14 변경: 아래의 입력 좌표 무변환 규칙은 SkySafari ↔ PiFinder
+카메라/카탈로그 경계에서 대체됐다. LCD 기준 도착·유지 및 정렬 전파와 함께
+[변경 보고서](../mf_report/mf_alignment_tracking_hold_20260914_ko.md)를 따른다.
+
 최종 업데이트: 2026-07-13
 
 이 문서는 현재 `mf_pifinder` 브랜치의 상시 좌표 서비스 구현을 기준으로

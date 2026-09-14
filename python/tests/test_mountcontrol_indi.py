@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+from datetime import datetime, timezone
 import time
 from multiprocessing import Queue
 from types import SimpleNamespace
@@ -135,6 +136,12 @@ class DummySharedState:
 
     def solution(self):
         return self._solution
+
+    def location(self):
+        return DummyLocation()
+
+    def datetime(self):
+        return datetime(2026, 9, 14, 13, tzinfo=timezone.utc)
 
 
 class DummyLocation:

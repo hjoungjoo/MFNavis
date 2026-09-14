@@ -192,6 +192,37 @@ def b1950_to_j2000(ra_hours, dec_deg):
     return epoch_to_epoch(B1950, J2000, ra_hours, dec_deg)
 
 
+def equinox_of_date_to_catalog(ra, dec, dt):
+    """LX200 equinox-of-date axes -> the catalog/plate-solver axes.
+
+    Rotate axes only: the caller's apparent-place corrections are preserved.
+    This also matches calc_planets().radec() for an apparent planet position.
+    """
+    t = sf_utils.ts.from_datetime(dt)
+    p = position_of_radec(ra_hours=ra / 15.0, dec_degrees=dec, epoch=t)
+    r, d, _ = p.radec()
+    return r._degrees % 360.0, d.degrees
+
+
+def catalog_to_equinox_of_date(ra, dec, dt):
+    t = sf_utils.ts.from_datetime(dt)
+    p = position_of_radec(ra_hours=ra / 15.0, dec_degrees=dec)
+    r, d, _ = p.radec(epoch=t)
+    return r._degrees % 360.0, d.degrees
+
+
+def pointing_axis_errors(ra, dec, target_ra, target_dec, mount_type, location, dt):
+    """Signed LCD axis errors, in degrees, shared with GoTo and guiding."""
+    if mount_type == "Alt/Az":
+        if location is None or not location.lock or dt is None:
+            return None
+        sf_utils.set_location(location.lat, location.lon, location.altitude)
+        alt, az = sf_utils.radec_to_altaz(ra, dec, dt)
+        target_alt, target_az = sf_utils.radec_to_altaz(target_ra, target_dec, dt)
+        return (target_az - az + 180) % 360 - 180, target_alt - alt
+    return (target_ra - ra + 180) % 360 - 180, target_dec - dec
+
+
 def aim_degrees(shared_state, mount_type, screen_direction, target):
     """
     Returns degrees in either
@@ -204,35 +235,9 @@ def aim_degrees(shared_state, mount_type, screen_direction, target):
     dt = shared_state.datetime()
     if location.lock and dt and solution and solution.has_pointing():
         aligned = solution.pointing.aligned.estimate
-        if mount_type == "Alt/Az":
-            if solution.Alt is not None and solution.Az is not None:
-                # We have position and time/date!
-                sf_utils.set_location(
-                    location.lat,
-                    location.lon,
-                    location.altitude,
-                )
-                target_alt, target_az = sf_utils.radec_to_altaz(
-                    target.ra,
-                    target.dec,
-                    dt,
-                )
-                az_diff = target_az - solution.Az
-                az_diff = (az_diff + 180) % 360 - 180
-
-                alt_diff = target_alt - solution.Alt
-                alt_diff = (alt_diff + 180) % 360 - 180
-
-                return az_diff, alt_diff
-        else:
-            # EQ Mount type
-            ra_diff = target.ra - aligned.RA
-            ra_diff = (ra_diff + 180) % 360 - 180  # Convert to -180 to +180
-
-            dec_diff = target.dec - aligned.Dec
-            dec_diff = (dec_diff + 180) % 360 - 180
-
-            return ra_diff, dec_diff
+        return pointing_axis_errors(
+            aligned.RA, aligned.Dec, target.ra, target.dec, mount_type, location, dt
+        ) or (None, None)
     return None, None
 
 

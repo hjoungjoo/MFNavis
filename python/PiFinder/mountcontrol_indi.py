@@ -561,6 +561,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._guide_correction_enabled = False
         self._guide_correction_target: Optional[tuple[float, float]] = None
         self._guide_correction_accuracy_arcmin = DEFAULT_GOTO_REFINE_ACCURACY_ARCMIN
+        self._guide_axis_scale = 1.0
+        self._guide_mount_type = "Alt/Az"
         self._guide_correction_next_at = 0.0
         self._guide_correction_observation: dict[str, Any] = {}
         self._guide_correction_last_solve_time = 0.0
@@ -769,6 +771,11 @@ class MountControlIndi(BacklashCalibrationMixin):
         if self._time_sync_provisional:
             payload["time_sync_provisional"] = True
         payload["guide_correction_enabled"] = self._guide_correction_enabled
+        payload["guide_pulse_until_wall"] = (
+            time.time() + self._guide_pulse_until - time.monotonic()
+            if self._guide_pulse_until > 0
+            else 0.0
+        )
         if self._guide_correction_target is not None:
             payload["guide_correction_target_ra"] = self._guide_correction_target[0]
             payload["guide_correction_target_dec"] = self._guide_correction_target[1]
@@ -2907,6 +2914,12 @@ class MountControlIndi(BacklashCalibrationMixin):
         if not solution or solution.last_solve_success is None:
             return None
 
+        plate = getattr(solution, "alignment_projection", None) or {}
+        if plate.get("target_pixel") is not None and tuple(
+            plate["target_pixel"]
+        ) != tuple(self.shared_state.target_pixel()):
+            return None
+
         try:
             pointing = solution.pointing.aligned.solve
             if pointing is None:
@@ -3155,7 +3168,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         dec_delta = target_dec - current_dec
         ra_arcmin = ra_delta * 60.0 * math.cos(math.radians(current_dec))
         dec_arcmin = dec_delta * 60.0
-        component_threshold = max(0.5, accuracy_arcmin / 2.0)
+        component_threshold = max(0.01, accuracy_arcmin / 2.0)
 
         ns = None
         if dec_arcmin > component_threshold:
@@ -3216,6 +3229,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._guide_correction_enabled = True
         self._guide_correction_target = target
         self._guide_correction_accuracy_arcmin = max(0.1, accuracy)
+        self._guide_mount_type = config.Config().get_option("mount_type", "Alt/Az")
         self._guide_correction_next_at = time.monotonic()
         self._guide_correction_last_solve_time = 0.0
         self._write_controller_status(
@@ -3265,7 +3279,16 @@ class MountControlIndi(BacklashCalibrationMixin):
             target_ra,
             target_dec,
         )
-        if separation <= self._guide_correction_accuracy_arcmin:
+        axis_error = self._guide_axis_error(
+            current_ra, current_dec, target_ra, target_dec
+        )
+        if axis_error is None:
+            return
+        error = max(separation, axis_error)
+        # At high altitude/declination a small angular distance can still be
+        # a large LCD longitude error. Lower the pulse deadband accordingly.
+        self._guide_axis_scale = min(1.0, separation / error) if error > 0 else 1.0
+        if error <= self._guide_correction_accuracy_arcmin:
             self._guide_correction_last_solve_time = solve_time
             self._guide_correction_next_at = now + GUIDE_CORRECTION_INTERVAL_SECONDS
             self._restore_fine_guide_rate()
@@ -3296,7 +3319,7 @@ class MountControlIndi(BacklashCalibrationMixin):
             current_dec,
             target_ra,
             target_dec,
-            self._guide_correction_accuracy_arcmin,
+            self._guide_correction_accuracy_arcmin * self._guide_axis_scale,
         )
         if not direction:
             return
@@ -3318,6 +3341,22 @@ class MountControlIndi(BacklashCalibrationMixin):
                 guide_error_arcmin=separation,
                 guide_direction=direction,
             )
+
+    def _guide_axis_error(self, ra, dec, target_ra, target_dec):
+        if self.shared_state is None:
+            return radec_separation_arcmin(ra, dec, target_ra, target_dec)
+        errors = calc_utils.pointing_axis_errors(
+            ra,
+            dec,
+            target_ra,
+            target_dec,
+            self._guide_mount_type,
+            self.shared_state.location(),
+            self.shared_state.datetime(),
+        )
+        return (
+            max(abs(value) * 60.0 for value in errors) if errors is not None else None
+        )
 
     def _guide_pulse_supported(self) -> bool:
         if self._pulse_guide_supported is not None:
@@ -3602,7 +3641,13 @@ class MountControlIndi(BacklashCalibrationMixin):
             self._confirmed_guide_rates or self._current_guide_rate_x()
         )
         invert_ns, invert_we = self._guide_pulse_inversions()
-        threshold_arcsec = max(0.5, self._guide_correction_accuracy_arcmin / 2.0) * 60.0
+        threshold_arcsec = (
+            max(
+                0.01,
+                self._guide_correction_accuracy_arcmin / 2.0 * self._guide_axis_scale,
+            )
+            * 60.0
+        )
 
         pulses: list[str] = []
         max_pulse_ms = 0

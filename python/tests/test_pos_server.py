@@ -91,6 +91,15 @@ def sidereal_mount_status(monkeypatch):
     that exercise the reset override it.
     """
     monkeypatch.setattr(track_freq_policy, "_mount_status", lambda: {})
+    monkeypatch.setattr(pos_server, "ui_queue", queue.Queue(), raising=False)
+    # These routing tests use abstract coordinates. Real epoch conversion and
+    # its end-to-end alignment/display contract are tested separately.
+    monkeypatch.setattr(
+        pos_server, "equinox_of_date_to_catalog", lambda ra, dec, dt: (ra, dec)
+    )
+    monkeypatch.setattr(
+        pos_server, "catalog_to_equinox_of_date", lambda ra, dec, dt: (ra, dec)
+    )
     # Keep the ephemeris out of GoTo tests too; planet identification has its
     # own coverage in test_track_freq_policy.py.
     monkeypatch.setattr(
@@ -1050,6 +1059,7 @@ def test_solved_pointing_resets_imu_alignment_correction(monkeypatch):
     )
 
     class FakeCoordinateState:
+        current = SimpleNamespace(source="solve")
         solved = type("Solved", (), {"valid": True})()
 
         def radec(self):

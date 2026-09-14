@@ -1,5 +1,9 @@
 # MF PiFinder Pointing Coordinate Service
 
+2026-09-14 update: the no-conversion rule below is superseded at the SkySafari
+to PiFinder camera/catalog boundary. Arrival and guiding now also check the
+LCD axes; see the [alignment and hold report](../mf_report/mf_alignment_tracking_hold_20260914_ko.md).
+
 Last updated: 2026-07-13
 
 This document describes the current `mf_pifinder` implementation of the

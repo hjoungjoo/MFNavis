@@ -55,7 +55,9 @@ def test_aim_degrees_accepts_zero_altitude_altaz_solution(monkeypatch):
 
     monkeypatch.setattr(calc_utils.sf_utils, "set_location", lambda *_args: None)
     monkeypatch.setattr(
-        calc_utils.sf_utils, "radec_to_altaz", lambda *_args: (5.0, 20.0)
+        calc_utils.sf_utils,
+        "radec_to_altaz",
+        lambda ra, *_args: (0.0, 10.0) if ra == 100.0 else (5.0, 20.0),
     )
 
     assert calc_utils.aim_degrees(shared_state, "Alt/Az", "right", target) == (
