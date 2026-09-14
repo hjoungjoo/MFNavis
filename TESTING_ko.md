@@ -6,7 +6,7 @@
 
 - [작업 전 계획](docs/test_cedar_free_20260915/PLAN_ko.md)
 - [1단계 결과](docs/test_cedar_free_20260915/STAGE1_ko.md)
-- 후속 측정은 같은 문서 폴더의 단계별 보고서에 기록한다.
+- [최종 비교 결과와 한계](docs/test_cedar_free_20260915/RESULTS_ko.md)
 
 마운트 미연결 상태이므로 현재 테스트 설정의 `mount_control`과
 `indi_tracking_guide_enabled`는 껐다. 운영 설정은 변경하지 않았다.
@@ -24,7 +24,8 @@ PYTHONPATH=python python3 python/scripts/replay_star_preprocess_ab.py \
 ```
 
 `PIFINDER_DETECTOR=sep`가 기본이다. `PIFINDER_DETECTOR=mf`로 자체 검출기를
-선택한다. `.so`는 `MF_DETECT_LIBRARY`로 지정할 수 있다. 원본 영상·캐시는
+선택한다. MF는 response 순서/2×2 binning/최대 48개가 기본이고
+원본 재측정은 꺼져 있다. `.so`는 `MF_DETECT_LIBRARY`로 지정할 수 있다. 원본 영상·캐시는
 Git에 추가하지 않으며 공유할 집계 결과와 재현 절차만 문서화한다.
 
 ## 서비스를 명시적으로 전환할 때

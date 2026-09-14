@@ -24,8 +24,10 @@ def star_field():
 
 @pytest.mark.parametrize("backend", ["sep", "mf"])
 @pytest.mark.parametrize("refine", ["0", "1"])
-def test_real_centroids_and_hot_pixel_rejection(monkeypatch, backend, refine):
+@pytest.mark.parametrize("ranking", ["response", "flux"])
+def test_real_centroids_and_hot_pixel_rejection(monkeypatch, backend, refine, ranking):
     monkeypatch.setenv("MF_DETECT_REFINE", refine)
+    monkeypatch.setenv("MF_DETECT_RANKING", ranking)
     if (
         backend == "mf"
         and not (
@@ -39,7 +41,8 @@ def test_real_centroids_and_hot_pixel_rejection(monkeypatch, backend, refine):
     for point in truth:
         assert np.linalg.norm(result.centroids - point, axis=1).min() < 0.6
     assert np.linalg.norm(result.centroids - [300, 100], axis=1).min() > 4
-    assert np.all(np.diff(result.fluxes) <= 0)
+    if backend == "sep" or ranking == "flux":
+        assert np.all(np.diff(result.fluxes) <= 0)
 
 
 def test_unknown_backend_fails_explicitly(monkeypatch):

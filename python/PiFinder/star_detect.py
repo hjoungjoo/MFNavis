@@ -1,7 +1,8 @@
 """Cedar-free detector selection; SEP is the test branch default.
 
 The optional native library is loaded only with PIFINDER_DETECTOR=mf.
-Both backends return full sensor (y, x), descending flux. Native morphology
+Both backends return full sensor (y, x). SEP ranks by flux; native defaults
+to detection response (MF_DETECT_RANKING=flux restores flux ranking). Native morphology
 is followed by PiFinder's geometric/saturation gates. No sockets or camera
 access are needed.
 """
@@ -87,7 +88,7 @@ def detect_stars(raw_frame, **kwargs):
     flux = output[:count, 2].astype(np.float64)
     order = (
         np.arange(len(flux))
-        if os.environ.get("MF_DETECT_RANKING") == "response"
+        if os.environ.get("MF_DETECT_RANKING", "response") == "response"
         else np.argsort(-flux, kind="stable")
     )
     points, flux = points[order], flux[order]
