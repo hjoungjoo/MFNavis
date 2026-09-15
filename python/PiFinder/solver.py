@@ -1723,6 +1723,8 @@ def solver(
                         exposure_quality = None
                         distortion_calibration_input = None
                         sep_can_solve = False
+                        if capture_token is not None:
+                            capture_counts["raw_sep"] = 0
                         if sep_shadow is not None and sep_shadow_wanted:
                             sep_run = sep_shadow.detect(
                                 shared_state,
@@ -1730,6 +1732,10 @@ def solver(
                             )
                             if sep_run is not None:
                                 sep_count = len(sep_run.detection.centroids)
+                                if capture_token is not None:
+                                    # Snapshot before a synchronous preprocessed
+                                    # solve replaces sep_run and its candidate count.
+                                    capture_counts["raw_sep"] = sep_count
                                 if (
                                     (
                                         distortion_calibration_session is not None
@@ -3023,7 +3029,7 @@ def solver(
                             "raw_sep_wait_ms": capture_sep_wait_ms,
                             "stages": capture_stages,
                             "candidate_counts": {
-                                "raw_cedar": len(centroids),
+                                "raw_cedar": 0,  # retired detector; legacy schema
                                 "raw_cedar_center": cedar_center_count,
                                 "raw_sep": sep_count,
                                 **capture_counts,
