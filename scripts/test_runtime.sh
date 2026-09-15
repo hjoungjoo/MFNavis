@@ -10,11 +10,17 @@ case "${1:-status}" in
     [[ "$profile" == mf ]] && profile=mf4p
     mode="${3:-auto}"
     case "$mode" in auto|sync) ;; *) echo 'mode must be auto or sync' >&2; exit 2;; esac
+    transport="${4:-process}"
+    case "$transport" in process|ctypes) ;; *) echo 'transport must be process or ctypes' >&2; exit 2;; esac
     profile_lines=$(PYTHONPATH="$repo_dir/python" python3 -m PiFinder.detector_profiles "$profile" --systemd)
     test "$EUID" -eq 0 || { echo 'Run with sudo only when service switching is requested.' >&2; exit 1; }
     test -f "$repo_dir/python/PiFinder/star_detect.py"
     if [[ "$profile" != sep ]]; then
-      test -f "$repo_dir/python/mf_detect_star/build/libmf_detect_star.so"
+      if [[ "$transport" == process ]]; then
+        test -x "$repo_dir/python/mf_detect_star/build/mf_detect_star_server"
+      else
+        test -f "$repo_dir/python/mf_detect_star/build/libmf_detect_star.so"
+      fi
     fi
     mkdir -p "$override_dir"
     cat > "$override_file" <<EOF
@@ -24,6 +30,8 @@ Environment=PIFINDER_DATA_DIR=/home/pifinder/PiFinder_test_data
 Environment=PIFINDER_RUNTIME_DIR=/dev/shm/pifinder_test
 $profile_lines
 Environment=PIFINDER_PREPROCESS_MODE=$mode
+Environment=MF_DETECT_TRANSPORT=$transport
+Environment=MF_DETECT_SERVER=$repo_dir/python/mf_detect_star/build/mf_detect_star_server
 Environment=MF_DETECT_LIBRARY=$repo_dir/python/mf_detect_star/build/libmf_detect_star.so
 EOF
     systemctl daemon-reload
@@ -43,5 +51,5 @@ EOF
   status)
     systemctl show pifinder.service -p WorkingDirectory -p Environment -p ActiveState
     ;;
-  *) echo 'Usage: test_runtime.sh start [mf4p|mf2|mf1|mf4o|mf8p|mf4p-pure|sep] [auto|sync] | restore | status' >&2; exit 2;;
+  *) echo 'Usage: test_runtime.sh start [mf4p|mf2|mf1|mf4o|mf8p|mf4p-pure|sep] [auto|sync] [process|ctypes] | restore | status' >&2; exit 2;;
 esac

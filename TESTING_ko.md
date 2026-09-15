@@ -47,7 +47,11 @@ PYTHONPATH=python python3 python/scripts/replay_star_preprocess_ab.py \
 순수 MF 비교는 `MF_DETECT_SEP_FALLBACK=0`, 기존 전체1/2 방식은
 `MF_DETECT_BINNING=2 MF_DETECT_PYRAMID=0`으로 재현한다.
 `PIFINDER_DETECTOR=sep`는 별도 비교용이다. 원본 재측정은 꺼져 있다.
-`.so`는 `MF_DETECT_LIBRARY`로 지정할 수 있다. 원본 영상·캐시는
+기본은 `MF_DETECT_TRANSPORT=process`이며 `MF_DETECT_SERVER`로 서버를 지정한다.
+직접 호출 비교는 `MF_DETECT_TRANSPORT=ctypes`, `.so` override는
+`MF_DETECT_LIBRARY`다. 프로세스 오류에 직접 호출로 자동 전환하지 않는다.
+동일 RAW/전처리 A/B는 `python/scripts/compare_detector_transport.py`를 사용한다.
+원본 영상·캐시는
 Git에 추가하지 않으며 공유할 집계 결과와 재현 절차만 문서화한다.
 
 ## 서비스를 명시적으로 전환할 때

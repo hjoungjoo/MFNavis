@@ -80,8 +80,10 @@ Watch out for .venv directories containing virtual environments, that you need t
 
 **Running the application:**
 
-First start the `cedar-detect-server` which is in `bin` (you need to use `-p 50551`, when invoking it).
-Use the correct architecture suffix for cedar-detect-server according to the platform you're running on. 
+Build the pinned MF detector with `bash scripts/setup_mf_detect_star.sh` first.
+This test branch starts persistent native MF child workers automatically, with
+private memfd image memory. It needs no Cedar server or additional systemd unit.
+`MF_DETECT_TRANSPORT=ctypes` is an explicit comparison mode; process is default.
 
 Development setup has to have run and you should be in .venv virtual environment
 ```bash

@@ -15,9 +15,17 @@ PYTHONPATH=python python3 python/scripts/field_compare.py --help
 ```
 
 setup은 고정 커밋 checkout과 빌드/검사만 한다. 서비스 전환이나 카메라·부팅 설정은
-변경하지 않는다. 기본 라이브러리는 submodule의 `build/libmf_detect_star.so`다.
-임의의 형제 checkout을 암묵적으로 읽지 않으며 `MF_DETECT_LIBRARY`만 명시적
-override로 허용한다. submodule이 없으면 먼저 setup을 실행해야 한다.
+변경하지 않는다. 기본은 submodule의 `build/mf_detect_star_server`를 별도
+프로세스로 실행하는 `MF_DETECT_TRANSPORT=process`다. 스레드별 worker와 memfd
+공유 메모리를 재사용하여 RAW/전처리 병렬성을 유지한다. `MF_DETECT_SERVER`는
+명시적 서버 경로 override다. `MF_DETECT_TRANSPORT=ctypes`와
+`MF_DETECT_LIBRARY`는 기존 직접 호출 비교용이다. 서버 실패 시 자동으로 ctypes를
+로드하지 않고 기존 SEP 보조 정책을 따른다. 임의의 형제 checkout을 암묵적으로
+읽지 않는다. submodule이 없으면 먼저 setup을 실행해야 한다.
+
+[프로토콜·종료·timeout 정책](../python/mf_detect_star/docs/PROCESS_PROTOCOL.md)을
+참고한다. 별도 systemd 서비스 설치는 필요하지 않으며 호출 프로세스가 worker를
+관리한다. 기본 요청 timeout은 500ms, 최초 시작 대기는 최소 2초다.
 
 수정은 mf_detect_star 정본에서 수행하고 검사·커밋·푸시한다. 이후 PiFinder에서
 승인된 커밋을 checkout하고 `git add python/mf_detect_star`로 참조 버전을 갱신한다.
@@ -28,7 +36,8 @@ override로 허용한다. submodule이 없으면 먼저 setup을 실행해야 �
 [라이선스 적용 범위](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/LICENSING.md)를 참고한다.
 Cedar의 native 라이선스 조건(5년 MIT 전환)과 기존 PiFinder 통합 코드의 GPL을
 구분한다. PiFinder 카메라/solver 스케줄/서비스 orchestration은 본 저장소에서
-계속 관리한다. 이번 변경은 파일 위치와 참조 경로의 통합이며 검출 정책 변경이 아니다.
+계속 관리한다. 프로세스 전환에서도 기존 MF 우선/SEP 보조, RAW/전처리 스케줄,
+정렬·보정 중 동기 대기 정책은 유지한다. 분리만으로 법적 적합성을 확정하지 않는다.
 
 [라이선스 적용·통합 검증 완료 기록](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/CONSOLIDATION_RESULTS_ko.md)
 은 정본 저장소에서 관리한다.

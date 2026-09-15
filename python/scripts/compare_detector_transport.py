@@ -1,0 +1,1 @@
+../mf_detect_star/integrations/pifinder/scripts/compare_detector_transport.py
