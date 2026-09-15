@@ -88,6 +88,9 @@ class SepDetection:
     # Optional larger, already-quality-filtered set for the LiveCam overlay.
     # ``centroids`` remains the bounded set passed to tetra3.
     overlay_centroids: Optional[np.ndarray] = None
+    backend: str = "sep"
+    primary_candidates: Optional[int] = None
+    fallback_reason: Optional[str] = None
 
 
 def warm_pixel_excess(frame: np.ndarray) -> np.ndarray:

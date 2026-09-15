@@ -6,7 +6,7 @@ override_dir=/run/systemd/system/pifinder.service.d
 override_file="${override_dir}/90-detector-test.conf"
 case "${1:-status}" in
   start)
-    backend="${2:-sep}"
+    backend="${2:-mf}"
     case "$backend" in sep|mf) ;; *) echo 'backend must be sep or mf' >&2; exit 2;; esac
     test "$EUID" -eq 0 || { echo 'Run with sudo only when service switching is requested.' >&2; exit 1; }
     test -f "$repo_dir/python/PiFinder/star_detect.py"
@@ -20,6 +20,7 @@ WorkingDirectory=$repo_dir/python
 Environment=PIFINDER_DATA_DIR=/home/pifinder/PiFinder_test_data
 Environment=PIFINDER_RUNTIME_DIR=/dev/shm/pifinder_test
 Environment=PIFINDER_DETECTOR=$backend
+Environment=MF_DETECT_SEP_FALLBACK=1
 Environment=MF_DETECT_LIBRARY=/home/pifinder/mf_detect_star_test/build/libmf_detect_star.so
 EOF
     systemctl daemon-reload

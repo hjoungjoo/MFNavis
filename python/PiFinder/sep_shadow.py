@@ -335,6 +335,8 @@ class SepShadowRunner:
             # overwrote it, so the confirmed/candidate split almost never
             # reached the screen.
             self._last_overlay = {
+                "detector_backend": detection.backend,
+                "detector_fallback_reason": detection.fallback_reason,
                 "centroids": detection.centroids.tolist(),
                 "frame_hw": [int(frame.shape[0]), int(frame.shape[1])],
                 "frame_id": entry.get("frame_id"),
@@ -449,6 +451,8 @@ class SepShadowRunner:
         if overlay_centroids is None:
             overlay_centroids = detection.centroids
         self._last_overlay = {
+            "detector_backend": detection.backend,
+            "detector_fallback_reason": detection.fallback_reason,
             "centroids": overlay_centroids.tolist(),
             "solver_centroids": len(detection.centroids),
             "frame_hw": [int(run.frame_hw[0]), int(run.frame_hw[1])],

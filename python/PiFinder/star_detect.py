@@ -1,4 +1,4 @@
-"""Cedar-free detector selection; SEP is the test branch default.
+"""MF-first detection, with SEP only when native extraction is unavailable.
 
 The optional native library is loaded only with PIFINDER_DETECTOR=mf.
 Both backends return full sensor (y, x). SEP ranks by flux; native defaults
@@ -8,6 +8,7 @@ access are needed.
 """
 
 import ctypes
+import logging
 import os
 from pathlib import Path
 import time
@@ -17,6 +18,7 @@ import numpy as np
 from PiFinder import sep_detect
 
 _library = None
+logger = logging.getLogger("Solver.StarDetect")
 
 
 def _native_library():
@@ -56,11 +58,35 @@ def _native_library():
 
 
 def detect_stars(raw_frame, **kwargs):
-    backend = os.environ.get("PIFINDER_DETECTOR", "sep")
+    backend = os.environ.get("PIFINDER_DETECTOR", "mf")
     if backend == "sep":
         return sep_detect.detect_stars(raw_frame, **kwargs)
     if backend != "mf":
         raise ValueError(f"unknown detector: {backend}")
+    started = time.perf_counter()
+    primary = None
+    fallback_enabled = os.environ.get("MF_DETECT_SEP_FALLBACK", "1") == "1"
+    try:
+        primary = _detect_native(raw_frame, **kwargs)
+    except (OSError, RuntimeError, AttributeError) as exc:
+        if not fallback_enabled:
+            raise
+        reason = f"native_error:{type(exc).__name__}"
+        logger.warning("MF detection unavailable; trying SEP: %s", exc)
+    else:
+        if len(primary.centroids) >= 5 or not fallback_enabled:
+            return primary
+        reason = f"insufficient_candidates:{len(primary.centroids)}<5"
+    auxiliary = sep_detect.detect_stars(raw_frame, **kwargs)
+    result = auxiliary if auxiliary is not None else primary
+    if result is not None:
+        result.primary_candidates = len(primary.centroids) if primary is not None else 0
+        result.fallback_reason = reason
+        result.elapsed_ms = (time.perf_counter() - started) * 1000.0
+    return result
+
+
+def _detect_native(raw_frame, **kwargs):
     started = time.perf_counter()
     arr = np.ascontiguousarray(raw_frame, dtype=np.uint16)
     if arr.ndim != 2:
@@ -131,4 +157,6 @@ def detect_stars(raw_frame, **kwargs):
         background_median=0.0,
         background_rms=0.0,
         elapsed_ms=(time.perf_counter() - started) * 1000.0,
+        backend="mf",
+        primary_candidates=len(points[:max_stars]),
     )

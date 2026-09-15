@@ -25,7 +25,7 @@ from PiFinder import config as config_mod
 from PiFinder import state_utils
 from PiFinder import utils
 from PiFinder import timez
-from PiFinder import horizon_mask, sep_detect
+from PiFinder import horizon_mask, sep_detect, star_detect
 from PiFinder import solver_frame_map as sfm
 from PiFinder.auto_exposure_framewise import matched_star_exposure_quality
 from PiFinder.alignment_projection import make_projection, projection_context
@@ -200,10 +200,17 @@ def _preprocessed_fast_path_allowed(
     trusted: bool,
     moving: bool,
     aligning: bool,
+    scheduling_mode: str = "sync",
 ) -> bool:
     """Whether a trusted preprocessed path may replace slow RAW fallbacks."""
 
-    return bool(enabled and trusted and not moving and not aligning)
+    return bool(
+        scheduling_mode == "sync"
+        and enabled
+        and trusted
+        and not moving
+        and not aligning
+    )
 
 
 def _solution_coordinate_snapshot(solution: dict) -> Optional[dict]:
@@ -1677,6 +1684,7 @@ def solver(
                         trusted=preprocessed_fast_trusted,
                         moving=frame_moving,
                         aligning=align_ra != 0 and align_dec != 0,
+                        scheduling_mode=scheduling_mode,
                     )
                     t_extract = (precision_timestamp() - t0) * 1000
 
@@ -1882,7 +1890,7 @@ def solver(
                                 return ()
 
                             def _wide_sep_detect(tile_frame):
-                                detection = sep_detect.detect_stars(
+                                detection = star_detect.detect_stars(
                                     np.asarray(tile_frame),
                                     sigma=float(
                                         _sep_cfg.get_option("solver_sep_sigma") or 4.0

@@ -78,6 +78,12 @@ def test_trusted_stationary_preprocessor_can_replace_slow_raw_fallbacks():
     )
 
 
+def test_auto_keeps_raw_attempts_even_after_preprocessed_solution_is_trusted():
+    assert not _preprocessed_fast_path_allowed(
+        enabled=True, trusted=True, moving=False, aligning=False, scheduling_mode="auto"
+    )
+
+
 def test_slow_raw_fallbacks_remain_during_unsafe_states():
     assert not _preprocessed_fast_path_allowed(
         enabled=False,

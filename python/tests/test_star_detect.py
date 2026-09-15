@@ -11,6 +11,11 @@ from PiFinder import star_detect
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(autouse=True)
+def strict_native_measurements(monkeypatch):
+    monkeypatch.setenv("MF_DETECT_SEP_FALLBACK", "0")
+
+
 def star_field():
     yy, xx = np.indices((400, 500))
     rng = np.random.default_rng(42)
@@ -75,3 +80,50 @@ def test_pyramid_preserves_sensor_coordinates(monkeypatch, stage):
     assert len(result.centroids) == len(truth)
     for point in truth:
         assert np.linalg.norm(result.centroids - point, axis=1).min() < 0.7
+
+
+@pytest.mark.parametrize("count", [0, 4, 5, 48])
+def test_default_mf_calls_sep_only_below_solver_candidate_minimum(monkeypatch, count):
+    from unittest.mock import Mock
+
+    monkeypatch.delenv("PIFINDER_DETECTOR", raising=False)
+    monkeypatch.setenv("MF_DETECT_SEP_FALLBACK", "1")
+    primary = star_detect.sep_detect.SepDetection(
+        np.zeros((count, 2)), np.ones(count), 0, 0, 1, backend="mf"
+    )
+    auxiliary = star_detect.sep_detect.SepDetection(
+        np.zeros((6, 2)), np.ones(6), 0, 0, 1
+    )
+    native = Mock(return_value=primary)
+    sep = Mock(return_value=auxiliary)
+    monkeypatch.setattr(star_detect, "_detect_native", native)
+    monkeypatch.setattr(star_detect.sep_detect, "detect_stars", sep)
+    frame = np.zeros((64, 64), dtype=np.uint16)
+    result = star_detect.detect_stars(frame)
+    native.assert_called_once()
+    if count < 5:
+        sep.assert_called_once()
+        assert result.backend == "sep"
+        assert result.primary_candidates == count
+        assert result.fallback_reason == f"insufficient_candidates:{count}<5"
+    else:
+        sep.assert_not_called()
+        assert result is primary
+
+
+def test_native_unavailable_uses_sep_without_hiding_invalid_configuration(monkeypatch):
+    from unittest.mock import Mock
+
+    monkeypatch.setenv("PIFINDER_DETECTOR", "mf")
+    monkeypatch.setenv("MF_DETECT_SEP_FALLBACK", "1")
+    native = Mock(side_effect=OSError("missing library"))
+    sep = Mock(return_value=None)
+    monkeypatch.setattr(star_detect, "_detect_native", native)
+    monkeypatch.setattr(star_detect.sep_detect, "detect_stars", sep)
+    frame = np.zeros((64, 64), dtype=np.uint16)
+    assert star_detect.detect_stars(frame) is None
+    sep.assert_called_once()
+    native.side_effect = ValueError("invalid config")
+    with pytest.raises(ValueError):
+        star_detect.detect_stars(frame)
+    sep.assert_called_once()
