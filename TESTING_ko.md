@@ -12,6 +12,7 @@
 - [이번 검증 결과](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/FIELD_RESULTS_ko.md)
 - [Cedar Detect와 MF4p 직접 비교](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/CEDAR_AB_RESULTS_ko.md)
 - [검색 속도 개선·전체 재검증](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/SPEED_RESULTS_ko.md)
+- [Cedar 라이선스·소스 배포 점검과 미해결 사항](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/LICENSE_AUDIT_ko.md)
 - [작업 전 계획](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/PLAN_ko.md)
 - [1단계 결과](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/STAGE1_ko.md)
 - [최종 비교 결과와 한계](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/RESULTS_ko.md)

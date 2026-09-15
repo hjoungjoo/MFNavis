@@ -1,4 +1,9 @@
 """
+MF_PiFinder modification notice (2026-09-15): this file was changed from
+smroid/cedar-solve commit 38c3f48f57d1005e9b65cbb26136f9f13ec0a1b0 to batch
+pattern hashes and accelerate collision probing, with a legacy-search switch.
+The original license and attribution notices below are retained.
+
 tetra3: A fast lost-in-space plate solver for star trackers.
 ============================================================
 
