@@ -32,14 +32,14 @@ setup은 고정 커밋 checkout과 빌드/검사만 한다. 서비스 전환이�
 `git submodule update --remote`를 부팅/실행 시 호출하지 않는다.
 소스 배포는 submodule까지 포함한 recursive clone 또는 전체 source bundle로 제공한다.
 
-[실측 기본값·비교 절차](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/FIELD_GUIDE_ko.md),
-[라이선스 적용 범위](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/LICENSING.md)를 참고한다.
+[실측 기본값·비교 절차](https://github.com/hjoungjoo/MFDS/blob/2be2336635384e350fb50f9fcc91f501c00a4dde/docs/test_cedar_free_20260915/FIELD_GUIDE_ko.md),
+[라이선스 적용 범위](https://github.com/hjoungjoo/MFDS/blob/2be2336635384e350fb50f9fcc91f501c00a4dde/LICENSING.md)를 참고한다.
 Cedar의 native 라이선스 조건(5년 MIT 전환)과 기존 PiFinder 통합 코드의 GPL을
 구분한다. PiFinder 카메라/solver 스케줄/서비스 orchestration은 본 저장소에서
 계속 관리한다. 프로세스 전환에서도 기존 MF 우선/SEP 보조, RAW/전처리 스케줄,
 정렬·보정 중 동기 대기 정책은 유지한다. 분리만으로 법적 적합성을 확정하지 않는다.
 
-[라이선스 적용·통합 검증 완료 기록](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/CONSOLIDATION_RESULTS_ko.md)
+[라이선스 적용·통합 검증 완료 기록](https://github.com/hjoungjoo/MFDS/blob/2be2336635384e350fb50f9fcc91f501c00a4dde/docs/CONSOLIDATION_RESULTS_ko.md)
 은 정본 저장소에서 관리한다.
 
 ## 검색 속도 비교
@@ -60,7 +60,7 @@ PiFinder 소스이며, 이 최적화는 MF native 검출기 자체의 변경이 
 
 ## 달·도심 조명 노출 실측
 
-[중앙 하단 달 노출 비교 결과](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/MOON_LOWER_EXPOSURE_RESULTS_ko.md)
+[중앙 하단 달 노출 비교 결과](https://github.com/hjoungjoo/MFDS/blob/2be2336635384e350fb50f9fcc91f501c00a4dde/docs/test_cedar_free_20260915/MOON_LOWER_EXPOSURE_RESULTS_ko.md)
 는 정본 MF 저장소에서 관리한다. 달이 보이던 336장과 이후 별도 40장을 기록했다.
 RAW MF2/전체 영역 우선 탐색과 MF4p 전처리의 비교는 수동 하늘 마스크를 사용한
 재생 실험이다. 운영 검색 순서·기본 프로파일·서비스·부팅 경로는 유지했으며,
@@ -69,7 +69,7 @@ RAW MF2/전체 영역 우선 탐색과 MF4p 전처리의 비교는 수동 하늘
 
 ## 토성 GoTo 후 추적 실측
 
-[토성 추적 결과](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/SATURN_GOTO_RESULTS_ko.md)
+[토성 추적 결과](https://github.com/hjoungjoo/MFDS/blob/2be2336635384e350fb50f9fcc91f501c00a4dde/docs/test_cedar_free_20260915/SATURN_GOTO_RESULTS_ko.md)
 는 정본 MF 저장소에서 관리한다. RAW 240장과 별도 추적 상태 180초를 기록하고,
 32장에 RAW/전처리 MF4p·MF2를 비교했다. 실제 추적은 기존 Cedar 운영 서비스,
 MF는 오프라인 재생이므로 MF로 GoTo 제어를 검증한 결과는 아니다.
@@ -77,3 +77,6 @@ RAW 기록 출력은 복원했고 노출·gain·부팅·운영 경로는 유지�
 수집 시 `capture_detector_corpus.py --conditions`에 실제 환경을 적을 수 있다.
 참조 갱신 후 통합 배치 검사 `test_detector_integration_layout.py` 3개와
 수집 도구 Ruff lint/format 검사를 통과했다.
+
+MFDS 공개 이관(m2.6.4): [공개 저장소](https://github.com/hjoungjoo/MFDS)에서
+고정된 소스를 인증 없이 받는다. [이관 기록](MFDS_MIGRATION_ko.md)을 참고한다.

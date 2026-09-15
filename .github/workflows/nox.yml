@@ -26,10 +26,8 @@ jobs:
       - uses: actions/checkout@v5
         with:
           submodules: false
-      - name: Checkout pinned private MF detector
+      - name: Checkout pinned public MFDS
         uses: ./.github/actions/checkout-mf
-        with:
-          ssh-key: ${{ secrets.MF_DETECT_STAR_READ_KEY }}
       - name: Create tetra3 import alias
         run: bash ../scripts/ensure_tetra3_link.sh ..
       - name: Check Cedar-free merge candidate

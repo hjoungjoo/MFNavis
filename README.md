@@ -141,3 +141,10 @@ If you'd like to learn more about how it works, and potentially build your own, 
 
 ## Discord
 Join the  [PiFinder™ Discord server](https://discord.gg/Nk5fHcAtWD) for support with your build, usage questions, and suggestions for improvement.
+
+## Public MF detector source (m2.6.4)
+
+The detector and its PiFinder integration are maintained at [MFDS](https://github.com/hjoungjoo/MFDS),
+a public, pinned submodule at `python/mf_detect_star`. No private repository key
+is required. Native FSL five-year/MIT and the integration's GPL terms remain
+separate; see [migration and license scope](docs/MFDS_MIGRATION_ko.md).

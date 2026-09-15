@@ -41,6 +41,6 @@ def test_submodule_uses_a_portable_remote():
     config = configparser.ConfigParser()
     config.read(root / ".gitmodules")
     assert config['submodule "mf_detect_star"']["url"] == (
-        "https://github.com/hjoungjoo/mf_detect_star.git"
+        "https://github.com/hjoungjoo/MFDS.git"
     )
     assert config['submodule "mf_detect_star"']["path"] == "python/mf_detect_star"
