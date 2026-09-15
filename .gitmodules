@@ -1,0 +1,4 @@
+[submodule "mf_detect_star"]
+	path = python/mf_detect_star
+	url = https://github.com/hjoungjoo/mf_detect_star.git
+	branch = test/cedar-free-20260915

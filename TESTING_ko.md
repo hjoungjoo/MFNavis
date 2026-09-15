@@ -1,18 +1,22 @@
 # Cedar 없는 테스트 환경
 
+검출기·전처리·비교 도구·실험 문서의 정본은 `python/mf_detect_star` submodule이다.
+[통합 관리 안내](docs/DETECTOR_INTEGRATION_ko.md)와
+[라이선스 범위](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/LICENSING.md)를 따른다.
+
 이 checkout은 `test/cedar-free-20260915` 전용이다. 운영 `/home/pifinder/PiFinder`
 및 부팅 서비스 경로는 유지한다. 테스트 코드에서 기본 데이터 경로는
 `/home/pifinder/PiFinder_test_data`, runtime은 `/dev/shm/pifinder_test`다.
 
-- [확정 기본값·실측 비교·관측 좌표 저장](docs/test_cedar_free_20260915/FIELD_GUIDE_ko.md)
-- [이번 검증 결과](docs/test_cedar_free_20260915/FIELD_RESULTS_ko.md)
-- [작업 전 계획](docs/test_cedar_free_20260915/PLAN_ko.md)
-- [1단계 결과](docs/test_cedar_free_20260915/STAGE1_ko.md)
-- [최종 비교 결과와 한계](docs/test_cedar_free_20260915/RESULTS_ko.md)
-- [추가 실험: 다단계 해상도·별 주변 ROI 비교](docs/test_cedar_free_20260915/PYRAMID_RESULTS_ko.md)
-- [현재 MF 우선 정책과 RAW/전처리 비교](docs/test_cedar_free_20260915/MF_PRIMARY_RESULTS_ko.md)
-- [동기 예외를 유지한 실행 구조](docs/test_cedar_free_20260915/MF_PRIMARY_FLOW_ko.md)
-- [별도 실험: 항상 병렬 전처리 기준점과 RAW 변화량](docs/test_cedar_free_20260915/ANCHOR_RESULTS_ko.md)
+- [확정 기본값·실측 비교·관측 좌표 저장](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/FIELD_GUIDE_ko.md)
+- [이번 검증 결과](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/FIELD_RESULTS_ko.md)
+- [작업 전 계획](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/PLAN_ko.md)
+- [1단계 결과](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/STAGE1_ko.md)
+- [최종 비교 결과와 한계](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/RESULTS_ko.md)
+- [추가 실험: 다단계 해상도·별 주변 ROI 비교](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/PYRAMID_RESULTS_ko.md)
+- [현재 MF 우선 정책과 RAW/전처리 비교](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/MF_PRIMARY_RESULTS_ko.md)
+- [동기 예외를 유지한 실행 구조](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/MF_PRIMARY_FLOW_ko.md)
+- [별도 실험: 항상 병렬 전처리 기준점과 RAW 변화량](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/ANCHOR_RESULTS_ko.md)
 
 마운트 미연결 상태이므로 현재 테스트 설정의 `mount_control`과
 `indi_tracking_guide_enabled`는 껐다. 운영 설정은 변경하지 않았다.
@@ -22,7 +26,7 @@
 ```bash
 cd /home/pifinder/PiFinder_test
 bash scripts/ensure_tetra3_link.sh .
-make -C /home/pifinder/mf_detect_star_test -j2
+bash scripts/setup_mf_detect_star.sh
 PYTHONPATH=python python3 python/scripts/replay_star_preprocess_ab.py \
   /home/pifinder/PiFinder_test_data/corpora/20260915_fixed_lights \
   --lens manual --manual-focal 10.3889 \
