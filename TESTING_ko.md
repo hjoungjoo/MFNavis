@@ -53,6 +53,11 @@ PYTHONPATH=python python3 python/scripts/replay_star_preprocess_ab.py \
 직접 호출 비교는 `MF_DETECT_TRANSPORT=ctypes`, `.so` override는
 `MF_DETECT_LIBRARY`다. 프로세스 오류에 직접 호출로 자동 전환하지 않는다.
 동일 RAW/전처리 A/B는 `python/scripts/compare_detector_transport.py`를 사용한다.
+전처리 실행 위치와 캐시 개선 비교는
+`python/scripts/benchmark_preprocess_placement.py`를 사용한다.
+[실측 계획](docs/test_cedar_free_20260915/PREPROCESS_PLACEMENT_PLAN_ko.md)과
+[결과·재현 절차](docs/test_cedar_free_20260915/PREPROCESS_PLACEMENT_RESULTS_ko.md)를
+참조한다. 통합 프로세스는 성능 비교용이며 서비스 선택 모드가 아니다.
 원본 영상·캐시는
 Git에 추가하지 않으며 공유할 집계 결과와 재현 절차만 문서화한다.
 
