@@ -18,6 +18,7 @@
 - [MF만 판매용 제품 사용 승인: 정책과 미해결 사항](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/MF_COMMERCIAL_POLICY_ko.md)
 - [원본 PiFinder의 Cedar 상용 허락·별도 서버 구조 확인](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/UPSTREAM_LICENSE_DISTRIBUTION_ko.md)
 - [MF 독립 프로세스·공유 메모리 적용 및 실측 결과](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/PROCESS_RESULTS_ko.md)
+- [MF 내부 전처리 추가의 라이선스·출처 검토](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/PREPROCESS_LICENSE_REVIEW_ko.md)
 - [작업 전 계획](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/PLAN_ko.md)
 - [1단계 결과](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/STAGE1_ko.md)
 - [최종 비교 결과와 한계](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/RESULTS_ko.md)
