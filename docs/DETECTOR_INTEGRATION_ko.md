@@ -57,3 +57,12 @@ PYTHONPATH=python python3 python/mf_detect_star/integrations/pifinder/scripts/co
 교대한다. 전처리 생성 시간을 제외한 검출+솔빙 지연을 측정한다. 상세 좌표와
 영상은 로컬에 두고 집계만 공유한다. Tetra3는 두 검출기가 공통으로 사용하는
 PiFinder 소스이며, 이 최적화는 MF native 검출기 자체의 변경이 아니다.
+
+## 달·도심 조명 노출 실측
+
+[중앙 하단 달 노출 비교 결과](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/MOON_LOWER_EXPOSURE_RESULTS_ko.md)
+는 정본 MF 저장소에서 관리한다. 달이 보이던 336장과 이후 별도 40장을 기록했다.
+RAW MF2/전체 영역 우선 탐색과 MF4p 전처리의 비교는 수동 하늘 마스크를 사용한
+재생 실험이다. 운영 검색 순서·기본 프로파일·서비스·부팅 경로는 유지했으며,
+수동 노출 실험 후 원래 `auto_star`와 gain `profile`로 복원했다.
+원본 영상·관측 좌표·장비 설정은 로컬 보관하고 도구·문서·집계만 공유한다.
