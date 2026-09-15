@@ -29,3 +29,6 @@ override로 허용한다. submodule이 없으면 먼저 setup을 실행해야 �
 Cedar의 native 라이선스 조건(5년 MIT 전환)과 기존 PiFinder 통합 코드의 GPL을
 구분한다. PiFinder 카메라/solver 스케줄/서비스 orchestration은 본 저장소에서
 계속 관리한다. 이번 변경은 파일 위치와 참조 경로의 통합이며 검출 정책 변경이 아니다.
+
+[라이선스 적용·통합 검증 완료 기록](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/CONSOLIDATION_RESULTS_ko.md)
+은 정본 저장소에서 관리한다.
