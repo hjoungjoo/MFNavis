@@ -192,6 +192,8 @@ def request_capture(action, options=None, *, runtime=None):
 
 
 def _environment(cfg, source_directory=None):
+    from PiFinder.runtime_provenance import detector_provenance
+
     keys = set(getattr(cfg, "_default_config_dict", {})) | set(
         getattr(cfg, "_config_dict", {})
     )
@@ -213,6 +215,10 @@ def _environment(cfg, source_directory=None):
         "mf_star_only_preprocess.py",
         "solve_acceptance.py",
         "preprocess_bias.py",
+        "latest_frame_worker.py",
+        "mf_detect_process.py",
+        "runtime_provenance.py",
+        "tetra3/tetra3/tetra3.py",
         "auto_exposure_framewise.py",
         "camera_pi.py",
         "camera_interface.py",
@@ -220,10 +226,13 @@ def _environment(cfg, source_directory=None):
     ):
         path = Path(__file__).parent / name
         content = path.read_bytes()
-        hashes[name] = hashlib.sha256(content).hexdigest()
+        archive_name = name.replace("/", "__")
+        hashes[archive_name] = hashlib.sha256(content).hexdigest()
         if source_directory is not None:
             source_directory.mkdir(parents=True, exist_ok=True)
-            (source_directory / name).write_bytes(content)
+            destination = source_directory / archive_name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(content)
     try:
         revision = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
@@ -250,6 +259,7 @@ def _environment(cfg, source_directory=None):
             )
         },
         "git_head": revision,
+        "detector_runtime": detector_provenance(),
         "source_sha256": hashes,
         "python": platform.python_version(),
         "platform": platform.platform(),

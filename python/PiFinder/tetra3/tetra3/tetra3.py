@@ -121,6 +121,8 @@ import math
 import itertools
 import os
 from time import perf_counter as precision_timestamp
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from numbers import Number
 from collections import OrderedDict
@@ -140,6 +142,31 @@ from PIL import Image, ImageDraw
 # Local imports.
 from tetra3.breadth_first_combinations import breadth_first_combinations
 from tetra3.fov_util import fibonacci_sphere_lattice, num_fields_for_sky, separation_for_density
+
+# A context-local deadline can span several sequential solve calls without
+# leaking into background preprocessing threads or subsequent frames.
+_search_deadline = ContextVar("tetra3_search_deadline", default=None)
+
+
+@contextmanager
+def search_budget(milliseconds):
+    """Share a monotonic wall-time budget across a cascade; nested budgets tighten it."""
+    milliseconds = float(milliseconds)
+    if not math.isfinite(milliseconds) or milliseconds < 0:
+        raise ValueError("search budget must be finite and nonnegative")
+    deadline = precision_timestamp() + milliseconds / 1000.0
+    parent = _search_deadline.get()
+    token = _search_deadline.set(min(parent, deadline) if parent is not None else deadline)
+    try:
+        yield
+    finally:
+        _search_deadline.reset(token)
+
+
+def search_budget_expired():
+    deadline = _search_deadline.get()
+    return deadline is not None and precision_timestamp() >= deadline
+
 
 # Status codes returned by solve_from_image() and solve_from_centroids()
 MATCH_FOUND = 1
@@ -1817,20 +1844,23 @@ class Tetra3():
         # Try all `p_size` star combinations chosen from the image centroids, brightest first.
         self._logger.debug('Checking up to %d image patterns from %d pattern centroids.' %
                            (math.comb(num_pattern_centroids, p_size), num_pattern_centroids))
+        deadline = _search_deadline.get()
+        if solve_timeout is not None:
+            local_deadline = t0_solve + solve_timeout
+            deadline = min(deadline, local_deadline) if deadline is not None else local_deadline
+
+        def stop_status():
+            if self._cancelled:
+                self._cancelled = False
+                return CANCELLED
+            if deadline is not None and precision_timestamp() >= deadline:
+                return TIMEOUT
+            return NO_MATCH
+
         status = NO_MATCH
         for image_pattern_indices in breadth_first_combinations(pattern_centroids_inds, p_size):
-            # Check if timeout has elapsed, then we must give up
-            if solve_timeout is not None:
-                elapsed_time = precision_timestamp() - t0_solve
-                if elapsed_time > solve_timeout:
-                    self._logger.debug('Timeout reached after: %.2f sec.' % elapsed_time)
-                    status = TIMEOUT
-                    break
-            if self._cancelled:
-                elapsed_time = precision_timestamp() - t0_solve
-                self._logger.debug('Cancelled after: %.3f sec.' % elapsed_time)
-                status = CANCELLED
-                self._cancelled = False
+            status = stop_status()
+            if status != NO_MATCH:
                 break
 
             # Set largest distance to None, this is cached to avoid recalculating in future FOV estimation.
@@ -1895,6 +1925,9 @@ class Tetra3():
             # Iterate over pattern hash values, starting from 'image_pattern_hash' and working
             # our way outward.
             for hash_index in hash_indices:
+                status = stop_status()
+                if status != NO_MATCH:
+                    break
                 search_space_explored += 1
 
                 (catalog_pattern_edges, all_catalog_pattern_vectors) = \
@@ -1914,6 +1947,9 @@ class Tetra3():
 
                 # Go through each matching pattern and calculate further
                 for index in valid_patterns:
+                    status = stop_status()
+                    if status != NO_MATCH:
+                        break
                     catalog_eval_count += 1
                     # Estimate coarse distortion from the pattern
                     if distortion is None or isinstance(distortion, Number):
@@ -2253,7 +2289,14 @@ class Tetra3():
                     self._logger.debug(
                         'Looked up/evaluated %s/%s catalog patterns' %
                         (catalog_lookup_count, catalog_eval_count))
+                    status = stop_status()
+                    if status != NO_MATCH:
+                        break
                     return solution_dict
+                if status != NO_MATCH:
+                    break
+            if status != NO_MATCH:
+                break
         # Close of image_pattern_indices loop
 
         # Failed to solve (or timeout or cancel), get time and return None

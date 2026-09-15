@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -40,16 +41,30 @@ def repository(tmp_path):
     (repo / "scripts").mkdir()
     shutil.copy(ROOT / "scripts/check_cedar_free.py", repo / "scripts")
     shutil.copy(ROOT / "pifinder_update.sh", repo)
+    shutil.copy(ROOT / "scripts/transactional_update.py", repo / "scripts")
+    (repo / "scripts/prepare_code_update.sh").write_text(
+        "set -e\ngit submodule update --init\nmkdir -p python/mf_detect_star/build\n"
+        "cp seed python/mf_detect_star/build/artifact\n"
+    )
+    (repo / "scripts/ensure_tetra3_link.sh").write_text(":\n")
     (repo / "pifinder_paths.sh").write_text(":\n")
     (repo / "pifinder_post_update.sh").write_text("echo called > post-called\n")
-    (repo / "python/mf_detect_star").mkdir(parents=True)
+    native = tmp_path / "native"
+    native.mkdir()
+    git(native, "init", "-b", "main")
+    git(native, "config", "user.email", "test@example.invalid")
+    git(native, "config", "user.name", "Test")
+    (native / "source").write_text("native")
+    (native / ".gitignore").write_text("build/\n")
+    git(native, "add", ".")
+    git(native, "commit", "-m", "native source")
     git(
         repo,
-        "update-index",
-        "--add",
-        "--cacheinfo",
-        "160000",
-        git(repo, "rev-parse", "HEAD"),
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(native),
         "python/mf_detect_star",
     )
     git(repo, "add", ".")
@@ -116,12 +131,18 @@ def update_clone(repository, tmp_path):
     subprocess.run(
         ["git", "clone", str(repository), str(clone)], check=True, capture_output=True
     )
+    git(clone, "-c", "protocol.file.allow=always", "submodule", "update", "--init")
+    (clone / "python/mf_detect_star/build").mkdir()
+    (clone / "python/mf_detect_star/build/artifact").write_text("original build")
     return clone
 
 
 def run_update(repo):
     return subprocess.run(
-        ["bash", str(repo / "pifinder_update.sh")], capture_output=True, text=True
+        ["bash", str(repo / "pifinder_update.sh")],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "GIT_ALLOW_PROTOCOL": "file"},
     )
 
 
@@ -152,3 +173,77 @@ def test_update_rejects_unsafe_checkout(update_clone, state):
         git(update_clone, "checkout", "--detach")
     assert run_update(update_clone).returncode != 0
     assert not (update_clone / "post-called").exists()
+
+
+@pytest.mark.parametrize("phase", ["prepare", "activate"])
+def test_failed_update_restores_source_and_native_build(
+    repository, update_clone, phase
+):
+    before = git(update_clone, "rev-parse", "HEAD")
+    native_before = git(update_clone / "python/mf_detect_star", "rev-parse", "HEAD")
+    native = repository / "python/mf_detect_star"
+    origin = Path(git(native, "remote", "get-url", "origin"))
+    (origin / "source").write_text("next native source")
+    commit(origin)
+    git(native, "fetch", "origin")
+    git(native, "checkout", "--detach", git(origin, "rev-parse", "HEAD"))
+    (repository / "seed").write_text("candidate")
+    hook = (
+        "scripts/prepare_code_update.sh"
+        if phase == "prepare"
+        else "pifinder_post_update.sh"
+    )
+    with (repository / hook).open("a") as stream:
+        stream.write("exit 17\n")
+    commit(repository)
+    result = run_update(update_clone)
+    assert result.returncode != 0
+    assert git(update_clone, "rev-parse", "HEAD") == before
+    assert (
+        git(update_clone / "python/mf_detect_star", "rev-parse", "HEAD")
+        == native_before
+    )
+    assert (
+        update_clone / "python/mf_detect_star/build/artifact"
+    ).read_text() == "original build"
+    assert not (update_clone / ".git/update-transaction").exists()
+
+
+def test_dependency_change_is_rejected_before_mutation(repository, update_clone):
+    before = git(update_clone, "rev-parse", "HEAD")
+    (repository / "python/requirements.txt").write_text("new-dependency==1\n")
+    commit(repository)
+    result = run_update(update_clone)
+    assert result.returncode != 0
+    assert "separate staged installation" in result.stderr
+    assert git(update_clone, "rev-parse", "HEAD") == before
+    assert not (update_clone / "post-called").exists()
+
+
+def test_interrupted_activation_keeps_journal_and_can_be_recovered(
+    repository, update_clone
+):
+    before = git(update_clone, "rev-parse", "HEAD")
+    (repository / "seed").write_text("candidate")
+    (repository / "pifinder_post_update.sh").write_text('kill -KILL "$PPID"\n')
+    commit(repository)
+    assert run_update(update_clone).returncode != 0
+    assert (update_clone / ".git/update-transaction/journal.json").exists()
+    assert git(update_clone, "rev-parse", "HEAD") != before
+    assert run_update(update_clone).returncode != 0
+    result = subprocess.run(
+        [
+            "python3",
+            str(update_clone / "scripts/transactional_update.py"),
+            str(update_clone),
+            "--recover",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert git(update_clone, "rev-parse", "HEAD") == before
+    assert (
+        update_clone / "python/mf_detect_star/build/artifact"
+    ).read_text() == "original build"
+    assert not (update_clone / ".git/update-transaction").exists()

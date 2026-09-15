@@ -59,3 +59,68 @@ def test_reference_mode_is_selected_at_instance_creation(monkeypatch):
     assert not Tetra3(load_database=None)._search_optimized
     monkeypatch.delenv("TETRA3_SEARCH_OPTIMIZED")
     assert Tetra3(load_database=None)._search_optimized
+
+
+def test_search_budget_is_nested_and_restored_after_exception(monkeypatch):
+    from tetra3 import tetra3 as core
+
+    now = [10.0]
+    monkeypatch.setattr(core, "precision_timestamp", lambda: now[0])
+    assert not core.search_budget_expired()
+    with core.search_budget(1000):
+        with pytest.raises(ValueError), core.search_budget(5000):
+            now[0] = 11.1
+            assert core.search_budget_expired()
+            raise ValueError("test cleanup")
+        assert core.search_budget_expired()
+    assert not core.search_budget_expired()
+
+
+def test_cascade_stops_at_shared_deadline_and_recovery_gets_fresh_budget(monkeypatch):
+    from tetra3 import tetra3 as core
+    from PiFinder.solver import _solve_center_first_remainder
+
+    now = [10.0]
+    monkeypatch.setattr(core, "precision_timestamp", lambda: now[0])
+    called = []
+
+    def slow():
+        called.append("raw")
+        now[0] += 2
+        return {}
+
+    stages = [("first", slow), ("late", lambda: called.append("late"))]
+    result, path = _solve_center_first_remainder(stages, budget_ms=1000)
+    assert not result and not path
+    assert called == ["raw"]
+    recovered = {"RA": 1, "Dec": 2}
+    assert (
+        _solve_center_first_remainder([("preprocessed", lambda: recovered)])[0]
+        == recovered
+    )
+
+
+@pytest.mark.parametrize("cause", ["timeout", "cancel"])
+def test_inner_hash_search_checks_stop_before_next_lookup(monkeypatch, cause):
+    from tetra3 import tetra3 as core
+
+    solver = core.Tetra3()
+    now = [10.0]
+    monkeypatch.setattr(core, "precision_timestamp", lambda: now[0])
+    calls = []
+
+    def lookup(*args):
+        calls.append(args[0])
+        if cause == "timeout":
+            now[0] += 1
+        else:
+            solver.cancel_solve()
+        return None, None
+
+    monkeypatch.setattr(solver, "_get_all_patterns_for_index", lookup)
+    centroids = np.random.default_rng(37).uniform(10, 500, (30, 2))
+    result = solver.solve_from_centroids(centroids, (512, 512), solve_timeout=50)
+    assert len(calls) == 1
+    assert result["RA"] is None
+    assert result["status"] == (core.TIMEOUT if cause == "timeout" else core.CANCELLED)
+    assert not solver._cancelled

@@ -2,6 +2,12 @@ PIFINDER_REPO_DIR="${PIFINDER_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" &&
 source "${PIFINDER_REPO_DIR}/pifinder_paths.sh"
 
 python3 "${PIFINDER_REPO_DIR}/scripts/check_cedar_free.py" --repo "${PIFINDER_REPO_DIR}"
+# The transactional updater already prepared the pinned native build. Its
+# activation must never mutate system packages or run OS migrations.
+if [[ "${PIFINDER_CODE_UPDATE:-0}" == "1" ]]; then
+    echo "Prepared code update activated; system installation unchanged."
+    return 0 2>/dev/null || exit 0
+fi
 git submodule update --init --recursive
 bash "${PIFINDER_REPO_DIR}/scripts/ensure_tetra3_link.sh" "${PIFINDER_REPO_DIR}"
 bash "${PIFINDER_REPO_DIR}/scripts/setup_mf_detect_star.sh"

@@ -55,11 +55,28 @@ def angular_separation_deg(
 ) -> float:
     """Great-circle separation with stable behaviour at RA wrap/poles."""
 
+    if not all(math.isfinite(v) for v in (ra1_deg, dec1_deg, ra2_deg, dec2_deg)):
+        return math.inf
+    if not (-90 <= dec1_deg <= 90 and -90 <= dec2_deg <= 90):
+        return math.inf
     ra1, dec1, ra2, dec2 = map(math.radians, (ra1_deg, dec1_deg, ra2_deg, dec2_deg))
     cos_sep = math.sin(dec1) * math.sin(dec2) + math.cos(dec1) * math.cos(
         dec2
     ) * math.cos(ra1 - ra2)
     return math.degrees(math.acos(max(-1.0, min(1.0, cos_sep))))
+
+
+def solution_coordinates(
+    solution: Mapping[str, Any], ra_key: str = "RA", dec_key: str = "Dec"
+) -> tuple[float, float] | None:
+    """Validate a complete coordinate pair before normalization or calibration."""
+    try:
+        ra, dec = float(solution[ra_key]), float(solution[dec_key])
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(ra) or not math.isfinite(dec) or not -90 <= dec <= 90:
+        return None
+    return ra % 360.0, dec
 
 
 def solution_quality_decision(
@@ -76,6 +93,11 @@ def solution_quality_decision(
 
     if not solution or solution.get("RA") is None:
         return SolveAcceptanceDecision(False, "no_solution")
+    if solution_coordinates(solution) is None:
+        return SolveAcceptanceDecision(False, "invalid_coordinates")
+    if any(solution.get(key) is not None for key in ("RA_target", "Dec_target")):
+        if solution_coordinates(solution, "RA_target", "Dec_target") is None:
+            return SolveAcceptanceDecision(False, "invalid_target_coordinates")
     native_fullframe_path = solve_path in {
         "sep_center",
         "sep_full",
@@ -88,7 +110,7 @@ def solution_quality_decision(
         matches = int(cast(Any, solution.get("Matches") or 0))
         rmse = float(cast(Any, solution.get("RMSE")))
         probability = float(cast(Any, solution.get("Prob")))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return SolveAcceptanceDecision(False, "missing_quality_metrics")
     if not all(math.isfinite(value) for value in (rmse, probability)):
         return SolveAcceptanceDecision(False, "nonfinite_quality_metrics")
@@ -125,14 +147,7 @@ class SolveContinuityGate:
 
     @staticmethod
     def _coordinates(solution: Mapping[str, object]) -> tuple[float, float] | None:
-        try:
-            ra = float(cast(Any, solution["RA"]))
-            dec = float(cast(Any, solution["Dec"]))
-        except (KeyError, TypeError, ValueError):
-            return None
-        if not math.isfinite(ra) or not math.isfinite(dec) or not -90.0 <= dec <= 90.0:
-            return None
-        return ra % 360.0, dec
+        return solution_coordinates(solution)
 
     def evaluate(
         self,

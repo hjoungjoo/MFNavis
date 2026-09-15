@@ -2,6 +2,8 @@ import pytest
 
 from PiFinder.preprocess_bias import PreprocessBiasTracker
 
+pytestmark = pytest.mark.unit
+
 
 def _solution(ra, dec, target_ra=None, target_dec=None):
     result = {"RA": ra, "Dec": dec, "Matches": 12}
@@ -70,3 +72,57 @@ def test_reset_discards_learned_bias():
 
     assert not tracker.ready
     assert tracker.apply(_solution(10.0, 20.0))["RA"] == 10.0
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("RA", float("nan")),
+        ("RA", float("inf")),
+        ("Dec", 91),
+        ("Dec_target", float("nan")),
+        ("RA_target", float("inf")),
+    ],
+)
+def test_invalid_sample_never_poison_bias(key, value):
+    tracker = PreprocessBiasTracker(required_samples=1)
+    raw = _solution(10, 20, 11, 21)
+    trusted = _solution(10.01, 20.01, 11.01, 21.01)
+    assert tracker.update(raw, trusted)
+    before = tracker.apply(raw)
+    trusted[key] = value
+    assert not tracker.update(raw, trusted)
+    assert tracker.apply(raw) == before
+
+
+def test_bias_expires_and_requires_new_stable_samples():
+    now = [100.0]
+    tracker = PreprocessBiasTracker(clock=lambda: now[0], max_age_s=30)
+    raw, trusted = _solution(10, 20), _solution(10.01, 20.01)
+    assert tracker.update(raw, trusted)
+    assert tracker.update(raw, trusted)
+    assert tracker.ready
+    now[0] += 31
+    assert tracker.apply(raw) == raw
+    assert tracker.status().accepted_samples == 0
+    assert tracker.update(raw, trusted)
+    assert not tracker.ready
+    assert tracker.update(raw, trusted)
+    assert tracker.ready
+
+
+def test_correction_cannot_cross_declination_pole():
+    tracker = PreprocessBiasTracker(required_samples=1)
+    assert tracker.update(_solution(10, 89.9), _solution(10, 89.99))
+    raw = _solution(10, 89.99)
+    assert tracker.apply(raw) == raw
+
+
+def test_camera_only_sample_does_not_refresh_old_target_bias():
+    tracker = PreprocessBiasTracker(required_samples=1)
+    assert tracker.update(
+        _solution(10, 20, 11, 21), _solution(10.01, 20.01, 11.01, 21.01)
+    )
+    assert tracker.update(_solution(10, 20), _solution(10.01, 20.01))
+    assert tracker.status().target_ra_deg is None
+    assert tracker.apply(_solution(10, 20, 11, 21))["RA_target"] == 11
