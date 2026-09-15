@@ -27,7 +27,8 @@ MF가 사용하는 GPL Tetra3 코어와 기하 호환성 이름은 Cedar Detect 
 
 - 비활성 Cedar systemd unit 삭제 후 `LoadState=not-found` 확인.
 - 캐시/배포 백업의 서버 2개와 클라이언트·protobuf·바이트코드 등 로컬 파일
-  27개(5,514,978 bytes) 삭제. 이 개수는 Git으로 제거한 비교 도구와 시스템 unit을 제외한다.
+  27개(5,514,978 bytes)와 후속 검색에서 발견한 MyPy 타입 캐시 12개
+  (101,842 bytes) 삭제. Git으로 제거한 비교 도구와 시스템 unit은 별도다.
 - 예전 설치 스크립트 2개와 Cedar 복원을 포함한 배포 스크립트 1개는 실행 종료
   가드가 있는 `.retired.txt` 기록으로 전환했다.
 - MF native 6/6, 배포/기하/Tetra3 관련 pytest 53개 통과. NumPy 기존 경고 4개.
@@ -37,6 +38,11 @@ MF가 사용하는 GPL Tetra3 코어와 기하 호환성 이름은 Cedar Detect 
 - MF 라이선스 해시와 canonical integration 23파일 레이아웃 검사 통과.
 - PiFinder PID 714, 재시작 0회, enabled/active 유지. 삭제 후 새 CAM 솔빙 확인.
   MF 실행 바이너리는 변경하지 않아 서비스 재시작이 필요하지 않다.
+- 최종 장비 검색에서 실제 Cedar 잔여 구성/실행 프로세스 0개, 50551 수신 없음.
+  MF worker PID 1345의 실행 해시와 디스크 해시 일치. 일반 사용자 `/proc`
+  접근 제한으로 첫 검사에서 worker를 읽지 못해 관리자 읽기 권한으로 재검증했다.
+- 최종 15개 API 표본에서 서로 다른 새 솔빙 결과 9개 확인. RMSE 8.50–14.49초각,
+  매칭 별 12–15개. 주기적 상태 표본이며 전체 프레임 성공률이나 성능 비교가 아니다.
 
 상세 삭제 목록/해시와 서비스·실측 상태는 로컬
 `PiFinder_test_data/work/cedar_removal/`에 보관한다. 테스트가 생성한 Cedar 이름의
