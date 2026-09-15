@@ -2612,11 +2612,10 @@ def solver(
                             )
                             if sep_shadow is not None:
                                 sep_shadow.clear_matched_overlay()
-                                if sep_fallback_used and sep_run is not None:
-                                    sep_shadow.record_fallback_result(
-                                        False,
-                                        len(sep_run.detection.centroids),
-                                    )
+                                # The pattern solved successfully. A publication
+                                # hold needs the next independent RAW frame, so
+                                # it must not arm the failed-pattern backoff.
+                                # Scheduling handles repeated publication holds.
                             solution = {}
                             sep_fallback_used = False
 

@@ -277,6 +277,7 @@ class SepShadowRunner:
         )
 
     def record_fallback_result(self, solved: bool, sep_count: int) -> None:
+        """Record an attempted pattern solve, never a publication-only hold."""
         if solved:
             self._fallback_fail_streak = 0
             self._last_failed_sep_count = None
