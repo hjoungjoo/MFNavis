@@ -41,6 +41,10 @@ def detector_provenance():
         ).strip()
     except (OSError, subprocess.SubprocessError):
         revision = None
+    try:
+        source_version = (root / "VERSION").read_text().strip()
+    except OSError:
+        source_version = None
     versions = {}
     for name in ("numpy", "scipy", "sep", "Pillow", "tetra3"):
         try:
@@ -67,6 +71,8 @@ def detector_provenance():
     library = getattr(star_detect, "_library", None)
     return {
         "mf_git_head": revision,
+        "mf_source_version": source_version,
+        "mf_version_file": file_identity(root / "VERSION"),
         "mf_source_root": str(root),
         "configured_server": file_identity(mf_detect_process.native_server_path()),
         "configured_library": file_identity(star_detect.native_library_path()),
