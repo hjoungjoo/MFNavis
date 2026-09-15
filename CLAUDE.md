@@ -114,7 +114,7 @@ When a `CONTEXT.md` defines a term, prefer that term over synonyms in code comme
 
 - **Main Process** (`main.py`) - UI event loop, menu system, user interaction
 - **Camera Process** - Image capture from various camera types (Pi, ASI, debug)
-- **Solver Process** - Plate solving using Tetra3/Cedar libraries for star pattern recognition
+- **Solver Process** - Plate solving using MF star detection and the Tetra3 solver
 - **GPS Process** - Location/time via GPSD or UBlox direct interface
 - **IMU Process** - Motion tracking with BNO055 sensor
 - **Integrator Process** - Combines solver + IMU data for real-time positioning

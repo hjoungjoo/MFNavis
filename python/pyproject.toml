@@ -134,7 +134,6 @@ module = [
     'PiFinder.tetra3.*',
     'quaternion',
     'tetra3.*',
-    'grpc',
     'ceder_detect_pb2',
     'RPi.*',
     'picamera2',

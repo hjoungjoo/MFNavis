@@ -13,9 +13,8 @@ approximate field of view of your camera.
 
 tetra3 also includes a versatile function to find spot centroids and statistics.
 Alternately, you can also use another star detection/centroiding library in conjunction
-with tetra3 plate solving. Cedar Detect (https://github.com/smroid/cedar-detect) is a high
-performance solution for this; see cedar_detect_client.py for a way to use tetra3 with
-Cedar Detect.
+with tetra3 plate solving. MF_PiFinder uses mf_detect_star to supply centroids
+to the Tetra3 solver through PiFinder.solver.
 
 Included in the package:
 
