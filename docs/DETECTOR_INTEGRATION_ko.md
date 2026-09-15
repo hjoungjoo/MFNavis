@@ -66,3 +66,14 @@ RAW MF2/전체 영역 우선 탐색과 MF4p 전처리의 비교는 수동 하늘
 재생 실험이다. 운영 검색 순서·기본 프로파일·서비스·부팅 경로는 유지했으며,
 수동 노출 실험 후 원래 `auto_star`와 gain `profile`로 복원했다.
 원본 영상·관측 좌표·장비 설정은 로컬 보관하고 도구·문서·집계만 공유한다.
+
+## 토성 GoTo 후 추적 실측
+
+[토성 추적 결과](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/SATURN_GOTO_RESULTS_ko.md)
+는 정본 MF 저장소에서 관리한다. RAW 240장과 별도 추적 상태 180초를 기록하고,
+32장에 RAW/전처리 MF4p·MF2를 비교했다. 실제 추적은 기존 Cedar 운영 서비스,
+MF는 오프라인 재생이므로 MF로 GoTo 제어를 검증한 결과는 아니다.
+RAW 기록 출력은 복원했고 노출·gain·부팅·운영 경로는 유지했다.
+수집 시 `capture_detector_corpus.py --conditions`에 실제 환경을 적을 수 있다.
+참조 갱신 후 통합 배치 검사 `test_detector_integration_layout.py` 3개와
+수집 도구 Ruff lint/format 검사를 통과했다.
