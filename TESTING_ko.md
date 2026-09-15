@@ -10,6 +10,7 @@
 - [추가 실험: 다단계 해상도·별 주변 ROI 비교](docs/test_cedar_free_20260915/PYRAMID_RESULTS_ko.md)
 - [현재 MF 우선 정책과 RAW/전처리 비교](docs/test_cedar_free_20260915/MF_PRIMARY_RESULTS_ko.md)
 - [동기 예외를 유지한 실행 구조](docs/test_cedar_free_20260915/MF_PRIMARY_FLOW_ko.md)
+- [별도 실험: 항상 병렬 전처리 기준점과 RAW 변화량](docs/test_cedar_free_20260915/ANCHOR_RESULTS_ko.md)
 
 마운트 미연결 상태이므로 현재 테스트 설정의 `mount_control`과
 `indi_tracking_guide_enabled`는 껐다. 운영 설정은 변경하지 않았다.
