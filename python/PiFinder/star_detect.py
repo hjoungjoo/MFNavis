@@ -1,6 +1,8 @@
 """MF-first detection, with SEP only when native extraction is unavailable.
 
-The optional native library is loaded only with PIFINDER_DETECTOR=mf.
+The native library is loaded by default (PIFINDER_DETECTOR=mf).
+Default search: full-frame 4x binning followed by 2x candidate ROIs.
+MF_DETECT_SEP_FALLBACK=0 allows strict native-only benchmark runs.
 Both backends return full sensor (y, x). SEP ranks by flux; native defaults
 to detection response (MF_DETECT_RANKING=flux restores flux ranking). Native morphology
 is followed by PiFinder's geometric/saturation gates. No sockets or camera
@@ -100,7 +102,7 @@ def _detect_native(raw_frame, **kwargs):
         if os.environ.get("MF_DETECT_REFINE", "0") == "1"
         else lib.mfds_detect_u16
     )
-    pyramid = os.environ.get("MF_DETECT_PYRAMID", "0")
+    pyramid = os.environ.get("MF_DETECT_PYRAMID", "2")
     if pyramid == "2":
         detect = lib.mfds_detect_u16_pyramid
     elif pyramid == "1":
@@ -113,7 +115,7 @@ def _detect_native(raw_frame, **kwargs):
         arr.shape[0],
         arr.shape[1],
         int(kwargs.get("saturation_level") or 65535),
-        int(os.environ.get("MF_DETECT_BINNING", "2")),
+        int(os.environ.get("MF_DETECT_BINNING", "4")),
         float(os.environ.get("MF_DETECT_SIGMA", "4.5")),
         output.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
         capacity,

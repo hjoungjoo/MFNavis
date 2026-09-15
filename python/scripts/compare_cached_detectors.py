@@ -22,6 +22,9 @@ def main():
     parser.add_argument("--modes", default="sep,mf2,mf1")
     parser.add_argument("--alternate", action="store_true")
     args = parser.parse_args()
+    # This historical benchmark compares pure detector variants. The MF-first
+    # RAW/preprocessed policy is measured by compare_raw_preprocessed_detectors.
+    os.environ["MF_DETECT_SEP_FALLBACK"] = "0"
     files = sorted(args.cache.glob("*.npy"))[args.start :]
     if args.limit:
         files = files[: args.limit]

@@ -20,6 +20,23 @@ from PiFinder.sep_detect import SepDetection
 from PiFinder.sep_shadow import SepRun, SepShadowRunner
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize("requested", [1, 3])
+def test_sync_runner_and_background_clone_keep_parallel_scales(requested):
+    runner = SepShadowRunner(
+        True, True, 4.0, 0.0, 980, preprocess_scale_workers=requested
+    )
+    clone = runner.preprocessing_clone()
+    try:
+        assert runner.preprocess_scale_workers >= 2
+        assert clone.preprocess_scale_workers == runner.preprocess_scale_workers
+        assert clone._star_only is not runner._star_only
+        assert clone._star_only._scale_executor is not runner._star_only._scale_executor
+    finally:
+        runner._star_only.close()
+        clone._star_only.close()
+
+
 class DummyShared:
     def __init__(self):
         self._overlay = None

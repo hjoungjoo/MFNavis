@@ -131,7 +131,7 @@ class SepShadowRunner:
         warm_pixel_map: Optional[np.ndarray] = None,
         base_fov_degrees: float = sfm.SOLVER_FOV_DEG,
         distortion_coefficients: Optional[dict[str, float]] = None,
-        preprocess_scale_workers: int = 1,
+        preprocess_scale_workers: int = 3,
     ):
         self.shadow_enabled = shadow_enabled
         self.fallback_enabled = fallback_enabled
@@ -155,7 +155,9 @@ class SepShadowRunner:
         self._last_failed_sep_count: Optional[int] = None
         # Overlay entry for the in-flight attempt (see publish_overlay)
         self._last_overlay: Optional[dict] = None
-        self.preprocess_scale_workers = max(1, min(4, int(preprocess_scale_workers)))
+        # Test branch contract: scale calculations remain parallel even when
+        # RAW failure/alignment requires waiting for this frame's result.
+        self.preprocess_scale_workers = max(2, min(4, int(preprocess_scale_workers)))
         self._star_only = MFStarOnlyAccumulator(
             MFStarOnlyConfig(parallel_scale_workers=self.preprocess_scale_workers)
         )
@@ -233,7 +235,7 @@ class SepShadowRunner:
                 base_fov_degrees=base_fov_degrees,
                 distortion_coefficients=active_coefficients(calibration),
                 preprocess_scale_workers=int(
-                    cfg.get_option("solver_preprocess_scale_workers", 1) or 1
+                    cfg.get_option("solver_preprocess_scale_workers", 3) or 3
                 ),
             )
         except Exception:

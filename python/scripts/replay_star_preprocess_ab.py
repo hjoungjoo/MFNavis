@@ -5,8 +5,9 @@ The two arms consume the same lossless frames.  The preprocessed arm uses a
 temporal window ending at the current frame, matching the live solver; frame 1
 is therefore a warm-up frame and is not counted as a preprocessed attempt.
 
-This test-branch script uses only SEP. Historical Cedar CSV columns are zero
-for comparison with saved baseline reports; no Cedar imports or sockets exist.
+The test-branch detector defaults to MF first, SEP on extraction failure only.
+PIFINDER_DETECTOR=sep reproduces the SEP arm of historical reports. Historical
+Cedar CSV columns are zero; no Cedar imports or sockets exist.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ import tetra3
 from PiFinder import star_detect
 from PiFinder import sep_detect, solver_frame_map as sfm, utils
 from PiFinder.config import Config
-from PiFinder.mf_star_only_preprocess import MFStarOnlyAccumulator
+from PiFinder.mf_star_only_preprocess import MFStarOnlyAccumulator, MFStarOnlyConfig
 from PiFinder.mf_manual_lens import calibration_lens_key
 from PiFinder.mf_cloud_gate import wide_cloud_gate_enabled
 from PiFinder.mf_wide_calibration import CalibrationProfileStore
@@ -55,6 +56,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--display-rotation", type=int, default=90)
     parser.add_argument("--cedar-address", default="127.0.0.1:50551")
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--preprocess-workers", type=int, choices=(2, 3, 4), default=3)
     parser.add_argument("--cache-dir", type=Path)
     parser.add_argument("--output", type=Path, help="CSV output path")
     return parser.parse_args()
@@ -291,7 +293,9 @@ def main() -> int:
 
     t3 = tetra3.Tetra3(str(utils.tetra3_dir / "data" / "default_database.npz"))
     cedar_client = DisabledCedar()
-    accumulator = MFStarOnlyAccumulator()
+    accumulator = MFStarOnlyAccumulator(
+        MFStarOnlyConfig(parallel_scale_workers=args.preprocess_workers)
+    )
     raw_continuity = SolveContinuityGate()
     pre_continuity = SolveContinuityGate()
     rows: list[dict[str, Any]] = []

@@ -14,6 +14,8 @@ pytestmark = pytest.mark.unit
 @pytest.fixture(autouse=True)
 def strict_native_measurements(monkeypatch):
     monkeypatch.setenv("MF_DETECT_SEP_FALLBACK", "0")
+    monkeypatch.setenv("MF_DETECT_BINNING", "2")
+    monkeypatch.setenv("MF_DETECT_PYRAMID", "0")
 
 
 def star_field():

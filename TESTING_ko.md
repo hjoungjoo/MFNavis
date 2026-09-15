@@ -8,6 +8,8 @@
 - [1단계 결과](docs/test_cedar_free_20260915/STAGE1_ko.md)
 - [최종 비교 결과와 한계](docs/test_cedar_free_20260915/RESULTS_ko.md)
 - [추가 실험: 다단계 해상도·별 주변 ROI 비교](docs/test_cedar_free_20260915/PYRAMID_RESULTS_ko.md)
+- [현재 MF 우선 정책과 RAW/전처리 비교](docs/test_cedar_free_20260915/MF_PRIMARY_RESULTS_ko.md)
+- [동기 예외를 유지한 실행 구조](docs/test_cedar_free_20260915/MF_PRIMARY_FLOW_ko.md)
 
 마운트 미연결 상태이므로 현재 테스트 설정의 `mount_control`과
 `indi_tracking_guide_enabled`는 껐다. 운영 설정은 변경하지 않았다.
@@ -21,12 +23,17 @@ make -C /home/pifinder/mf_detect_star_test -j2
 PYTHONPATH=python python3 python/scripts/replay_star_preprocess_ab.py \
   /home/pifinder/PiFinder_test_data/corpora/20260915_fixed_lights \
   --lens manual --manual-focal 10.3889 \
-  --output /home/pifinder/PiFinder_test_data/results/sep_repeat.csv
+  --output /home/pifinder/PiFinder_test_data/results/mf_repeat.csv
 ```
 
-`PIFINDER_DETECTOR=sep`가 기본이다. `PIFINDER_DETECTOR=mf`로 자체 검출기를
-선택한다. MF는 response 순서/2×2 binning/최대 48개가 기본이고
-원본 재측정은 꺼져 있다. `.so`는 `MF_DETECT_LIBRARY`로 지정할 수 있다. 원본 영상·캐시는
+`PIFINDER_DETECTOR=mf`가 기본이다. RAW와 전처리 모두 전체4×4 축소 탐색 후
+후보 주변2×2 정밀화, response 순서/최대48개를 사용한다. 필터 후 후보5개
+미만 또는 native 실행 오류일 때만 SEP를 보조로 호출한다. 후보가 충분한
+솔빙 실패에서는 SEP를 재호출하지 않고 기존 전처리 복구 경로를 따른다.
+순수 MF 비교는 `MF_DETECT_SEP_FALLBACK=0`, 기존 전체1/2 방식은
+`MF_DETECT_BINNING=2 MF_DETECT_PYRAMID=0`으로 재현한다.
+`PIFINDER_DETECTOR=sep`는 별도 비교용이다. 원본 재측정은 꺼져 있다.
+`.so`는 `MF_DETECT_LIBRARY`로 지정할 수 있다. 원본 영상·캐시는
 Git에 추가하지 않으며 공유할 집계 결과와 재현 절차만 문서화한다.
 
 ## 서비스를 명시적으로 전환할 때
