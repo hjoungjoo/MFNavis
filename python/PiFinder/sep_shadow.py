@@ -1,23 +1,16 @@
 #!/usr/bin/python
 # -*- coding:utf-8 -*-
 """
-Shadow / fallback runner for the SEP full-frame detection path.
+Full-frame RAW and star-only preprocessing runner.
 
-Purpose: evaluate the SEP candidate (12-bit uncropped detection, see
-docs/mf_report/mf_auto_exposure_field_review_20260726_ko.md) against the
-production cedar-detect path in a single field session:
+Both image paths call star_detect.detect_stars: MFDS is primary, and SEP is
+used when MFDS is unavailable or has insufficient candidates. The historical
+SepShadowRunner name, sep_* solve paths and CSV columns remain compatible
+with recorded comparison datasets. They do not identify the active detector;
+use detection.backend and detector_backend diagnostics for that purpose.
 
-* **Shadow**: on every solve attempt, also run SEP on the uncropped raw
-  frame and append one CSV row comparing both detectors. Zero effect on
-  the production solve.
-* **Fallback** (opt-in on top of shadow data): when the production
-  solve fails and SEP found enough stars, attempt a real solve from the
-  SEP centroids in the rotated full frame -- the solution feeds the
-  normal pointing chain, so tracking works from it. Hybrid alignment:
-  an in-progress alignment also runs through this path when cedar
-  fails; the returned y/x_target is mapped back into rotated-512 space
-  (solver_frame_map.map_frame_pixel_to_target), so the normal alignment
-  chain consumes it unchanged.
+Native coordinates are mapped through solver_frame_map for tetra3 and back
+to the 512-space target pixel consumed by alignment and pointing.
 
 All entry points are defensive: any exception is logged and swallowed,
 so the experiment can never take down the production solver.
@@ -94,12 +87,13 @@ WARM_MAP_PATH = utils.data_dir / "sep_warm_pixels.npy"
 
 @dataclass
 class SepRun:
-    """One SEP pass over the freshest full-frame raw."""
+    """One MFDS/SEP detection over the freshest full-frame RAW."""
 
     detection: SepDetection
     frame_hw: tuple
     exposure_us: Optional[float]
     gain: Optional[float]
+    frame_id: Optional[int] = None
 
 
 @dataclass
@@ -356,6 +350,7 @@ class SepShadowRunner:
                 frame_hw=(frame.shape[0], frame.shape[1]),
                 exposure_us=entry.get("exposure_us"),
                 gain=entry.get("gain"),
+                frame_id=entry.get("frame_id"),
             )
         except Exception:
             logger.exception("SEP shadow detect failed")
@@ -382,7 +377,7 @@ class SepShadowRunner:
         fingerprint,
         frame_id: Optional[int] = None,
     ) -> Optional[PreprocessedRun]:
-        """Build a star-only frame and run SEP without changing coordinates.
+        """Build a star-only frame and detect stars in unchanged RAW coordinates.
 
         The first frame only warms the temporal accumulator.  Requiring a
         second observation is the main protection against hot pixels and
@@ -487,12 +482,9 @@ class SepShadowRunner:
         -- carry the exact semantics of the production 512-frame solve
         (see solver_frame_map).
 
-        ``target_sky_coord`` supports the hybrid alignment: when an
-        alignment is in progress and the production (cedar) solve cannot
-        complete under the target sky, the SEP solve resolves the
-        alignment coordinate and its y/x_target is mapped BACK into
-        rotated-512 space, so the normal alignment chain (AlignedResult,
-        persisted target_pixel) consumes it unchanged.
+        ``target_sky_coord`` resolves an alignment target on the same frame.
+        Its y/x_target is mapped back into rotated-512 space for the normal
+        AlignedResult and persisted target_pixel chain.
 
         ``centroids_override`` solves from a subset (still full-frame
         (y, x) coordinates) instead of the run's full detection list --

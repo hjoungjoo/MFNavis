@@ -80,3 +80,17 @@ RAW 기록 출력은 복원했고 노출·gain·부팅·운영 경로는 유지�
 
 MFDS 공개 이관(m2.6.4): [공개 저장소](https://github.com/hjoungjoo/MFDS)에서
 고정된 소스를 인증 없이 받는다. [이관 기록](MFDS_MIGRATION_ko.md)을 참고한다.
+
+## 운영 빌드와 비교 도구
+
+운영 설치·갱신은 `bash scripts/setup_mf_detect_star.sh --runtime`으로
+MFDS 프로세스 서버와 라이선스 고지만 빌드한다. 기본값인 `--with-tools`는
+CLI·ctypes 라이브러리·네이티브 테스트도 빌드하고 테스트를 실행하므로
+개발과 CI, 실측 비교에 사용한다. 기존 비교 도구나 기록을 삭제하지 않는다.
+
+`solver_cedar_fullframe`과 `solver_cedar_ff_gates`는 더 이상 사용하지 않는다.
+MFDS의 전체 RAW 입력은 항상 게시하며 품질 필터는 `star_detect`가 적용한다.
+기존 설정 파일에 남은 Cedar 키는 무시한다. `solver_preprocess_mode=auto`가
+기본이며 옛 `solver_preprocess_async` 키는 모드가 없는 설정의 호환 판독만
+유지한다. `sep_*` 솔빙 경로와 과거 진단 필드명은 기록 호환용이므로 실제
+검출기는 `detector_backend`로 구분한다. NixOS 경로는 이번 정리에서 유지한다.

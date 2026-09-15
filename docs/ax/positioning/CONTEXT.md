@@ -78,16 +78,18 @@ Identifying which patch of sky an image shows by matching detected star centroid
 _Avoid_: astrometric solve, blind solve.
 
 **Centroid**:
-Sub-pixel `(y, x)` coordinate of a star-like point source. Produced by `PFCedarDetectClient` (preferred) or `tetra3.get_centroids_from_image` (fallback).
+Sub-pixel `(y, x)` coordinate of a star-like point source. Produced by MFDS on RAW and preprocessed frames, with SEP used when MFDS is unavailable or returns insufficient candidates.
 _Avoid_: star pixel, point source.
 
 **Matched centroid**:
 A centroid that tetra3 was able to identify against a known star. `solution["matched_centroids"]` is required before SQM runs.
 _Avoid_: identified star, recognized centroid.
 
-**Cedar / cedar-detect**:
-The separate gRPC service (`cedar-detect-server`, default `127.0.0.1:50551`) that does fast star detection. PiFinder talks to it via `PFCedarDetectClient`, optionally with POSIX shared-memory zero-copy.
-_Avoid_: detector, star detector.
+**MFDS**:
+The native star detector in the pinned public `python/mf_detect_star` submodule.
+PiFinder uses a persistent child process and private memfd image memory by
+default. RAW and preprocessed images use the same detector; `ctypes` is an
+explicit comparison mode. No separate detector systemd service is required.
 
 **Tetra3**:
 The plate-solving library bundled under `python/PiFinder/tetra3/`. Uses `tetra3/data/default_database.npz`.

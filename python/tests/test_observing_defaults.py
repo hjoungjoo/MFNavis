@@ -19,7 +19,7 @@ def test_fresh_install_activates_observing_pipeline(tmp_path, monkeypatch):
     assert settings_from_config(cfg)["solver_preprocess_enabled"] is True
     assert cfg.get_option("solver_optics_fov_gate") is True
     assert cfg.get_option("solver_optics_fullframe_fov") is True
-    assert cfg.get_option("solver_preprocess_async") is False
+    assert cfg.get_option("solver_preprocess_mode") == "auto"
     policy = SolverSchedulingPolicy(mode=cfg.get_option("solver_preprocess_mode"))
     assert [policy.choose(raw_solved=True) for _ in range(3)] == [
         "sync",

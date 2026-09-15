@@ -17,16 +17,8 @@ def make_red(in_image, colors):
     return ImageChops.multiply(in_image.convert("RGB"), colors.red_image)
 
 
-def gamma_correct_low(in_value):
-    return gamma_correct(in_value, 0.9)
-
-
 def gamma_correct_med(in_value):
     return gamma_correct(in_value, 0.7)
-
-
-def gamma_correct_high(in_value):
-    return gamma_correct(in_value, 0.5)
 
 
 def gamma_correct(in_value, gamma):

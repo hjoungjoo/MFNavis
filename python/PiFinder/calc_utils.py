@@ -13,8 +13,6 @@ from skyfield.api import (
 from skyfield.constants import T0 as J2000, B1950
 from skyfield.magnitudelib import planetary_magnitude
 import PiFinder.utils as utils
-import json
-import hashlib
 import logging
 
 logger = logging.getLogger("Catalogs.calc_utils")
@@ -317,11 +315,6 @@ def hadec_to_roll(ha_deg, dec_deg, lat_deg):
         roll_deg = -pa_deg + np.sign(ha_deg) * 180
 
     return roll_deg
-
-
-def hash_dict(d):
-    serialized_data = json.dumps(d, sort_keys=True).encode()
-    return hashlib.sha256(serialized_data).hexdigest()
 
 
 class Skyfield_utils:

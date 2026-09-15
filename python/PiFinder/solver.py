@@ -25,12 +25,13 @@ from PiFinder import config as config_mod
 from PiFinder import state_utils
 from PiFinder import utils
 from PiFinder import timez
-from PiFinder import horizon_mask, sep_detect, star_detect
+from PiFinder import horizon_mask, star_detect
 from PiFinder import solver_frame_map as sfm
 from PiFinder.auto_exposure_framewise import matched_star_exposure_quality
 from PiFinder.alignment_projection import make_projection, projection_context
 from PiFinder.mf_distortion_calibration import (
     DistortionCalibrationSession,
+    MIN_CANDIDATES as DISTORTION_MIN_CANDIDATES,
     measure_distortion_frame,
 )
 from PiFinder.mf_manual_lens import manual_focal_from_state, calibration_lens_key
@@ -56,7 +57,6 @@ from PiFinder.sep_shadow import MAX_FRAME_AGE_S, WARM_MAP_PATH, SepShadowRunner
 from PiFinder.solve_acceptance import (
     SolveContinuityGate,
     angular_separation_deg,
-    solution_quality_decision,
 )
 from PiFinder.sqm import SQM as SQMCalculator
 from PiFinder.sqm.camera_profiles import get_camera_profile
@@ -93,13 +93,6 @@ SQM_CALCULATION_INTERVAL_SECONDS = 1.0
 # Stellar photometry is a transmission diagnostic in the radiometer-first
 # path; it is expensive, so it runs at most every N seconds on solves.
 SQM_STELLAR_DIAGNOSTIC_INTERVAL_SECONDS = 10.0
-
-# Full-frame cedar attempts fail fast: successful FF solves measure 9-26 ms,
-# but on unsolvable frames (bright-gradient junk detections) the default 1 s
-# timeout dropped the attempt rate to 0.4 Hz and starved the SEP rescue tier
-# (LP ascent test 2026-08-03, plan doc section 9-1).
-CEDAR_FF_SOLVE_TIMEOUT_MS = 300
-
 # A motorized slew invalidates the temporal star-only window, but a valid raw
 # solve is already available before the expensive rebuild.  Release up to two
 # stationary raw solves immediately: one handles an ordinary near correction,
@@ -362,7 +355,7 @@ def _fullframe_optics_key(
     """A lightweight identity for cached full-frame solver geometry.
 
     The camera lens can be changed from the Advanced menu while the solver is
-    running.  Cedar/SEP geometry is cached for speed, so the cache must be
+    running.  MFDS/SEP geometry is cached for speed, so the cache must be
     invalidated on the next frame rather than silently retaining the previous
     lens FOV.  Bad shared-state reads are represented in the key and still
     fall back to the established FOV path.
@@ -998,13 +991,105 @@ def _build_failed_solve(
     )
 
 
-def _cedar_fullframe_geometry(
+def _calibration_input_from_run(
+    run,
+    geometry,
+    *,
+    expected_frame_id,
+    source,
+    previous=None,
+    minimum_candidates=1,
+    central_crop=False,
+):
+    """Snapshot native detector coordinates from the current exposure only.
+
+    A weak preprocessed frame must not replace a usable RAW observation.
+    Calibration receives unrotated, undistorted sensor coordinates; fitting
+    already corrected coordinates would bias the new optical model.
+    """
+    if (
+        run is None
+        or geometry is None
+        or expected_frame_id is None
+        or run.frame_id != expected_frame_id
+    ):
+        return previous
+    points = np.asarray(run.detection.centroids, dtype=np.float64).reshape(-1, 2)
+    if not len(points) or not np.isfinite(points).all():
+        return previous
+    count = (
+        _count_in_crop(points, run.frame_hw, geometry["crop_width_px"])
+        if central_crop
+        else len(points)
+    )
+    if previous is not None and count < minimum_candidates:
+        return previous
+    return {
+        "centroids": points.copy(),
+        "frame_hw": run.frame_hw,
+        "rotation_deg": geometry["rotation_deg"],
+        "crop_width_px": geometry["crop_width_px"],
+        "base_fov_degrees": geometry["base_fov_degrees"],
+        "source": f"{source}_{run.detection.backend}",
+        "frame_id": run.frame_id,
+    }
+
+
+def _solve_preprocessed_run(
+    t3,
+    runner,
+    run,
+    shared_state,
+    *,
+    centroids,
+    center_first,
+    target_sky_coord=None,
+    trace=None,
+):
+    """Solve the detected frame once per distinct candidate subset.
+
+    Keep the historic sep path labels for capture/acceptance compatibility;
+    the detector backend is recorded separately and normally is MFDS.
+    """
+    minimum = runner.min_fallback_stars
+    if len(centroids) < minimum:
+        return {}, ""
+
+    def solve(subset, path):
+        return runner.solve(
+            t3,
+            run,
+            shared_state,
+            target_sky_coord=target_sky_coord,
+            centroids_override=subset,
+            solve_path=path,
+        )
+
+    stages = []
+    center = _center_square_subset(centroids, run.frame_hw)
+    if center_first and minimum <= len(center) < len(centroids):
+        stages.append(
+            (
+                "preprocessed_sep_center",
+                lambda: solve(center, "preprocessed_sep_center"),
+            )
+        )
+    stages.append(
+        (
+            "preprocessed_sep_full",
+            lambda: solve(centroids, "preprocessed_sep_full"),
+        )
+    )
+    return _solve_center_first_remainder(stages, trace=trace)
+
+
+def _fullframe_geometry(
     cfg,
     camera_type,
     base_fov_degrees: float = sfm.SOLVER_FOV_DEG,
     lens_key: str = "",
 ):
-    """Context for the full-frame cedar path, or None until resolvable.
+    """Context for native full-frame detection, or None until resolvable.
 
     Same sources as SepShadowRunner.create_if_enabled: the camera profile
     for the production crop width and saturation level, the display config
@@ -1042,7 +1127,7 @@ def _cedar_fullframe_geometry(
             "distortion_coefficients": active_coefficients(calibration),
         }
     except Exception:
-        logger.exception("cedar full-frame geometry unavailable")
+        logger.exception("full-frame geometry unavailable")
         return None
 
 
@@ -1072,10 +1157,8 @@ def _center_square_subset(centroids, frame_hw):
 def _solve_center_first_remainder(stages, trace=None, budget_ms=2600):
     """Run the remaining cascade in global centre-first order.
 
-    Cedar centre is attempted earlier while SEP detection runs in parallel.
-    If it fails, the policy is SEP centre -> Cedar full -> SEP full so every
-    usable centre solve precedes any distortion/obstruction-prone full-frame
-    solve.  A stage callback may return an empty dict when it is unavailable.
+    Candidate subsets are supplied in centre-first order. A stage callback
+    may return an empty dict when it is unavailable or fails quality checks.
     """
     with tetra3.search_budget(budget_ms):
         last_solution = {}
@@ -1135,83 +1218,6 @@ def _count_in_crop(centroids, frame_hw, crop_width_px: int) -> int:
         & (arr[:, 1] < x0 + crop_width_px)
     )
     return int(np.count_nonzero(inside))
-
-
-def _solve_cedar_fullframe(
-    t3,
-    centroids,
-    frame_hw,
-    rotation_deg: float,
-    crop_width_px: int,
-    shared_state,
-    target_sky_coord=None,
-    base_fov_degrees: float = sfm.SOLVER_FOV_DEG,
-    distortion_coefficients: Optional[dict[str, float]] = None,
-    solve_path: str = "cedar_full",
-) -> dict:
-    """Solve full-frame cedar centroids at native FOV, in 512 semantics.
-
-    Mirrors SepShadowRunner.solve: rotation, canvas, fov and target_pixel
-    are mapped through solver_frame_map so RA/Dec/Roll and the aligned
-    pointing at target_pixel carry the exact production-512 meaning, and
-    y/x_target is mapped back so the alignment chain persists 512-space
-    coordinates unchanged."""
-    try:
-        source = np.asarray(centroids, dtype=np.float64)
-        if distortion_coefficients is not None:
-            source = undistort_global_centroids(
-                source,
-                frame_hw,
-                distortion_coefficients,
-            )
-        cents, canvas = sfm.rotate_centroids(source, frame_hw, rotation_deg)
-        target_pixel = sfm.map_target_pixel_to_frame(
-            shared_state.target_pixel(), canvas, crop_width_px
-        )
-        fov = sfm.fov_estimate_deg(
-            canvas[1], crop_width_px, base_fov_degrees=base_fov_degrees
-        )
-        solution = t3.solve_from_centroids(
-            cents,
-            canvas,
-            fov_estimate=fov,
-            fov_max_error=fov / 3.0,
-            match_max_error=0.005,
-            return_matches=True,
-            target_pixel=target_pixel,
-            target_sky_coord=target_sky_coord,
-            solve_timeout=CEDAR_FF_SOLVE_TIMEOUT_MS,
-        )
-        quality = solution_quality_decision(solution, solve_path)
-        if not quality.accepted:
-            if solution and solution.get("RA") is not None:
-                logger.warning(
-                    "Rejected %s solution: %s (matches=%s RMSE=%s Prob=%s)",
-                    solve_path,
-                    quality.reason,
-                    solution.get("Matches"),
-                    solution.get("RMSE"),
-                    solution.get("Prob"),
-                )
-            return {}
-        if (
-            solution
-            and solution.get("RA") is not None
-            and solution.get("y_target") is not None
-            and solution.get("x_target") is not None
-        ):
-            ty, tx = sfm.map_frame_pixel_to_target(
-                (float(solution["y_target"]), float(solution["x_target"])),
-                canvas,
-                crop_width_px,
-            )
-            solution["y_target"], solution["x_target"] = ty, tx
-        if solution and solution.get("RA") is not None:
-            solution["_alignment_frame"] = (*canvas, crop_width_px)
-        return solution or {}
-    except Exception:
-        logger.exception("cedar full-frame solve failed")
-        return {}
 
 
 def solver(
@@ -1322,7 +1328,7 @@ def solver(
     sep_shadow_wanted = True
     # Optical-train FOV gating is deliberately opt-in for the first field
     # phase. It applies only to the ordinary 512 path below; full-frame
-    # cedar/SEP have their own crop/canvas validation stage.
+    # MFDS/SEP have their own crop/canvas validation stage.
     optics_fov_gate_wanted = bool(_sep_cfg.get_option("solver_optics_fov_gate"))
     if optics_fov_gate_wanted:
         logger.info("Optical-train FOV gate enabled for the 512 solver path")
@@ -1330,33 +1336,19 @@ def solver(
         _sep_cfg.get_option("solver_optics_fullframe_fov")
     )
     if optics_fullframe_fov_wanted:
-        logger.info("Optical-train FOV enabled for cedar/SEP full-frame paths")
-    # Full-frame cedar primary path (mf_cedar_fullframe_primary_plan_ko.md):
-    # feed cedar the uncropped 12-bit raw (>>4, detection is invariant to the
-    # affine stretch) and solve at native FOV via solver_frame_map. The SEP
-    # fallback below is unchanged; flag off = byte-identical 512 path.
-    cedar_fullframe_wanted = True  # retained geometry flag; no Cedar execution
-    # MF tiles are a separately opt-in rescue tier.  Below 10 mm it uses the
-    # wide grid; at/above 10 mm it uses the 3x3 recovery grid.  The
-    # false default leaves every established Cedar/SEP path in control.
+        logger.info("Optical-train FOV enabled for MFDS/SEP full-frame paths")
+    # Native RAW geometry is required by MFDS detection and preprocessing.
+    # Tile recovery remains an opt-in rescue tier.
     wide_solver_wanted = bool(_sep_cfg.get_option("wide_solver_enabled"))
     auto_star_framewise_wanted = bool(_sep_cfg.get_option("camera_auto_star_framewise"))
-    cedar_ff_geometry = None  # context dict, resolved lazily
-    cedar_ff_geometry_key = None
+    fullframe_geometry = None  # context dict, resolved lazily
+    cached_fullframe_geometry_key = None
     distortion_calibration_session = None
-    # Ground-light rejection for the FF path (docs field test 2026-08-04):
-    # detection quality gates (edge/saturation/warm/cluster -- the SEP
-    # fallback's filters applied to cedar centroids, default on) and the
-    # IMU horizon mask (default OFF: the altitude worth masking depends on
-    # the observing site's skyline, so it is an opt-in per location).
-    cedar_ff_gates_wanted = _sep_cfg.get_option("solver_cedar_ff_gates")
-    cedar_ff_gates_wanted = (
-        True if cedar_ff_gates_wanted is None else bool(cedar_ff_gates_wanted)
-    )
+    # Detection gates belong to star_detect; the optional IMU mask is applied
+    # to preprocessed solve candidates below.
     horizon_mask_wanted = bool(_sep_cfg.get_option("solver_horizon_mask"))
     # Centre-first cascade (user design 2026-08-04): solve the centred-square
-    # coordinate subset first, full set on failure, then SEP the same way;
-    # SEP detection runs concurrently with the cedar tiers to hide its cost.
+    # coordinate subset first, full set on failure, using one detection.
     center_first_wanted = bool(_sep_cfg.get_option("solver_center_first"))
     timing_debug_wanted = bool(_sep_cfg.get_option("solver_timing_debug", False))
     skip_slow_raw_fallbacks_wanted = bool(
@@ -1374,18 +1366,15 @@ def solver(
         scheduling_mode = "auto"
     solve_scheduling = SolverSchedulingPolicy(scheduling_mode)
     logger.info("Solver preprocessing scheduling: %s", scheduling_mode)
-    if cedar_fullframe_wanted:
-        logger.info(
-            "Cedar-free full-frame SEP path enabled "
-            "(gates=%s, horizon_mask=%s, center_first=%s)",
-            cedar_ff_gates_wanted,
-            horizon_mask_wanted,
-            center_first_wanted,
-        )
+    logger.info(
+        "MFDS full-frame path enabled (horizon_mask=%s, center_first=%s)",
+        horizon_mask_wanted,
+        center_first_wanted,
+    )
 
     while True:
         logger.info("Starting Solver Loop")
-        # Cedar-free test branch: raw and preprocessed frames use SEP.
+        # RAW and preprocessed frames use MFDS, with SEP as detector fallback.
         try:
             while True:
                 # Drain any pending command queue messages.
@@ -1618,16 +1607,16 @@ def solver(
                         fullframe_base_fov,
                         _active_calibration_id(_sep_cfg, shared_state),
                     )
-                    if fullframe_geometry_key != cedar_ff_geometry_key:
-                        if cedar_ff_geometry_key is not None:
+                    if fullframe_geometry_key != cached_fullframe_geometry_key:
+                        if cached_fullframe_geometry_key is not None:
                             logger.info(
                                 "Lens/optics changed; rebuilding full-frame solver geometry "
                                 "(%s -> %s)",
-                                cedar_ff_geometry_key,
+                                cached_fullframe_geometry_key,
                                 fullframe_geometry_key,
                             )
-                        cedar_ff_geometry = None
-                        cedar_ff_geometry_key = fullframe_geometry_key
+                        fullframe_geometry = None
+                        cached_fullframe_geometry_key = fullframe_geometry_key
                         preprocessed_fast_trusted = False
                         preprocess_bias.reset()
                         solve_scheduling.reset("optics_changed")
@@ -1639,10 +1628,8 @@ def solver(
                         # cheap and safe to recreate on the following use.
                         sep_shadow = None
 
-                    if (
-                        cedar_fullframe_wanted or solver_preprocess_enabled
-                    ) and cedar_ff_geometry is None:
-                        cedar_ff_geometry = _cedar_fullframe_geometry(
+                    if fullframe_geometry is None:
+                        fullframe_geometry = _fullframe_geometry(
                             _sep_cfg,
                             shared_state.camera_type(),
                             fullframe_base_fov,
@@ -1658,13 +1645,11 @@ def solver(
                         cedar_gated_count = None
                         cedar_center_count = None
                         sep_count = None
-                        sep_thread = None
-                        sep_thread_result = {}
                         ff_entry = None
                         prefer_preprocessed_fast = False
                         # Read the same fresh RAW exposure for SEP and preprocessing.
                         centroids = np.empty((0, 2), dtype=np.float64)
-                        if cedar_ff_geometry is not None:
+                        if fullframe_geometry is not None:
                             ff_entry = solver_raw_entry
                             if ff_entry is None and solver_frame_entry is None:
                                 ff_entry = shared_state.solver_raw()
@@ -1704,17 +1689,13 @@ def solver(
                         )
 
                         solution: dict = {}
-                        _solver_args = {}
-                        if align_ra != 0 and align_dec != 0:
-                            _solver_args["target_sky_coord"] = [[align_ra, align_dec]]
-
                         ff_matched_for_overlay = None
                         ff_in_crop_count = 0
                         if used_fullframe:
                             ff_in_crop_count = _count_in_crop(
                                 centroids,
                                 ff_frame_hw,
-                                cedar_ff_geometry["crop_width_px"],
+                                fullframe_geometry["crop_width_px"],
                             )
 
                         solve_path = "sep_full"
@@ -1724,9 +1705,7 @@ def solver(
                         )
                         capture_primary_extract_ms = t_extract
 
-                        # SEP full-frame experiment: shadow-detect on every
-                        # attempt; optionally rescue a failed production solve
-                        # from the SEP centroids (sep_shadow module docstring).
+                        # Detect once per RAW attempt through the MFDS-first runner.
                         if sep_shadow is None and (
                             sep_shadow_wanted or solver_preprocess_enabled
                         ):
@@ -1743,47 +1722,32 @@ def solver(
                         wide_pointing_used = False
                         exposure_quality = None
                         distortion_calibration_input = None
-                        if (
-                            (
-                                distortion_calibration_session is not None
-                                or lens_measurement.active
-                            )
-                            and not frame_moving
-                            and cedar_ff_geometry is not None
-                        ):
-                            crop_width = cedar_ff_geometry["crop_width_px"]
-                            native = used_fullframe and ff_frame_hw is not None
-                            distortion_calibration_input = {
-                                "centroids": np.asarray(
-                                    centroids, dtype=np.float64
-                                ).copy()
-                                * (1.0 if native else crop_width / 512.0),
-                                "frame_hw": ff_frame_hw
-                                if native
-                                else (crop_width, crop_width),
-                                "rotation_deg": cedar_ff_geometry["rotation_deg"]
-                                if native
-                                else 0,
-                                "crop_width_px": crop_width,
-                                "base_fov_degrees": cedar_ff_geometry[
-                                    "base_fov_degrees"
-                                ],
-                                "source": "raw_cedar" if native else "raw_cedar_512",
-                            }
                         sep_can_solve = False
                         if sep_shadow is not None and sep_shadow_wanted:
-                            if sep_thread is not None:
-                                sep_thread.join(timeout=5.0)
-                                sep_run = sep_thread_result.get("run")
-                            else:
-                                sep_run = sep_shadow.detect(
-                                    shared_state,
-                                    expected_frame_id=last_image_metadata.get(
-                                        "frame_id"
-                                    ),
-                                )
+                            sep_run = sep_shadow.detect(
+                                shared_state,
+                                expected_frame_id=last_image_metadata.get("frame_id"),
+                            )
                             if sep_run is not None:
                                 sep_count = len(sep_run.detection.centroids)
+                                if (
+                                    (
+                                        distortion_calibration_session is not None
+                                        or lens_measurement.active
+                                    )
+                                    and not frame_moving
+                                    and fullframe_geometry is not None
+                                ):
+                                    distortion_calibration_input = (
+                                        _calibration_input_from_run(
+                                            sep_run,
+                                            fullframe_geometry,
+                                            expected_frame_id=last_image_metadata.get(
+                                                "frame_id"
+                                            ),
+                                            source="raw",
+                                        )
+                                    )
                             sep_can_solve = bool(
                                 sep_run is not None
                                 and sep_shadow.fallback_enabled
@@ -1807,7 +1771,7 @@ def solver(
                         )
 
                         # Tile recovery is intentionally placed after the
-                        # existing centre-first attempt but before Cedar/SEP are
+                        # existing centre-first attempt but before MFDS/SEP are
                         # allowed to use a distortion-prone whole frame.  It is
                         # disabled during an alignment command because an
                         # off-centre tile cannot reliably return the alignment
@@ -1866,8 +1830,8 @@ def solver(
                                     wide_base_fov,
                                     sixteen_fov,
                                     focal_length,
-                                    cedar_ff_geometry["crop_width_px"],
-                                    display_rotation_degrees=cedar_ff_geometry[
+                                    fullframe_geometry["crop_width_px"],
+                                    display_rotation_degrees=fullframe_geometry[
                                         "rotation_deg"
                                     ],
                                 )
@@ -1907,7 +1871,7 @@ def solver(
                                         [tile.rect.y, tile.rect.x], dtype=np.float64
                                     )
 
-                                def _wide_cedar_detect(tile_frame):
+                                def _wide_primary_detect(tile_frame):
                                     # Historical primary tier is absent in this branch.
                                     return ()
 
@@ -1918,10 +1882,10 @@ def solver(
                                             _sep_cfg.get_option("solver_sep_sigma")
                                             or 4.0
                                         ),
-                                        saturation_level=cedar_ff_geometry[
+                                        saturation_level=fullframe_geometry[
                                             "saturation_level"
                                         ],
-                                        warm_pixel_map=cedar_ff_geometry["warm_map"],
+                                        warm_pixel_map=fullframe_geometry["warm_map"],
                                         cloud_window_gate=focal_length < 10.0,
                                     )
                                     return (
@@ -1942,21 +1906,21 @@ def solver(
 
                                 tile_fov = sfm.fov_estimate_deg(
                                     wide_plan.central_tile.rect.width,
-                                    cedar_ff_geometry["crop_width_px"],
+                                    fullframe_geometry["crop_width_px"],
                                     wide_base_fov,
                                 )
                                 wide_result = solve_wide_tiles(
                                     frame=ff_frame,
                                     plan=wide_plan,
                                     excluded_tile_ids=wide_excluded,
-                                    saturation_level=cedar_ff_geometry[
+                                    saturation_level=fullframe_geometry[
                                         "saturation_level"
                                     ],
-                                    rotation_deg=cedar_ff_geometry["rotation_deg"],
-                                    crop_width_px=cedar_ff_geometry["crop_width_px"],
+                                    rotation_deg=fullframe_geometry["rotation_deg"],
+                                    crop_width_px=fullframe_geometry["crop_width_px"],
                                     production_target_yx=shared_state.target_pixel(),
                                     tile_fov_degrees=tile_fov,
-                                    detect_primary=_wide_cedar_detect,
+                                    detect_primary=_wide_primary_detect,
                                     detect_fallback=_wide_sep_detect,
                                     solve=_wide_tetra_solve,
                                     rectify_centroids=_wide_rectify_centroids,
@@ -2005,9 +1969,8 @@ def solver(
                             and not prefer_preprocessed_fast
                             and (not solution or solution.get("RA") is None)
                         ):
-                            # Global centre-first policy (2026-08-12): after the
-                            # parallel Cedar-centre attempt, try SEP centre before
-                            # allowing either detector to use edge coordinates.
+                            # Try the central subset before allowing the detector
+                            # to use edge coordinates.
                             # This keeps optical distortion, horizon glow and
                             # obstructions out of the solve whenever the centre is
                             # sufficient.
@@ -2042,27 +2005,6 @@ def solver(
                                     solve_path="sep_center",
                                 )
 
-                            def _cedar_full_stage():
-                                if not used_fullframe or len(centroids) == 0:
-                                    return {}
-                                return _solve_cedar_fullframe(
-                                    t3,
-                                    centroids,
-                                    ff_frame_hw,
-                                    cedar_ff_geometry["rotation_deg"],
-                                    cedar_ff_geometry["crop_width_px"],
-                                    shared_state,
-                                    target_sky_coord=_solver_args.get(
-                                        "target_sky_coord"
-                                    ),
-                                    base_fov_degrees=cedar_ff_geometry[
-                                        "base_fov_degrees"
-                                    ],
-                                    distortion_coefficients=cedar_ff_geometry[
-                                        "distortion_coefficients"
-                                    ],
-                                )
-
                             def _sep_full_stage():
                                 if not sep_can_solve:
                                     return {}
@@ -2077,7 +2019,6 @@ def solver(
                             solution, selected_path = _solve_center_first_remainder(
                                 (
                                     ("sep_center", _sep_center_stage),
-                                    ("cedar_full", _cedar_full_stage),
                                     ("sep_full", _sep_full_stage),
                                 ),
                                 trace=capture_stages,
@@ -2091,8 +2032,7 @@ def solver(
                                     len(sep_run.detection.centroids),
                                 )
                         elif sep_can_solve and not prefer_preprocessed_fast:
-                            # Legacy non-centre mode: Cedar full/512 has already
-                            # failed, so only the SEP full fallback remains.
+                            # Non-centre mode solves the full candidate set once.
                             solution = sep_shadow.solve(
                                 t3,
                                 sep_run,
@@ -2196,7 +2136,7 @@ def solver(
                             calibration_key = tuple(
                                 sorted(
                                     (
-                                        cedar_ff_geometry["distortion_coefficients"]
+                                        fullframe_geometry["distortion_coefficients"]
                                         or {}
                                     ).items()
                                 )
@@ -2208,7 +2148,7 @@ def solver(
                                 lens_key=str(lens_key or ""),
                                 manual_focal=manual_focal_from_state(shared_state),
                                 frame_shape=tuple(ff_frame.shape),
-                                rotation_deg=cedar_ff_geometry["rotation_deg"],
+                                rotation_deg=fullframe_geometry["rotation_deg"],
                                 calibration_key=calibration_key,
                             )
                             preprocess_started = precision_timestamp()
@@ -2333,83 +2273,63 @@ def solver(
                                 )
                                 raw_overlay = sep_shadow._last_overlay
                                 sep_shadow.use_preprocessed_overlay(preprocessed_run)
-                                preprocessed_frame = preprocessed_run.frame
-                                # SEP was already extracted by preprocess_frame().
-                                # Leave the historical Cedar tier empty; use SEP once.
-                                preprocessed_cedar = np.empty((0, 2), dtype=np.float64)
-                                preprocessed_raw_count = len(preprocessed_cedar)
-                                if cedar_ff_gates_wanted and len(preprocessed_cedar):
-                                    preprocessed_cedar = (
-                                        sep_detect.filter_plain_centroids(
-                                            preprocessed_cedar,
-                                            preprocessed_frame,
-                                            # True extended saturation was
-                                            # removed before synthesis. A
-                                            # clipped synthetic star is valid
-                                            # accumulated evidence.
-                                            saturation_level=None,
-                                            warm_pixel_map=cedar_ff_geometry[
-                                                "warm_map"
-                                            ],
-                                        )
-                                    )
-                                if horizon_mask_wanted and len(preprocessed_cedar):
-                                    preprocessed_cedar, _ = (
+                                # MFDS (or its SEP fallback) already applied the
+                                # detection gates to this exact synthesized frame.
+                                preprocessed_centroids = (
+                                    preprocessed_run.detection.centroids
+                                )
+                                if horizon_mask_wanted and len(preprocessed_centroids):
+                                    preprocessed_centroids, _ = (
                                         horizon_mask.filter_ground_centroids(
-                                            preprocessed_cedar,
+                                            preprocessed_centroids,
                                             preprocessed_run.frame_hw,
-                                            cedar_ff_geometry["rotation_deg"],
+                                            fullframe_geometry["rotation_deg"],
                                             preprocess_imu_sample,
-                                            cedar_ff_geometry["screen_direction"],
-                                            cedar_ff_geometry["crop_width_px"],
+                                            fullframe_geometry["screen_direction"],
+                                            fullframe_geometry["crop_width_px"],
                                         )
                                     )
 
                                 if (
-                                    distortion_calibration_session is not None
-                                    or lens_measurement.active
+                                    (
+                                        distortion_calibration_session is not None
+                                        or lens_measurement.active
+                                    )
+                                    and not frame_moving
+                                    and not async_preprocess_active
                                 ):
-                                    distortion_calibration_input = {
-                                        "centroids": np.asarray(
-                                            preprocessed_cedar, dtype=np.float64
-                                        ).copy(),
-                                        "frame_hw": preprocessed_run.frame_hw,
-                                        "rotation_deg": cedar_ff_geometry[
-                                            "rotation_deg"
-                                        ],
-                                        "crop_width_px": cedar_ff_geometry[
-                                            "crop_width_px"
-                                        ],
-                                        "base_fov_degrees": cedar_ff_geometry[
-                                            "base_fov_degrees"
-                                        ],
-                                        "source": "preprocessed_cedar",
-                                    }
+                                    distortion_calibration_input = (
+                                        _calibration_input_from_run(
+                                            preprocessed_run,
+                                            fullframe_geometry,
+                                            expected_frame_id=last_image_metadata.get(
+                                                "frame_id"
+                                            ),
+                                            source="preprocessed",
+                                            previous=distortion_calibration_input,
+                                            minimum_candidates=(
+                                                DISTORTION_MIN_CANDIDATES
+                                                if distortion_calibration_session
+                                                is not None
+                                                else 8
+                                            ),
+                                            central_crop=lens_measurement.active,
+                                        )
+                                    )
 
-                                preprocessed_sep_count = len(
-                                    preprocessed_run.detection.centroids
-                                )
-                                preprocessed_cedar_center = _center_square_subset(
-                                    preprocessed_cedar,
-                                    preprocessed_run.frame_hw,
-                                )
-                                preprocessed_sep_center = _center_square_subset(
-                                    preprocessed_run.detection.centroids,
+                                preprocessed_count = len(preprocessed_centroids)
+                                preprocessed_center = _center_square_subset(
+                                    preprocessed_centroids,
                                     preprocessed_run.frame_hw,
                                 )
                                 if capture_token is not None:
                                     capture_counts.update(
                                         {
-                                            "preprocessed_cedar_center": len(
-                                                preprocessed_cedar_center
+                                            "preprocessed_center": len(
+                                                preprocessed_center
                                             ),
-                                            "preprocessed_cedar_full": len(
-                                                preprocessed_cedar
-                                            ),
-                                            "preprocessed_sep_center": len(
-                                                preprocessed_sep_center
-                                            ),
-                                            "preprocessed_sep_full": preprocessed_sep_count,
+                                            "preprocessed_full": preprocessed_count,
+                                            "preprocessed_detector": preprocessed_run.detection.backend,
                                         }
                                     )
                                 preprocess_target_sky = (
@@ -2418,79 +2338,16 @@ def solver(
                                     else None
                                 )
 
-                                def _preprocessed_cedar(subset, path):
-                                    if len(subset) < 4:
-                                        return {}
-                                    return _solve_cedar_fullframe(
+                                preprocessed_solution, selected_path = (
+                                    _solve_preprocessed_run(
                                         t3,
-                                        subset,
-                                        preprocessed_run.frame_hw,
-                                        cedar_ff_geometry["rotation_deg"],
-                                        cedar_ff_geometry["crop_width_px"],
-                                        shared_state,
-                                        target_sky_coord=preprocess_target_sky,
-                                        base_fov_degrees=cedar_ff_geometry[
-                                            "base_fov_degrees"
-                                        ],
-                                        distortion_coefficients=cedar_ff_geometry[
-                                            "distortion_coefficients"
-                                        ],
-                                        solve_path=path,
-                                    )
-
-                                def _preprocessed_sep(subset, path):
-                                    if len(subset) < sep_shadow.min_fallback_stars:
-                                        return {}
-                                    return sep_shadow.solve(
-                                        t3,
+                                        sep_shadow,
                                         preprocessed_run,
                                         shared_state,
+                                        centroids=preprocessed_centroids,
+                                        center_first=center_first_wanted,
                                         target_sky_coord=preprocess_target_sky,
-                                        centroids_override=subset,
-                                        solve_path=path,
-                                    )
-
-                                preprocess_stages = []
-                                if center_first_wanted:
-                                    preprocess_stages.extend(
-                                        (
-                                            (
-                                                "preprocessed_cedar_center",
-                                                lambda: _preprocessed_cedar(
-                                                    preprocessed_cedar_center,
-                                                    "preprocessed_cedar_center",
-                                                ),
-                                            ),
-                                            (
-                                                "preprocessed_sep_center",
-                                                lambda: _preprocessed_sep(
-                                                    preprocessed_sep_center,
-                                                    "preprocessed_sep_center",
-                                                ),
-                                            ),
-                                        )
-                                    )
-                                preprocess_stages.extend(
-                                    (
-                                        (
-                                            "preprocessed_cedar_full",
-                                            lambda: _preprocessed_cedar(
-                                                preprocessed_cedar,
-                                                "preprocessed_cedar_full",
-                                            ),
-                                        ),
-                                        (
-                                            "preprocessed_sep_full",
-                                            lambda: _preprocessed_sep(
-                                                preprocessed_run.detection.centroids,
-                                                "preprocessed_sep_full",
-                                            ),
-                                        ),
-                                    )
-                                )
-                                preprocessed_solution, selected_path = (
-                                    _solve_center_first_remainder(
-                                        preprocess_stages, trace=capture_stages
+                                        trace=capture_stages,
                                     )
                                 )
                                 if (
@@ -2578,25 +2435,21 @@ def solver(
                                     selected_path or not raw_solved
                                 ):
                                     used_fullframe = True
-                                    centroids = preprocessed_cedar
+                                    centroids = preprocessed_centroids
                                     ff_frame_hw = preprocessed_run.frame_hw
-                                    cedar_raw_count = preprocessed_raw_count
-                                    cedar_gated_count = len(preprocessed_cedar)
-                                    cedar_center_count = len(preprocessed_cedar_center)
-                                    sep_count = preprocessed_sep_count
+                                    sep_count = preprocessed_count
                                     ff_in_crop_count = _count_in_crop(
-                                        preprocessed_cedar,
+                                        preprocessed_centroids,
                                         ff_frame_hw,
-                                        cedar_ff_geometry["crop_width_px"],
+                                        fullframe_geometry["crop_width_px"],
                                     )
                                 logger.info(
                                     "Solver preprocessing frame %s: window=%d "
-                                    "Cedar=%d->%d SEP=%d selected=%s",
+                                    "detector=%s candidates=%d selected=%s",
                                     preprocess_metadata.get("frame_id"),
                                     preprocessed_run.diagnostics.frame_count,
-                                    preprocessed_raw_count,
-                                    len(preprocessed_cedar),
-                                    preprocessed_sep_count,
+                                    preprocessed_run.detection.backend,
+                                    preprocessed_count,
                                     selected_path or "none",
                                 )
                                 if timing_debug_wanted:
@@ -2612,7 +2465,7 @@ def solver(
                                         preprocess_raw_diagnostic = {
                                             "ra": float(raw_snapshot["RA"]),
                                             "dec": float(raw_snapshot["Dec"]),
-                                            "path": "cedar_512",
+                                            "path": "raw",
                                         }
                                     if preprocess_raw_diagnostic and selected_path:
                                         raw_preprocessed_separation = (
@@ -2799,12 +2652,12 @@ def solver(
                             _, matched_canvas = sfm.rotate_centroids(
                                 np.empty((0, 2)),
                                 ff_frame_hw,
-                                cedar_ff_geometry["rotation_deg"],
+                                fullframe_geometry["rotation_deg"],
                             )
                             matched_raw, _ = sfm.rotate_centroids(
                                 matched,
                                 matched_canvas,
-                                (360.0 - cedar_ff_geometry["rotation_deg"]) % 360.0,
+                                (360.0 - fullframe_geometry["rotation_deg"]) % 360.0,
                             )
                             exposure_quality = matched_star_exposure_quality(
                                 ff_frame,
@@ -2910,10 +2763,9 @@ def solver(
                         solution.pop("matched_stars", None)
                         solution.pop("matched_catID", None)
                         logger.debug(
-                            "SEP fallback solve SUCCESS - %d SEP centroids "
-                            "(cedar saw %d), RMSE %.1f",
+                            "Full-frame solve SUCCESS - detector=%s candidates=%d, RMSE %.1f",
+                            sep_run.detection.backend,
                             len(sep_run.detection.centroids),
-                            len(centroids),
                             solution.get("RMSE") or -1.0,
                         )
                     elif wide_pointing_used:
@@ -2924,7 +2776,7 @@ def solver(
                         solution.pop("matched_stars", None)
                         solution.pop("matched_catID", None)
                     elif used_fullframe and solution and solution.get("RA") is not None:
-                        # Cedar full-frame coordinates share the SEP canvas;
+                        # Native full-frame coordinates share the SEP canvas;
                         # retain matches only for the overlay, then strip them
                         # before the 512-space SQM path.
                         ff_matched_for_overlay = solution.get("matched_centroids")
@@ -3001,7 +2853,7 @@ def solver(
                                 )
                         if sep_shadow is not None and not sep_fallback_used:
                             # Production solve: sky is workable, clear the
-                            # fallback backoff so the next cedar failure gets
+                            # fallback backoff so the next RAW failure gets
                             # an immediate rescue try.
                             sep_shadow.note_solved()
                         solve_result = _build_successful_solve(
@@ -3012,7 +2864,7 @@ def solver(
                             # A fallback solve's real star count is SEP's --
                             # publishing it keeps auto-exposure's solve-hold
                             # engaged on the exposure that actually solved.
-                            # Full-frame cedar publishes the in-crop count so
+                            # Native full-frame publishes the in-crop count so
                             # auto-exposure keeps its 512-crop semantics.
                             centroid_count=(
                                 len(sep_run.detection.centroids)
@@ -3190,7 +3042,7 @@ def solver(
                             "fast_raw_after_motion": fast_raw_after_motion,
                             "target_pixel": target_pixel_key,
                             "optics": {
-                                key: (cedar_ff_geometry or {}).get(key)
+                                key: (fullframe_geometry or {}).get(key)
                                 for key in (
                                     "rotation_deg",
                                     "crop_width_px",
@@ -3381,7 +3233,7 @@ def solver(
                         # Overlay ships once per attempt, after the solve
                         # outcome, so the confirmed/candidate split is never
                         # overwritten by the next detect (race fixed).
-                        # A production (cedar) solve contributes its matched
+                        # A production solve contributes its matched
                         # stars too -- green means "confirmed by whichever
                         # solver succeeded".
                         if (
@@ -3390,7 +3242,7 @@ def solver(
                             and not sep_fallback_used
                         ):
                             if used_fullframe:
-                                # Full-frame cedar matched stars are already
+                                # Native full-frame matched stars are already
                                 # in the rotated canvas (same space as a SEP
                                 # solve's); stashed before the SQM strip.
                                 if ff_matched_for_overlay is not None:

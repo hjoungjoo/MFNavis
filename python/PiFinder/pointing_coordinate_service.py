@@ -281,15 +281,6 @@ def _unit_vector_to_radec(vector: np.ndarray) -> Tuple[float, float]:
     return ra, dec
 
 
-def _weighted_radec(
-    a: Tuple[float, float], b: Tuple[float, float], a_weight: float, b_weight: float
-) -> Tuple[float, float]:
-    vector = _radec_to_unit_vector(a[0], a[1]) * float(
-        a_weight
-    ) + _radec_to_unit_vector(b[0], b[1]) * float(b_weight)
-    return _unit_vector_to_radec(vector)
-
-
 @dataclass
 class CoordinateSample:
     ra_deg: Optional[float] = None

@@ -454,16 +454,9 @@ class CameraInterface:
             if hasattr(shared_state, "set_livecam_settings"):
                 shared_state.set_livecam_settings(settings_from_config(cfg))
 
-            # Full-frame Cedar/SEP and the opt-in MF wide-tile rescue need
-            # the uncropped raw published per frame. Read once at start;
-            # changing these keys requires an app restart.
-            self._publish_solver_raw = bool(
-                cfg.get_option("solver_shadow_detect")
-                or cfg.get_option("solver_sep_fallback")
-                or cfg.get_option("solver_cedar_fullframe")
-                or cfg.get_option("wide_solver_enabled")
-                or cfg.get_option("camera_auto_star_framewise")
-            )
+            # MFDS and preprocessing require the native RAW for every frame,
+            # independently of historical Cedar and comparison flags.
+            self._publish_solver_raw = True
             if self._publish_solver_raw:
                 logger.info(
                     "Publishing full-frame solver_raw (full-frame solver path enabled)"

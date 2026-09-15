@@ -1,45 +1,16 @@
 #!/usr/bin/python
 # -*- coding:utf-8 -*-
-"""
-Full-frame cedar primary path (solver_cedar_fullframe).
-
-Covers the solver-side adapter added for the plan in
-docs/mf_dev/mf_cedar_fullframe_primary_plan_ko.md:
-
-* _count_in_crop keeps SolveDiagnostics.Centroids in 512-crop semantics
-  for auto-exposure.
-* _solve_cedar_fullframe maps target_pixel into the rotated canvas,
-  solves at native FOV, and maps y/x_target back to 512 space -- the
-  same contract sep_shadow.solve fulfils for the SEP fallback.
-"""
+"""Full-frame crop counts, centre-first solve ordering and motion recovery."""
 
 from types import SimpleNamespace
 
-import numpy as np
 import pytest
 
 from PiFinder import solver
-from PiFinder import solver_frame_map as sfm
-from PiFinder.mf_wide_distortion import undistort_global_centroids
 
 FULL_H, FULL_W = 1080, 1920
 CROP_W = 980
 TARGET_512 = (300.0, 340.0)
-
-
-class _FakeSharedState:
-    def target_pixel(self):
-        return TARGET_512
-
-
-class _FakeT3:
-    def __init__(self, solution):
-        self.solution = solution
-        self.calls = []
-
-    def solve_from_centroids(self, cents, canvas, **kwargs):
-        self.calls.append({"cents": cents, "canvas": canvas, **kwargs})
-        return dict(self.solution)
 
 
 @pytest.mark.unit
@@ -110,139 +81,6 @@ def test_stale_mount_motion_status_is_ignored():
     status = {"updated": 100.0, "mount_motion_active": True}
 
     assert solver._mount_status_reports_motion(status, now=106.0) is False
-
-
-@pytest.mark.unit
-def test_solve_cedar_fullframe_maps_like_sep_path():
-    fake = _FakeT3(
-        {
-            "RA": 10.0,
-            "Dec": 20.0,
-            "Roll": 30.0,
-            "y_target": 100.0,
-            "x_target": 200.0,
-            "Matches": 7,
-            "RMSE": 90.0,
-            "Prob": 1e-6,
-        }
-    )
-    centroids = [(540.0, 960.0), (100.0, 100.0), (900.0, 1800.0)]
-
-    solution = solver._solve_cedar_fullframe(
-        fake,
-        centroids,
-        (FULL_H, FULL_W),
-        rotation_deg=90.0,
-        crop_width_px=CROP_W,
-        shared_state=_FakeSharedState(),
-    )
-
-    assert len(fake.calls) == 1
-    call = fake.calls[0]
-
-    # Native-FOV solve on the rotated canvas, exactly as sep_shadow.solve.
-    _, canvas = sfm.rotate_centroids(
-        np.asarray(centroids, dtype=np.float64), (FULL_H, FULL_W), 90.0
-    )
-    assert tuple(call["canvas"]) == tuple(canvas)
-    expected_fov = sfm.fov_estimate_deg(canvas[1], CROP_W)
-    assert call["fov_estimate"] == pytest.approx(expected_fov)
-    assert call["fov_max_error"] == pytest.approx(expected_fov / 3.0)
-    expected_tp = sfm.map_target_pixel_to_frame(TARGET_512, canvas, CROP_W)
-    assert tuple(call["target_pixel"]) == pytest.approx(tuple(expected_tp))
-
-    # Fast-fail: junk full-frame detections must not burn the 1 s default
-    # (LP ascent test 2026-08-03: 0.4 Hz attempt rate starved SEP rescue).
-    assert call["solve_timeout"] == solver.CEDAR_FF_SOLVE_TIMEOUT_MS
-
-    # y/x_target comes back in 512 space for the alignment chain.
-    expected_back = sfm.map_frame_pixel_to_target((100.0, 200.0), canvas, CROP_W)
-    assert (solution["y_target"], solution["x_target"]) == pytest.approx(
-        tuple(expected_back)
-    )
-
-
-@pytest.mark.unit
-def test_solve_cedar_fullframe_swallows_solver_errors():
-    class _Boom:
-        def solve_from_centroids(self, *a, **k):
-            raise RuntimeError("boom")
-
-    solution = solver._solve_cedar_fullframe(
-        _Boom(),
-        [(1.0, 1.0)],
-        (FULL_H, FULL_W),
-        rotation_deg=90.0,
-        crop_width_px=CROP_W,
-        shared_state=_FakeSharedState(),
-    )
-    assert solution == {}
-
-
-@pytest.mark.unit
-def test_solve_cedar_fullframe_accepts_future_crop_fov_without_mapping_change():
-    fake = _FakeT3(
-        {
-            "RA": 10.0,
-            "y_target": 100.0,
-            "x_target": 200.0,
-            "Matches": 7,
-            "RMSE": 90.0,
-            "Prob": 1e-6,
-        }
-    )
-    solver._solve_cedar_fullframe(
-        fake,
-        [(540.0, 960.0)],
-        (FULL_H, FULL_W),
-        rotation_deg=90.0,
-        crop_width_px=CROP_W,
-        shared_state=_FakeSharedState(),
-        base_fov_degrees=10.38,
-    )
-    _, canvas = sfm.rotate_centroids(
-        np.asarray([(540.0, 960.0)]), (FULL_H, FULL_W), 90.0
-    )
-    assert fake.calls[0]["fov_estimate"] == pytest.approx(
-        sfm.fov_estimate_deg(canvas[1], CROP_W, base_fov_degrees=10.38)
-    )
-
-
-@pytest.mark.unit
-def test_solve_cedar_fullframe_undistorts_before_rotation():
-    fake = _FakeT3({"RA": 10.0, "Matches": 7, "RMSE": 90.0, "Prob": 1e-6})
-    centroids = np.asarray([(80.0, 120.0), (540.0, 960.0)])
-    coefficients = {"k1": -0.04, "k2": 0.0, "k3": 0.0, "p1": 0.0, "p2": 0.0}
-    solver._solve_cedar_fullframe(
-        fake,
-        centroids,
-        (FULL_H, FULL_W),
-        rotation_deg=90.0,
-        crop_width_px=CROP_W,
-        shared_state=_FakeSharedState(),
-        distortion_coefficients=coefficients,
-    )
-    corrected = undistort_global_centroids(
-        centroids,
-        (FULL_H, FULL_W),
-        coefficients,
-    )
-    expected, _ = sfm.rotate_centroids(corrected, (FULL_H, FULL_W), 90.0)
-    assert fake.calls[0]["cents"] == pytest.approx(expected)
-
-
-@pytest.mark.unit
-def test_solve_cedar_fullframe_rejects_weak_quality():
-    fake = _FakeT3({"RA": 10.0, "Dec": 20.0, "Matches": 5, "RMSE": 90.0, "Prob": 1e-6})
-    solution = solver._solve_cedar_fullframe(
-        fake,
-        [(540.0, 960.0)],
-        (FULL_H, FULL_W),
-        rotation_deg=90.0,
-        crop_width_px=CROP_W,
-        shared_state=_FakeSharedState(),
-    )
-    assert solution == {}
 
 
 @pytest.mark.unit

@@ -100,18 +100,19 @@ The solver process owns one tight loop:
 3. **Fetch the latest frame metadata** from `shared_state.last_image_metadata()`.
    If `exposure_end` is not newer than `last_solve_attempt`, the image is
    stale and the loop continues.
-4. **Extract centroids.** The solver prefers `PFCedarDetectClient` (a
-   subclass of `cedar_detect_client.CedarDetectClient` that talks to the
-   `cedar-detect-server` over gRPC on port 50551, using POSIX shared
-   memory when possible). On any gRPC failure it raises
-   `CedarConnectionError` and falls back to
-   `tetra3.get_centroids_from_image`.
-5. **Solve with tetra3.** `t3.solve_from_centroids(...)` is called with:
-   - the image dims `(512, 512)`,
-   - `fov_estimate=12.0`, `fov_max_error=4.0`,
-   - `target_pixel=shared_state.target_pixel()` so tetra3 also reports the
-     RA/Dec at the user's chosen pixel (as `RA_target`/`Dec_target`),
-   - optional `target_sky_coord` when alignment is active.
+4. **Extract centroids.** MFDS detects stars on native RAW and star-only
+   preprocessed images through a persistent child process and private memfd.
+   SEP is a detector fallback for unavailable MFDS or insufficient candidates.
+   `SepShadowRunner` and `sep_*` path labels are historical compatibility names;
+   the reported detector backend identifies which implementation was used.
+   In `auto` mode, stable RAW solves continue while preprocessing runs in the
+   background. RAW failure, alignment and optical calibration force synchronous
+   recovery. Only paired, fresh frames update the preprocessing correction.
+5. **Solve with tetra3.** Try the central candidate subset, then the full frame.
+   `solver_frame_map` maps native coordinates into the rotated canvas, with FOV
+   from the camera/optical profile and the active distortion model. Map the
+   target pixel back to 512-space for alignment. Calibration inputs retain
+   unrotated, undistorted sensor coordinates from the matching exposure.
 6. **On success**, `_build_successful_solve()` folds the tetra3 `solution`
    dict into a `SuccessfulSolve` message carrying flat per-axis
    solve-truth:
