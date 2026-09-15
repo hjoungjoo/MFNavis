@@ -86,7 +86,7 @@ def integrator(
     logger.debug("Starting Integrator")
 
     telemetry = None
-    field_capture = CaptureRecorder("integrator")
+    field_capture = CaptureRecorder("integrator", shared_state=shared_state)
     try:
         cfg = config.Config()
         screen_direction = cfg.get_option("screen_direction")

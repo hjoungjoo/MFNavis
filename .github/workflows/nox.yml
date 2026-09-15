@@ -28,6 +28,10 @@ jobs:
           submodules: true
       - name: Create tetra3 import alias
         run: bash ../scripts/ensure_tetra3_link.sh ..
+      - name: Check Cedar-free merge candidate
+        run: python3 ../scripts/check_cedar_free.py --repo ..
+      - name: Build pinned MF detector
+        run: bash ../scripts/setup_mf_detect_star.sh
       - uses: actions/setup-python@v6
         with:
           # Do not rely on the runner's preinstalled Python: its version can

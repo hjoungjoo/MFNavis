@@ -1,0 +1,1 @@
+../mf_detect_star/integrations/pifinder/tests/test_detector_profiles.py

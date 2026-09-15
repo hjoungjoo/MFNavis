@@ -1,0 +1,1 @@
+../mf_detect_star/integrations/pifinder/scripts/summarize_detector_coordinates.py

@@ -1,0 +1,1 @@
+../mf_detect_star/integrations/pifinder/PiFinder/star_detect.py

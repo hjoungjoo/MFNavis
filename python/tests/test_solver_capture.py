@@ -348,3 +348,21 @@ def test_web_capture_controls_and_auth(paths):
         .status_code
         == 401
     )
+
+
+def test_capture_freezes_selected_target_and_keeps_input_frame_identity(paths):
+    target = SimpleNamespace(
+        object_id=1, display_name="frame target", ra=12.0, dec=-4.0
+    )
+    shared = SimpleNamespace(ui_state=lambda: SimpleNamespace(target=lambda: target))
+    arm(paths)
+    rec = recorder(paths)
+    rec.shared_state = shared
+    token = rec.begin({"frame_id": 17, "exposure_end": 123})
+    target.ra = 13.0
+    rec.finish(token, {"accepted": False})
+    rec.close()
+    row = rows(rec)[0]
+    assert row["metadata"]["frame_id"] == 17
+    assert row["observation"]["target"]["ra_deg"] == 12.0
+    assert row["observation"]["pointing"] is None

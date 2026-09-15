@@ -1,0 +1,1 @@
+../mf_detect_star/integrations/pifinder/PiFinder/preprocessed_anchor.py

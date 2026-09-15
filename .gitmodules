@@ -1,3 +1,4 @@
-[submodule "python/PiFinder/tetra3"]
-	path = python/PiFinder/tetra3
-	url = https://github.com/smroid/cedar-solve
+[submodule "mf_detect_star"]
+	path = python/mf_detect_star
+	url = https://github.com/hjoungjoo/mf_detect_star.git
+	branch = main

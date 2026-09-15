@@ -49,7 +49,7 @@ def test_quality_keeps_observed_stable_sep_and_established_paths():
         _solution(matches=7, rmse=96.8, prob=1.685e-6), "sep_center"
     ).accepted
     # The quality policy does not alter the established production crop.
-    assert solution_quality_decision({"RA": 1.0}, "cedar_512").accepted
+    assert solution_quality_decision({"RA": 1.0, "Dec": 0.0}, "cedar_512").accepted
 
 
 def test_quality_gates_native_cedar_center_path():
@@ -241,3 +241,17 @@ def test_moving_instrument_bypasses_fine_stationary_gate():
     )
     assert decision.accepted is True
     assert decision.reason == "near_trusted"
+
+
+@pytest.mark.parametrize("path", ["cedar_512", "preprocessed_sep_full", "sep_center"])
+@pytest.mark.parametrize(
+    "key,value", [("RA", float("nan")), ("Dec", float("inf")), ("Dec", -91)]
+)
+def test_all_paths_reject_invalid_coordinates(path, key, value):
+    solution = _solution()
+    solution[key] = value
+    assert not solution_quality_decision(solution, path).accepted
+
+
+def test_invalid_separation_is_not_zero():
+    assert angular_separation_deg(1, 20, float("nan"), 20) == float("inf")

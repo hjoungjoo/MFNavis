@@ -76,6 +76,11 @@ and [Korean change history](./docs/mf_dev/mf_change_history_ko.md).
 
 # Original PiFinder™ Project
 
+This section describes upstream history. This fork's main uses MF Detect Star
+and no longer includes Cedar Detect binaries. See the
+[current integration](docs/DETECTOR_INTEGRATION_ko.md) and
+[merge/deployment record](docs/MAIN_FINALIZATION_ko.md).
+
 A plate solving telescope finder based around a Raspberry PI, imx296 camera, and custom UI 'hat'
 
 For an overview of what the PiFinder™ is and how it came to be visit the official project website at [PiFinder.io](https://www.pifinder.io/build-yours) 
@@ -89,8 +94,8 @@ which permits broad non-commercial use but excludes commercial uses that compete
 with Cedar Detect. Because the PiFinder™ is also offered commercially, it bundles
 and distributes the Cedar Detect binaries under a **separate license granted
 expressly by the copyright holder** — not under the public FSL terms. The prebuilt
-binaries live in [`bin/`](./bin/); see [`bin/README.md`](./bin/README.md) for the
-full licensing details and a copy of the Cedar Detect license. Note this is
+binaries were part of the upstream distribution; this fork has removed them.
+See [`bin/README.md`](./bin/README.md) for the current binary policy. Note this is
 distinct from the PiFinder project's own GPL-3.0 [`LICENSE`](./LICENSE).
 
 Thank you to [smroid](https://github.com/smroid) for all your support of the PiFinder project!

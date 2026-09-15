@@ -20,6 +20,23 @@ from PiFinder.sep_detect import SepDetection
 from PiFinder.sep_shadow import SepRun, SepShadowRunner
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize("requested", [1, 3])
+def test_sync_runner_and_background_clone_keep_parallel_scales(requested):
+    runner = SepShadowRunner(
+        True, True, 4.0, 0.0, 980, preprocess_scale_workers=requested
+    )
+    clone = runner.preprocessing_clone()
+    try:
+        assert runner.preprocess_scale_workers >= 2
+        assert clone.preprocess_scale_workers == runner.preprocess_scale_workers
+        assert clone._star_only is not runner._star_only
+        assert clone._star_only._scale_executor is not runner._star_only._scale_executor
+    finally:
+        runner._star_only.close()
+        clone._star_only.close()
+
+
 class DummyShared:
     def __init__(self):
         self._overlay = None
@@ -162,7 +179,7 @@ def test_solver_preprocessor_requires_two_matching_frames(monkeypatch, tmp_path)
             elapsed_ms=1.0,
         )
 
-    monkeypatch.setattr("PiFinder.sep_shadow.sep_detect.detect_stars", fake_detect)
+    monkeypatch.setattr("PiFinder.sep_shadow.star_detect.detect_stars", fake_detect)
     frame = np.zeros((128, 128), dtype=np.uint16)
 
     assert runner.preprocess_frame(frame, fingerprint=("same",), frame_id=1) is None

@@ -1,4 +1,6 @@
 import io
+import json
+from types import SimpleNamespace
 
 import numpy as np
 from PIL import Image
@@ -937,6 +939,11 @@ def test_tiff_download_is_lossless_16bit_raw_data():
     """format=tiff exports the raw ADU values: 16-bit, no stretch, no
     debayer -- byte-identical to the sensor data for offline processing."""
     shared = DummySharedState()
+    shared.ui_state = lambda: SimpleNamespace(
+        target=lambda: SimpleNamespace(
+            object_id=9, display_name="saved target", ra=123.4, dec=-12.3
+        )
+    )
     frame = (np.arange(100, dtype=np.uint16) * 40).reshape(10, 10)  # up to 3960
     publish_selected_frame(
         shared,
@@ -955,6 +962,10 @@ def test_tiff_download_is_lossless_16bit_raw_data():
     tiff_bytes, mimetype = rendered
     assert mimetype == "image/tiff"
     image = Image.open(io.BytesIO(tiff_bytes))
+    metadata = json.loads(image.tag_v2[270])
+    assert metadata["input_frame_info"]["frame_id"] == 1
+    assert metadata["observation"]["target"]["ra_deg"] == 123.4
+    assert metadata["observation"]["pointing"] is None
     assert image.mode in {"I;16", "I"}
     np.testing.assert_array_equal(np.asarray(image, dtype=np.uint16), frame)
 

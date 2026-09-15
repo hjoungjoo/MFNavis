@@ -10,6 +10,7 @@ the web API then turns that frame into a display-sized PNG/JPEG/WebP image.
 from __future__ import annotations
 
 import io
+import json
 import time
 from collections import deque
 from dataclasses import asdict, dataclass
@@ -18,6 +19,8 @@ from typing import Any
 import numpy as np
 from PIL import Image, ImageDraw
 
+from PiFinder.observation import observation_snapshot
+from PiFinder.solver_capture import json_value
 from PiFinder.livecam_config import (
     COLOR_MODE_COLOR,
     COLOR_MODE_MONO,
@@ -485,7 +488,16 @@ class RawLiveStackProcessor:
         arr16 = np.clip(np.rint(arr), 0, 65535).astype(np.uint16)
         image = Image.fromarray(arr16, mode="I;16")
         buf = io.BytesIO()
-        image.save(buf, format="TIFF")
+        description = {
+            "observation": observation_snapshot(shared_state),
+            "input_frame_info": json_value(info),
+            "stack_enabled": normalized["stack_enabled"],
+            "output_source": normalized["output_source"],
+            "stack_note": "input_frame_info identifies latest input, not all stacked exposures",
+        }
+        image.save(
+            buf, format="TIFF", tiffinfo={270: json.dumps(description, allow_nan=False)}
+        )
         return buf.getvalue(), "image/tiff"
 
     def _accept_frame(

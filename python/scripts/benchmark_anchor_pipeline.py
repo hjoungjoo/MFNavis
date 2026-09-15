@@ -1,0 +1,1 @@
+../mf_detect_star/integrations/pifinder/scripts/benchmark_anchor_pipeline.py

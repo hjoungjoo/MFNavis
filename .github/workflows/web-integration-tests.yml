@@ -40,6 +40,7 @@ jobs:
           git submodule sync
           git submodule update --init --recursive
           bash ../scripts/ensure_tetra3_link.sh ..
+          bash ../scripts/setup_mf_detect_star.sh
 
       - name: Use cache of hip_main.dat star catalog
         

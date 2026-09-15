@@ -40,7 +40,8 @@ from typing import Optional
 
 import numpy as np
 
-from PiFinder import sep_detect, utils
+from PiFinder import star_detect
+from PiFinder import utils
 from PiFinder import solver_frame_map as sfm
 from PiFinder.mf_cloud_gate import wide_cloud_gate_enabled
 from PiFinder.mf_manual_lens import manual_focal_from_state
@@ -130,7 +131,7 @@ class SepShadowRunner:
         warm_pixel_map: Optional[np.ndarray] = None,
         base_fov_degrees: float = sfm.SOLVER_FOV_DEG,
         distortion_coefficients: Optional[dict[str, float]] = None,
-        preprocess_scale_workers: int = 1,
+        preprocess_scale_workers: int = 3,
     ):
         self.shadow_enabled = shadow_enabled
         self.fallback_enabled = fallback_enabled
@@ -154,7 +155,9 @@ class SepShadowRunner:
         self._last_failed_sep_count: Optional[int] = None
         # Overlay entry for the in-flight attempt (see publish_overlay)
         self._last_overlay: Optional[dict] = None
-        self.preprocess_scale_workers = max(1, min(4, int(preprocess_scale_workers)))
+        # Test branch contract: scale calculations remain parallel even when
+        # RAW failure/alignment requires waiting for this frame's result.
+        self.preprocess_scale_workers = max(2, min(4, int(preprocess_scale_workers)))
         self._star_only = MFStarOnlyAccumulator(
             MFStarOnlyConfig(parallel_scale_workers=self.preprocess_scale_workers)
         )
@@ -232,7 +235,7 @@ class SepShadowRunner:
                 base_fov_degrees=base_fov_degrees,
                 distortion_coefficients=active_coefficients(calibration),
                 preprocess_scale_workers=int(
-                    cfg.get_option("solver_preprocess_scale_workers", 1) or 1
+                    cfg.get_option("solver_preprocess_scale_workers", 3) or 3
                 ),
             )
         except Exception:
@@ -315,7 +318,7 @@ class SepShadowRunner:
                 return None
             frame = np.asarray(entry["frame"])
             lens_key = getattr(shared_state, "camera_lens", lambda: "")()
-            detection = sep_detect.detect_stars(
+            detection = star_detect.detect_stars(
                 frame,
                 sigma=self.sigma,
                 saturation_level=self.saturation_level,
@@ -334,6 +337,8 @@ class SepShadowRunner:
             # overwrote it, so the confirmed/candidate split almost never
             # reached the screen.
             self._last_overlay = {
+                "detector_backend": detection.backend,
+                "detector_fallback_reason": detection.fallback_reason,
                 "centroids": detection.centroids.tolist(),
                 "frame_hw": [int(frame.shape[0]), int(frame.shape[1])],
                 "frame_id": entry.get("frame_id"),
@@ -401,7 +406,7 @@ class SepShadowRunner:
             }
             if result.diagnostics.frame_count < 2:
                 return None
-            detection = sep_detect.detect_stars(
+            detection = star_detect.detect_stars(
                 result.frame,
                 sigma=self.sigma,
                 # Keep tetra3's proven brightest-48 input unchanged while
@@ -448,6 +453,8 @@ class SepShadowRunner:
         if overlay_centroids is None:
             overlay_centroids = detection.centroids
         self._last_overlay = {
+            "detector_backend": detection.backend,
+            "detector_fallback_reason": detection.fallback_reason,
             "centroids": overlay_centroids.tolist(),
             "solver_centroids": len(detection.centroids),
             "frame_hw": [int(run.frame_hw[0]), int(run.frame_hw[1])],

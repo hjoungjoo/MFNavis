@@ -29,6 +29,7 @@ import uuid
 import numpy as np
 
 from PiFinder import utils
+from PiFinder.observation import observation_snapshot
 
 logger = logging.getLogger(__name__)
 SCHEMA_VERSION = 1
@@ -191,6 +192,8 @@ def request_capture(action, options=None, *, runtime=None):
 
 
 def _environment(cfg, source_directory=None):
+    from PiFinder.runtime_provenance import detector_provenance
+
     keys = set(getattr(cfg, "_default_config_dict", {})) | set(
         getattr(cfg, "_config_dict", {})
     )
@@ -205,10 +208,17 @@ def _environment(cfg, source_directory=None):
         "solver.py",
         "solver_scheduling.py",
         "solver_capture.py",
+        "observation.py",
+        "detector_profiles.py",
+        "star_detect.py",
         "sep_shadow.py",
         "mf_star_only_preprocess.py",
         "solve_acceptance.py",
         "preprocess_bias.py",
+        "latest_frame_worker.py",
+        "mf_detect_process.py",
+        "runtime_provenance.py",
+        "tetra3/tetra3/tetra3.py",
         "auto_exposure_framewise.py",
         "camera_pi.py",
         "camera_interface.py",
@@ -216,10 +226,13 @@ def _environment(cfg, source_directory=None):
     ):
         path = Path(__file__).parent / name
         content = path.read_bytes()
-        hashes[name] = hashlib.sha256(content).hexdigest()
+        archive_name = name.replace("/", "__")
+        hashes[archive_name] = hashlib.sha256(content).hexdigest()
         if source_directory is not None:
             source_directory.mkdir(parents=True, exist_ok=True)
-            (source_directory / name).write_bytes(content)
+            destination = source_directory / archive_name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(content)
     try:
         revision = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
@@ -232,7 +245,21 @@ def _environment(cfg, source_directory=None):
         revision = None
     return {
         "settings": selected,
+        "detector_environment": {
+            key: value
+            for key, value in os.environ.items()
+            if key.startswith(
+                (
+                    "MF_DETECT_",
+                    "PIFINDER_DETECTOR",
+                    "PIFINDER_TEST_PROFILE",
+                    "PIFINDER_PREPROCESS_MODE",
+                    "TETRA3_SEARCH_OPTIMIZED",
+                )
+            )
+        },
         "git_head": revision,
+        "detector_runtime": detector_provenance(),
         "source_sha256": hashes,
         "python": platform.python_version(),
         "platform": platform.platform(),
@@ -362,8 +389,9 @@ class _Writer:
 class CaptureRecorder:
     """Cheap disabled polling; bounded asynchronous lossless writes when armed."""
 
-    def __init__(self, role, cfg=None, *, runtime=None, root=None):
+    def __init__(self, role, cfg=None, *, runtime=None, root=None, shared_state=None):
         self.role, self.cfg = role, cfg
+        self.shared_state = shared_state
         self.runtime = Path(runtime or utils.runtime_dir)
         self.root = Path(root or utils.data_dir / "captures" / "solver_sessions")
         self.writer = None
@@ -426,6 +454,9 @@ class CaptureRecorder:
                 for key in ("revision", "stage", "scene", "note", "updated")
             },
             "metadata": metadata,
+            "observation": observation_snapshot(self.shared_state)
+            if self.shared_state is not None
+            else None,
             "started_monotonic_ns": time.monotonic_ns(),
             "started_at": time.time(),
         }

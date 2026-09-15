@@ -5,6 +5,8 @@ import pytest
 
 from PiFinder.latest_frame_worker import LatestFrameWorker
 
+pytestmark = pytest.mark.unit
+
 
 def _wait_result(worker, timeout=1.0):
     deadline = time.monotonic() + timeout
@@ -105,3 +107,42 @@ def test_clear_pending_drops_replacement_but_not_running_item():
     assert stats.submitted == 1
     assert stats.completed == 1
     assert stats.skipped == 1
+
+
+def test_exchange_starts_new_frame_instead_of_stale_pending():
+    started = []
+    release = threading.Event()
+
+    def process(item):
+        started.append(item)
+        if item == "A":
+            assert release.wait(1)
+        return item
+
+    with LatestFrameWorker(process) as worker:
+        worker.exchange("A")
+        worker.exchange("B")
+        release.set()
+        worker._future.result(timeout=1)
+        result = worker.exchange("C")
+        assert result.value == "A"
+        assert _wait_result(worker).value == "C"
+        assert worker.stats().skipped == 1
+    assert started == ["A", "C"]
+
+
+def test_result_age_includes_queue_and_consumption_delay(monkeypatch):
+    from PiFinder import latest_frame_worker as module
+
+    now = [10.0]
+    monkeypatch.setattr(module.time, "monotonic", lambda: now[0])
+    with LatestFrameWorker(lambda item: item) as worker:
+        worker.offer(1)
+        worker._future.result(timeout=1)
+        now[0] = 14.0
+        result = worker.poll()
+        assert result.is_fresh()
+        now[0] = 16.0
+        assert not result.is_fresh()
+        now[0] = 9.0
+        assert not result.is_fresh()

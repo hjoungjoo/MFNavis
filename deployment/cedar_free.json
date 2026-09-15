@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "detector": "mf",
+  "source_policy": "pinned-submodule",
+  "scope": "Cedar artifact checks only; not a license clearance"
+}

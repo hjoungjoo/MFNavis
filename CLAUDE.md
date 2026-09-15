@@ -24,14 +24,19 @@ Maintainers can make `fresh` root on `main` automatically per clone (without cha
 git remote set-head origin main
 ```
 
-**Initialise the `tetra3` submodule and import alias in every new worktree.** `python/PiFinder/tetra3` is a git submodule (the `cedar-solve`/Tetra3 solver); the importable package is its inner `tetra3/tetra3/` dir, surfaced through the untracked symlink `python/tetra3`. Fresh worktrees need both steps below. Setup, post-update and CI use the same alias helper, which preserves any pre-existing folder or nonstandard link in `python/tetra3.backup.*/original`.
+**Initialise the pinned detector and Tetra3 import alias in every new checkout.**
+This main branch vendors the Tetra3 solver core. `python/mf_detect_star` is a
+pinned submodule containing the canonical detector, preprocessing, comparison
+tools and tests. Existing PiFinder paths are relative symlinks into that tree.
 
 ```bash
-git submodule update --init python/PiFinder/tetra3
 bash scripts/ensure_tetra3_link.sh .
+bash scripts/setup_mf_detect_star.sh
 ```
 
-mypy also needs this: its config points at `python/PiFinder/tetra3/tetra3`, so `nox -s type_hints` can't run in a worktree until the submodule is initialised.
+These helpers do not change services or boot configuration. Edit detector-related
+sources in mf_detect_star, then commit/push and advance the pinned submodule
+reference. See `docs/DETECTOR_INTEGRATION_ko.md` and the detector's `LICENSING.md`.
 
 ## Development Commands
 
@@ -75,8 +80,10 @@ Watch out for .venv directories containing virtual environments, that you need t
 
 **Running the application:**
 
-First start the `cedar-detect-server` which is in `bin` (you need to use `-p 50551`, when invoking it).
-Use the correct architecture suffix for cedar-detect-server according to the platform you're running on. 
+Build the pinned MF detector with `bash scripts/setup_mf_detect_star.sh` first.
+This main branch starts persistent native MF child workers automatically, with
+private memfd image memory. It needs no Cedar server or additional systemd unit.
+`MF_DETECT_TRANSPORT=ctypes` is an explicit comparison mode; process is default.
 
 Development setup has to have run and you should be in .venv virtual environment
 ```bash

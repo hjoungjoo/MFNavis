@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Runs only in the disposable candidate checkout. No system installation.
+set -euo pipefail
+candidate_dir="$(cd "$(dirname "$0")/.." && pwd)"
+python3 "$candidate_dir/scripts/check_cedar_free.py" --repo "$candidate_dir"
+git -C "$candidate_dir" submodule update --init --recursive
+bash "$candidate_dir/scripts/ensure_tetra3_link.sh" "$candidate_dir"
+bash "$candidate_dir/scripts/setup_mf_detect_star.sh"
+python3 -m pip check

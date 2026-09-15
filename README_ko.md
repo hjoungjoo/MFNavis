@@ -73,6 +73,10 @@ LCD 화면의 전역 키, 화면별 키 동작, USB·Bluetooth 키보드 매핑�
 > 아래는 원작자 README의 한국어 번역입니다. 원문의 최신 내용과 라이선스 문구는
 > [영문 README](./README.md#original-pifinder-project)를 기준으로 확인하세요.
 
+이 절은 원작 프로젝트의 이력 설명이다. 현재 포크 main은 MF Detect Star를 사용하며
+Cedar Detect 바이너리를 포함하지 않는다. [현재 통합](docs/DETECTOR_INTEGRATION_ko.md)과
+[메인 병합·배포 기록](docs/MAIN_FINALIZATION_ko.md)을 참고한다.
+
 PiFinder™는 Raspberry Pi, imx296 카메라, 맞춤형 UI HAT을 기반으로 하는
 플레이트 솔빙 망원경 파인더입니다.
 
@@ -88,8 +92,8 @@ Cedar Solve는 Apache-2.0 라이선스로 제공됩니다.
 이 라이선스는 경쟁적인 상업적 사용을 제외한 폭넓은 비상업적 사용을 허용합니다.
 PiFinder™ 역시 상업적으로 제공되므로, 프로젝트는 공개 FSL 조건이 아니라 저작권자가
 명시적으로 부여한 **별도 라이선스**에 따라 Cedar Detect 바이너리를 묶어 배포합니다.
-사전 빌드 바이너리는 [`bin/`](./bin/)에 있으며, 전체 라이선스 설명과 Cedar Detect
-라이선스 사본은 [`bin/README.md`](./bin/README.md)를 참고하세요. 이는 PiFinder
+해당 바이너리는 원작 배포의 구성이며 이 포크에서는 제거했다.
+현재 바이너리 정책은 [`bin/README.md`](./bin/README.md)를 참고하세요. 이는 PiFinder
 프로젝트 자체의 GPL-3.0 [`LICENSE`](./LICENSE)와 별개입니다.
 
 PiFinder를 지원해 주신 [smroid](https://github.com/smroid)에게 감사드립니다.

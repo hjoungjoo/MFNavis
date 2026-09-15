@@ -29,6 +29,11 @@ class WorkerResult(Generic[InputT, OutputT]):
     value: Optional[OutputT]
     elapsed_ms: float
     error: Optional[BaseException] = None
+    offered_at: float = 0.0
+
+    def is_fresh(self, max_age_s: float = 5.0) -> bool:
+        """Bound queue + processing + consumption delay using one monotonic clock."""
+        return 0 <= time.monotonic() - self.offered_at <= max_age_s
 
 
 @dataclass(frozen=True)
@@ -61,13 +66,14 @@ class LatestFrameWorker(Generic[InputT, OutputT]):
         )
         self._future: Optional[Future[WorkerResult[InputT, OutputT]]] = None
         self._pending: Optional[InputT] = None
+        self._pending_at = 0.0
         self._closed = False
         self._lock = threading.Lock()
         self._submitted = 0
         self._completed = 0
         self._skipped = 0
 
-    def _run(self, item: InputT) -> WorkerResult[InputT, OutputT]:
+    def _run(self, item: InputT, offered_at: float) -> WorkerResult[InputT, OutputT]:
         started = time.perf_counter()
         try:
             value = self._process(item)
@@ -75,6 +81,7 @@ class LatestFrameWorker(Generic[InputT, OutputT]):
                 item=item,
                 value=value,
                 elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                offered_at=offered_at,
             )
         except BaseException as exc:
             return WorkerResult(
@@ -82,10 +89,11 @@ class LatestFrameWorker(Generic[InputT, OutputT]):
                 value=None,
                 elapsed_ms=(time.perf_counter() - started) * 1000.0,
                 error=exc,
+                offered_at=offered_at,
             )
 
-    def _submit(self, item: InputT) -> None:
-        self._future = self._executor.submit(self._run, item)
+    def _submit(self, item: InputT, offered_at: float) -> None:
+        self._future = self._executor.submit(self._run, item, offered_at)
         self._submitted += 1
 
     def offer(self, item: InputT) -> bool:
@@ -99,12 +107,38 @@ class LatestFrameWorker(Generic[InputT, OutputT]):
             if self._closed:
                 raise RuntimeError("latest-frame worker is closed")
             if self._future is None:
-                self._submit(item)
+                self._submit(item, time.monotonic())
                 return True
             if self._pending is not None:
                 self._skipped += 1
             self._pending = item
+            self._pending_at = time.monotonic()
             return False
+
+    def exchange(self, item: InputT) -> Optional[WorkerResult[InputT, OutputT]]:
+        """Collect completion and offer the newest frame atomically.
+
+        If A completed with B pending and C arrives, run C next, never B.
+        Use poll only when no new frame is available.
+        """
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("latest-frame worker is closed")
+            result = None
+            if self._future is not None and self._future.done():
+                result = self._future.result()
+                self._completed += 1
+                self._future = None
+            if self._pending is not None:
+                self._skipped += 1
+                self._pending = None
+            now = time.monotonic()
+            if self._future is None:
+                self._submit(item, now)
+            else:
+                self._pending = item
+                self._pending_at = now
+            return result
 
     def poll(self) -> Optional[WorkerResult[InputT, OutputT]]:
         """Return one completed result without blocking and start the pending item."""
@@ -119,7 +153,7 @@ class LatestFrameWorker(Generic[InputT, OutputT]):
             if self._pending is not None:
                 pending = self._pending
                 self._pending = None
-                self._submit(pending)
+                self._submit(pending, self._pending_at)
             return result
 
     def stats(self) -> WorkerStats:
