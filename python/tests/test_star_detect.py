@@ -61,3 +61,17 @@ def test_native_abi_rejects_null_input():
         lib.mfds_detect_u16(None, 2, 2, 2, 4095, 2, 4.5, data, 1, ctypes.byref(elapsed))
         < 0
     )
+
+
+@pytest.mark.parametrize("stage", ["2", "1"])
+def test_pyramid_preserves_sensor_coordinates(monkeypatch, stage):
+    if not (Path.home() / "mf_detect_star_test/build/libmf_detect_star.so").exists():
+        pytest.skip("build native test library first")
+    monkeypatch.setenv("PIFINDER_DETECTOR", "mf")
+    monkeypatch.setenv("MF_DETECT_PYRAMID", stage)
+    monkeypatch.setenv("MF_DETECT_BINNING", "4")
+    frame, truth = star_field()
+    result = star_detect.detect_stars(frame, saturation_level=4095)
+    assert len(result.centroids) == len(truth)
+    for point in truth:
+        assert np.linalg.norm(result.centroids - point, axis=1).min() < 0.7

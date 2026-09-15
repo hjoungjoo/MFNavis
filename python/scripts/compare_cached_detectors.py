@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--limit", type=int)
     parser.add_argument("--start", type=int, default=0)
     parser.add_argument("--modes", default="sep,mf2,mf1")
+    parser.add_argument("--alternate", action="store_true")
     args = parser.parse_args()
     files = sorted(args.cache.glob("*.npy"))[args.start :]
     if args.limit:
@@ -28,14 +29,21 @@ def main():
     warm_path = utils.data_dir / "sep_warm_pixels.npy"
     warm_map = np.load(warm_path) if warm_path.exists() else None
     rows = []
-    for path in files:
+    for index, path in enumerate(files):
         meta = json.loads(path.with_suffix(".json").read_text())
         if meta["frame_count"] < 2:
             continue
         frame = np.load(path)
-        for mode in args.modes.split(","):
+        modes = args.modes.split(",")
+        if args.alternate:
+            offset = index % len(modes)
+            modes = modes[offset:] + modes[:offset]
+        for mode in modes:
             os.environ["PIFINDER_DETECTOR"] = "sep" if mode == "sep" else "mf"
             if mode != "sep":
+                os.environ["MF_DETECT_PYRAMID"] = (
+                    "2" if "p" in mode else "1" if "o" in mode else "0"
+                )
                 os.environ["MF_DETECT_BINNING"] = mode[2]
                 os.environ["MF_DETECT_RANKING"] = (
                     "response" if mode.endswith("q") else "flux"
@@ -70,6 +78,7 @@ def main():
                     "candidates": len(detection.centroids),
                     "detect_ms": detect_ms,
                     "solve_ms": solve_ms,
+                    "detect_solve_ms": detect_ms + solve_ms,
                     "preprocess_ms": meta["preprocess_ms"],
                     "ra": solution.get("RA"),
                     "dec": solution.get("Dec"),
@@ -88,7 +97,14 @@ def main():
         part = [r for r in rows if r["mode"] == mode]
         solved = [r for r in part if r["ra"] is not None]
         summary[mode] = {"attempts": len(part), "solved": len(solved)}
-        for key in ["detect_ms", "solve_ms", "candidates", "rmse", "matches"]:
+        for key in [
+            "detect_ms",
+            "solve_ms",
+            "detect_solve_ms",
+            "candidates",
+            "rmse",
+            "matches",
+        ]:
             values = [r[key] for r in part if r[key] is not None]
             summary[mode][key] = {
                 "p50": float(np.median(values)) if values else None,

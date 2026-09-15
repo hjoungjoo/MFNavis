@@ -47,6 +47,10 @@ def _native_library():
         if hasattr(lib, "mfds_detect_u16_refined"):
             lib.mfds_detect_u16_refined.argtypes = lib.mfds_detect_u16.argtypes
             lib.mfds_detect_u16_refined.restype = ctypes.c_int
+        for name in ("mfds_detect_u16_pyramid", "mfds_detect_u16_pyramid_full"):
+            if hasattr(lib, name):
+                getattr(lib, name).argtypes = lib.mfds_detect_u16.argtypes
+                getattr(lib, name).restype = ctypes.c_int
         _library = lib
     return _library
 
@@ -70,6 +74,13 @@ def detect_stars(raw_frame, **kwargs):
         if os.environ.get("MF_DETECT_REFINE", "0") == "1"
         else lib.mfds_detect_u16
     )
+    pyramid = os.environ.get("MF_DETECT_PYRAMID", "0")
+    if pyramid == "2":
+        detect = lib.mfds_detect_u16_pyramid
+    elif pyramid == "1":
+        detect = lib.mfds_detect_u16_pyramid_full
+    elif pyramid != "0":
+        raise ValueError("MF_DETECT_PYRAMID must be 0, 1 or 2")
     count = detect(
         arr.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16)),
         arr.shape[1],
