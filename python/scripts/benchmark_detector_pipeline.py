@@ -26,6 +26,7 @@ def main():
     parser.add_argument("output", type=Path)
     parser.add_argument("--frames", type=int, default=12)
     parser.add_argument("--workers", type=int, default=3)
+    parser.add_argument("--modes", default="sep,mf")
     args = parser.parse_args()
     paths = sorted(args.corpus.glob("raw_*.tiff"))[: args.frames]
     t3 = tetra3.Tetra3(str(utils.tetra3_dir / "data/default_database.npz"))
@@ -54,11 +55,22 @@ def main():
             )
             if pre.diagnostics.frame_count < 2:
                 continue
-            for mode in ["sep", "mf"] if index % 2 else ["mf", "sep"]:
-                os.environ["PIFINDER_DETECTOR"] = mode
+            modes = args.modes.split(",")
+            offset = index % len(modes)
+            for mode in modes[offset:] + modes[:offset]:
+                os.environ["PIFINDER_DETECTOR"] = "sep" if mode == "sep" else "mf"
                 os.environ["MF_DETECT_RANKING"] = "response"
                 os.environ["MF_DETECT_REFINE"] = "0"
-                os.environ["MF_DETECT_BINNING"] = "2"
+                os.environ["MF_DETECT_BINNING"] = (
+                    mode[2] if len(mode) > 2 and mode.startswith("mf") else "2"
+                )
+                os.environ["MF_DETECT_PYRAMID"] = (
+                    "2"
+                    if "p" in mode and mode != "sep"
+                    else "1"
+                    if "o" in mode
+                    else "0"
+                )
                 started = time.perf_counter()
                 detected = star_detect.detect_stars(
                     pre.frame,
@@ -93,7 +105,7 @@ def main():
     finally:
         accumulator.close()
     summary = {"workers": args.workers, "serial_parallel_pixels_identical": True}
-    for mode in ["sep", "mf"]:
+    for mode in args.modes.split(","):
         part = [row for row in rows if row["mode"] == mode]
         summary[mode] = {
             "attempts": len(part),

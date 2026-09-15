@@ -7,6 +7,7 @@
 - [작업 전 계획](docs/test_cedar_free_20260915/PLAN_ko.md)
 - [1단계 결과](docs/test_cedar_free_20260915/STAGE1_ko.md)
 - [최종 비교 결과와 한계](docs/test_cedar_free_20260915/RESULTS_ko.md)
+- [추가 실험: 다단계 해상도·별 주변 ROI 비교](docs/test_cedar_free_20260915/PYRAMID_RESULTS_ko.md)
 
 마운트 미연결 상태이므로 현재 테스트 설정의 `mount_control`과
 `indi_tracking_guide_enabled`는 껐다. 운영 설정은 변경하지 않았다.

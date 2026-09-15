@@ -9,6 +9,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("comparison", type=Path)
 parser.add_argument("manifest", type=Path)
 parser.add_argument("output", type=Path)
+parser.add_argument("--pair", default="sep,mf2q")
 args = parser.parse_args()
 report = json.loads(args.comparison.read_text())
 manifest = [json.loads(line) for line in args.manifest.read_text().splitlines()]
@@ -16,6 +17,9 @@ times = {Path(r["file"]).stem: r["elapsed_s"] for r in manifest}
 summary = report["summary"]
 for mode in summary:
     rows = [r for r in report["rows"] if r["mode"] == mode and r["ra"] is not None]
+    if len(rows) < 3:
+        summary[mode]["linear_detrended_radial_arcsec"] = None
+        continue
     t = np.array([times[Path(r["file"]).stem] for r in rows])
     ra = np.unwrap(np.deg2rad([r["ra"] for r in rows]))
     dec = np.deg2rad([r["dec"] for r in rows])
@@ -35,10 +39,11 @@ for r in report["rows"]:
     if r["ra"] is not None:
         byfile.setdefault(r["file"], {})[r["mode"]] = r
 seps = []
+left, right = args.pair.split(",")
 for part in byfile.values():
-    if len(part) != 2:
+    if left not in part or right not in part:
         continue
-    a, b = part["sep"], part["mf2q"]
+    a, b = part[left], part[right]
     ra1, ra2 = np.deg2rad([a["ra"], b["ra"]])
     d1, d2 = np.deg2rad([a["dec"], b["dec"]])
     hav = (
@@ -48,9 +53,9 @@ for part in byfile.values():
     seps.append(float(np.rad2deg(2 * np.arcsin(np.sqrt(np.clip(hav, 0, 1)))) * 3600))
 summary["paired_agreement_arcsec"] = {
     "frames": len(seps),
-    "p50": float(np.median(seps)),
-    "p95": float(np.percentile(seps, 95)),
-    "max": max(seps),
+    "p50": float(np.median(seps)) if seps else None,
+    "p95": float(np.percentile(seps, 95)) if seps else None,
+    "max": max(seps) if seps else None,
 }
 print(json.dumps(summary, indent=2))
 args.output.write_text(json.dumps(summary, indent=2) + "\n")
