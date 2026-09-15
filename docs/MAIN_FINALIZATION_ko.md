@@ -25,3 +25,17 @@ native process/memfd, 전처리 3작업자/5프레임, SEP 검출 실패 보조�
 노출·gain·사용자 정렬/장비 설정은 바꾸지 않는다. 서비스 전환은 코드와 검출기
 변경이며 현재 설정을 유지한다. 재부팅은 실행하지 않고 이후 부팅도 기존
 PiFinder unit이 갱신된 운영 소스를 읽도록 한다.
+
+## 병합 검증 결과
+
+- 단위/smoke: 2420 통과, 2 skip, 706 deselected. 기존 NumPy 경고 12개.
+- 기본 데이터·상태 경로 및 submodule 연결 추가 검사: 5 통과.
+- Python 전체 lint 통과, 428개 format 통과, MyPy 206개 소스 통과.
+- pinned MF 빌드와 native 합성 회귀 6/6, 라이선스 원문·정본 배치 검사 통과.
+- main 커밋의 Cedar artifact/gitlink 검사와 설치·갱신 shell 문법 검사 통과.
+- 알고리즘은 실측한 테스트 소스를 유지한다. 배포 준비에서 경로 기본값과
+  문서/submodule 브랜치 정보를 정리했고, vendored 주석의 끝 공백 하나를 제거했다.
+
+MF main: `c76a1ed`. PiFinder 이력 보존 병합: `78f9bae4`.
+서비스 전환 결과는 전환 후 별도 절에 기록한다. 실물 판매 이미지와 냉부팅은
+이번 검사에 포함하지 않는다.
