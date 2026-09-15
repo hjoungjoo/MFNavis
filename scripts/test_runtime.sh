@@ -12,7 +12,7 @@ case "${1:-status}" in
     case "$mode" in auto|sync) ;; *) echo 'mode must be auto or sync' >&2; exit 2;; esac
     transport="${4:-process}"
     case "$transport" in process|ctypes) ;; *) echo 'transport must be process or ctypes' >&2; exit 2;; esac
-    profile_lines=$(PYTHONPATH="$repo_dir/python" python3 -m PiFinder.detector_profiles "$profile" --systemd)
+    profile_lines=$(PYTHONPATH="$repo_dir/python" python3 -m PiFinder.detector_profiles "$profile" --runtime --mode "$mode" --transport "$transport" --systemd)
     test "$EUID" -eq 0 || { echo 'Run with sudo only when service switching is requested.' >&2; exit 1; }
     test -f "$repo_dir/python/PiFinder/star_detect.py"
     if [[ "$profile" != sep ]]; then
@@ -29,8 +29,6 @@ WorkingDirectory=$repo_dir/python
 Environment=PIFINDER_DATA_DIR=/home/pifinder/PiFinder_test_data
 Environment=PIFINDER_RUNTIME_DIR=/dev/shm/pifinder_test
 $profile_lines
-Environment=PIFINDER_PREPROCESS_MODE=$mode
-Environment=MF_DETECT_TRANSPORT=$transport
 Environment=MF_DETECT_SERVER=$repo_dir/python/mf_detect_star/build/mf_detect_star_server
 Environment=MF_DETECT_LIBRARY=$repo_dir/python/mf_detect_star/build/libmf_detect_star.so
 EOF
