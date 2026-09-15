@@ -1,8 +1,10 @@
 PIFINDER_REPO_DIR="${PIFINDER_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 source "${PIFINDER_REPO_DIR}/pifinder_paths.sh"
 
+python3 "${PIFINDER_REPO_DIR}/scripts/check_cedar_free.py" --repo "${PIFINDER_REPO_DIR}"
 git submodule update --init --recursive
 bash "${PIFINDER_REPO_DIR}/scripts/ensure_tetra3_link.sh" "${PIFINDER_REPO_DIR}"
+bash "${PIFINDER_REPO_DIR}/scripts/setup_mf_detect_star.sh"
 sudo python3 -m pip install --break-system-packages -r "${PIFINDER_REPO_DIR}/python/requirements.txt"
 
 # wifi_status.txt is runtime state and no longer tracked, so the update that

@@ -2,7 +2,7 @@
 # This script installs the MF_PiFinder fork on a prepared Raspberry Pi OS.
 # It clones this fork (hjoungjoo/MF_PiFinder, main branch) instead of the
 # upstream release, and adds the fork's SD-wear, evdev and console-boot steps.
-# The upstream version it derives from is kept as pifinder_setup.sh.bak.
+# The old upstream installer is archived in docs/history/pifinder_setup_legacy.txt.
 # See https://pifinder.readthedocs.io/en/release/software.html for more info.
 #
 # Install with:
@@ -45,15 +45,27 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 '
 
 if [[ -d PiFinder/ ]]; then
-    cd PiFinder/ && git config pull.rebase false && git pull
+    cd PiFinder/
+    branch="$(git symbolic-ref --quiet --short HEAD)" || {
+        echo "Detached checkout: select the reviewed deployment branch first." >&2
+        exit 1
+    }
+    if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+        echo "Tracked files have local changes; refusing setup update." >&2
+        exit 1
+    fi
+    git fetch --no-tags origin "refs/heads/${branch}"
+    git cat-file -e FETCH_HEAD:deployment/cedar_free.json
+    git merge --ff-only FETCH_HEAD
 else
-    git clone --recursive --branch main https://github.com/hjoungjoo/MF_PiFinder.git PiFinder
+    git clone --recursive --branch "${PIFINDER_INSTALL_BRANCH:-main}" https://github.com/hjoungjoo/MF_PiFinder.git PiFinder
 fi
 
 PIFINDER_REPO_DIR="${PIFINDER_HOME}/PiFinder"
 source "${PIFINDER_REPO_DIR}/pifinder_paths.sh"
 
 cd "${PIFINDER_REPO_DIR}"
+python3 "${PIFINDER_REPO_DIR}/scripts/check_cedar_free.py" --repo "${PIFINDER_REPO_DIR}"
 
 find_pifinder_indi_archive() {
     local archives=()
@@ -118,6 +130,7 @@ install_optional_indi_archive() {
 
 git submodule update --init --recursive
 bash "${PIFINDER_REPO_DIR}/scripts/ensure_tetra3_link.sh" "${PIFINDER_REPO_DIR}"
+bash "${PIFINDER_REPO_DIR}/scripts/setup_mf_detect_star.sh"
 sudo python3 -m pip install --break-system-packages -r python/requirements.txt
 
 # Setup GPSD
