@@ -29,6 +29,7 @@ import uuid
 import numpy as np
 
 from PiFinder import utils
+from PiFinder.observation import observation_snapshot
 
 logger = logging.getLogger(__name__)
 SCHEMA_VERSION = 1
@@ -205,6 +206,9 @@ def _environment(cfg, source_directory=None):
         "solver.py",
         "solver_scheduling.py",
         "solver_capture.py",
+        "observation.py",
+        "detector_profiles.py",
+        "star_detect.py",
         "sep_shadow.py",
         "mf_star_only_preprocess.py",
         "solve_acceptance.py",
@@ -232,6 +236,18 @@ def _environment(cfg, source_directory=None):
         revision = None
     return {
         "settings": selected,
+        "detector_environment": {
+            key: value
+            for key, value in os.environ.items()
+            if key.startswith(
+                (
+                    "MF_DETECT_",
+                    "PIFINDER_DETECTOR",
+                    "PIFINDER_TEST_PROFILE",
+                    "PIFINDER_PREPROCESS_MODE",
+                )
+            )
+        },
         "git_head": revision,
         "source_sha256": hashes,
         "python": platform.python_version(),
@@ -362,8 +378,9 @@ class _Writer:
 class CaptureRecorder:
     """Cheap disabled polling; bounded asynchronous lossless writes when armed."""
 
-    def __init__(self, role, cfg=None, *, runtime=None, root=None):
+    def __init__(self, role, cfg=None, *, runtime=None, root=None, shared_state=None):
         self.role, self.cfg = role, cfg
+        self.shared_state = shared_state
         self.runtime = Path(runtime or utils.runtime_dir)
         self.root = Path(root or utils.data_dir / "captures" / "solver_sessions")
         self.writer = None
@@ -426,6 +443,9 @@ class CaptureRecorder:
                 for key in ("revision", "stage", "scene", "note", "updated")
             },
             "metadata": metadata,
+            "observation": observation_snapshot(self.shared_state)
+            if self.shared_state is not None
+            else None,
             "started_monotonic_ns": time.monotonic_ns(),
             "started_at": time.time(),
         }

@@ -23,6 +23,7 @@ import logging
 from pathlib import Path
 
 from PiFinder import camera_stage_dump, timez, utils
+from PiFinder.observation import observation_snapshot
 import PiFinder.pointing_model.quaternion_transforms as qt
 from PiFinder.auto_exposure import (
     ExposurePIDController,
@@ -708,6 +709,7 @@ class CameraInterface:
                                 dump_dir,
                                 stats,
                                 {
+                                    "observation": observation_snapshot(shared_state),
                                     "camera": self.get_cam_type(),
                                     "exposure_us": self.exposure_time,
                                     "gain": self.gain,
@@ -1101,6 +1103,11 @@ class CameraInterface:
                             try:
                                 img = camera_image.copy()
                                 img.save(save_path, "PNG", compress_level=6)
+                                Path(save_path).with_suffix(
+                                    ".observation.json"
+                                ).write_text(
+                                    json.dumps(observation_snapshot(shared_state))
+                                )
                                 logger.debug("Telemetry image saved: %s", save_path)
                             except Exception as e:
                                 logger.error("Failed to save telemetry image: %s", e)
@@ -1183,6 +1190,17 @@ class CameraInterface:
                                         filename.with_suffix(".tiff")
                                     )
 
+                                filename.with_suffix(".observation.json").write_text(
+                                    json.dumps(
+                                        {
+                                            "exposure_start_unix_s": capture_start,
+                                            "exposure_end_unix_s": capture_end,
+                                            "observation": observation_snapshot(
+                                                shared_state
+                                            ),
+                                        }
+                                    )
+                                )
                                 console_queue.put("CAM: Captured + Saved")
                                 self._save_next_to = None  # Clear flag
                             else:
@@ -1320,6 +1338,9 @@ class CameraInterface:
                                 # sample below does NOT: it is recomputed on
                                 # every capture and gives live per-frame
                                 # background/MAD/gradient through the sweep.
+                                frame_record["observation"] = observation_snapshot(
+                                    shared_state
+                                )
                                 frame_record["settle_frames"] = settled
                                 try:
                                     frame_record["sqm_details"] = _json_safe(

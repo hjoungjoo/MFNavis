@@ -27,6 +27,7 @@ from PiFinder import utils
 from PiFinder import config
 from PiFinder import camera_controls
 from PiFinder import solver_capture
+from PiFinder.observation import observation_snapshot
 from PiFinder.mf_livecam_tiles import (
     EXCLUDED_TILES_CONFIG_KEY,
     excluded_tile_ids,
@@ -333,6 +334,10 @@ def register_api_routes(app, server_instance, require_auth=False):
         except Exception as e:
             logger.error("api/location error: %s", e)
             return _json_response({"error": str(e)}, 500)
+
+    @app.route("/api/observation")
+    def api_observation():
+        return _json_response(observation_snapshot(server_instance.shared_state))
 
     @app.route("/api/solution")
     def api_solution():

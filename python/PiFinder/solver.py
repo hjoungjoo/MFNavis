@@ -1310,7 +1310,7 @@ def solver(
     # the camera type for crop geometry, which the camera process publishes
     # after startup -- so creation is retried in the loop until it works.
     _sep_cfg = config_mod.Config()
-    field_capture = CaptureRecorder("solver", _sep_cfg)
+    field_capture = CaptureRecorder("solver", _sep_cfg, shared_state=shared_state)
     sep_shadow = None
     sep_shadow_wanted = True
     # Optical-train FOV gating is deliberately opt-in for the first field
@@ -1355,7 +1355,9 @@ def solver(
     skip_slow_raw_fallbacks_wanted = bool(
         _sep_cfg.get_option("solver_preprocess_skip_slow_raw_fallbacks", False)
     )
-    scheduling_mode = _sep_cfg.get_option("solver_preprocess_mode")
+    scheduling_mode = os.environ.get("PIFINDER_PREPROCESS_MODE") or _sep_cfg.get_option(
+        "solver_preprocess_mode"
+    )
     if scheduling_mode is None:
         scheduling_mode = (
             "auto" if _sep_cfg.get_option("solver_preprocess_async", False) else "sync"

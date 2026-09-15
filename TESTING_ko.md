@@ -4,6 +4,8 @@
 및 부팅 서비스 경로는 유지한다. 테스트 코드에서 기본 데이터 경로는
 `/home/pifinder/PiFinder_test_data`, runtime은 `/dev/shm/pifinder_test`다.
 
+- [확정 기본값·실측 비교·관측 좌표 저장](docs/test_cedar_free_20260915/FIELD_GUIDE_ko.md)
+- [이번 검증 결과](docs/test_cedar_free_20260915/FIELD_RESULTS_ko.md)
 - [작업 전 계획](docs/test_cedar_free_20260915/PLAN_ko.md)
 - [1단계 결과](docs/test_cedar_free_20260915/STAGE1_ko.md)
 - [최종 비교 결과와 한계](docs/test_cedar_free_20260915/RESULTS_ko.md)

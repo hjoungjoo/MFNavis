@@ -23,6 +23,7 @@ import quaternion as quaternion_module
 from PiFinder import calc_utils
 from PiFinder import utils
 from PiFinder import timez
+from PiFinder.observation import observation_snapshot, target_key
 from PiFinder.types.positioning import (
     FailedSolve,
     ImuSample,
@@ -77,6 +78,7 @@ class TelemetryRecorder:
 
     def __init__(self):
         self.enabled = False
+        self._observation_state = None
         self.images_enabled = False
         self._buffer = deque(maxlen=300)
         self._file = None
@@ -90,6 +92,7 @@ class TelemetryRecorder:
         self._last_imu_health_signature = None
         self._last_radio_sequence = None
         self._last_radio_time = 0.0
+        self._last_target_key = None
         self._last_target_id = None
         self._dropped_events = 0
         self._header_cfg = None
@@ -105,6 +108,7 @@ class TelemetryRecorder:
 
     def start(self, cfg, shared_state):
         """Start a new recording session."""
+        self._observation_state = shared_state
         if self.enabled:
             self.stop()
 
@@ -124,6 +128,7 @@ class TelemetryRecorder:
         self._last_imu_health_signature = None
         self._last_radio_sequence = None
         self._last_radio_time = 0.0
+        self._last_target_key = None
         self._last_target_id = None
         self._dropped_events = 0
 
@@ -319,6 +324,8 @@ class TelemetryRecorder:
             "lsa": solve_result.last_solve_attempt,
             "lss": solve_result.last_solve_success,
             "src": "CAM" if success else "CAM_FAILED",
+            "frame_id": solve_result.diagnostics.FrameId,
+            "observation": observation_snapshot(self._observation_state),
         }
         self._append(record)
         return t
@@ -327,14 +334,12 @@ class TelemetryRecorder:
         """Record a target change event. Pass None when target is cleared."""
         if not self.enabled:
             return
-        if target is None:
-            target_id = None
-        else:
-            target_id = getattr(target, "object_id", None)
+        target_id = target_key(target)
 
-        if target_id == self._last_target_id:
+        if target_id == self._last_target_key:
             return
-        self._last_target_id = target_id
+        self._last_target_key = target_id
+        self._last_target_id = getattr(target, "object_id", None)
 
         if target is None:
             record = {
@@ -721,8 +726,8 @@ class TelemetryManager:
             target = self._shared_state.ui_state().target()
         except Exception:
             return
-        target_id = None if target is None else getattr(target, "object_id", None)
-        if target_id == self._recorder._last_target_id:
+        target_id = target_key(target)
+        if target_id == self._recorder._last_target_key:
             return  # unchanged — skip the per-loop Alt/Az computation
         alt, az = None, None
         if target is not None and target.ra is not None:

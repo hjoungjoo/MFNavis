@@ -7,7 +7,6 @@ separately; it is not a measurement of live auto-scheduling throughput.
 import argparse
 from collections import Counter
 import json
-import os
 from pathlib import Path
 import time
 
@@ -16,18 +15,12 @@ from PIL import Image
 import tetra3
 
 from PiFinder import star_detect, utils
+from PiFinder.detector_profiles import configure_profile
 from replay_star_preprocess_ab import _cascade
 
 
 def configure_mode(mode):
-    os.environ["PIFINDER_DETECTOR"] = "mf"
-    os.environ["MF_DETECT_SEP_FALLBACK"] = "1"
-    os.environ["MF_DETECT_BINNING"] = "2" if mode == "mf2" else "4"
-    os.environ["MF_DETECT_PYRAMID"] = {"mf2": "0", "mf4p": "2", "mf4o": "1"}[mode]
-    os.environ["MF_DETECT_RANKING"] = "response"
-    os.environ["MF_DETECT_REFINE"] = "0"
-    os.environ["MF_DETECT_SIGMA"] = "4.5"
-    os.environ["MF_DETECT_MAX_STARS"] = "48"
+    configure_profile(mode)
 
 
 def main():
@@ -38,7 +31,7 @@ def main():
     parser.add_argument("--start", type=int, default=0)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--wide", action="store_true")
-    parser.add_argument("--modes", default="mf2,mf4p,mf4o")
+    parser.add_argument("--modes", default="mf4p,mf2,sep")
     args = parser.parse_args()
     modes = args.modes.split(",")
     files = sorted(args.cache.glob("*.npy"))[args.start :]
@@ -125,7 +118,10 @@ def main():
             data = {
                 "attempts": len(part),
                 "solved": sum(r["ra"] is not None for r in part),
-                "sep_calls": sum(r["fallback_reason"] is not None for r in part),
+                "sep_calls": sum(r["backend"] == "sep" for r in part),
+                "sep_fallback_calls": sum(
+                    r["fallback_reason"] is not None for r in part
+                ),
                 "backends": dict(Counter(r["backend"] for r in part)),
             }
             for key in [

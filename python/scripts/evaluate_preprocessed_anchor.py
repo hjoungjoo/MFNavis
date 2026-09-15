@@ -17,6 +17,16 @@ from PiFinder.preprocess_bias import PreprocessBiasTracker
 
 
 def evaluate(samples, delay, synthetic=False):
+    if not samples:
+        return {
+            "summary": {
+                "frames": 0,
+                "common_frames": 0,
+                "modes": {},
+                "reason": "no_samples",
+            },
+            "rows": [],
+        }
     trackers = {
         "anchor_direct": PreprocessedAnchor(alpha=1),
         "anchor_filtered": PreprocessedAnchor(alpha=0.3),
@@ -115,6 +125,13 @@ def evaluate(samples, delay, synthetic=False):
     for mode in modes:
         all_part = [r for r in rows if r["mode"] == mode]
         part = [r for r in all_part if r["time"] in common]
+        if len(part) < 3:
+            summary["modes"][mode] = {
+                "available": len(all_part),
+                "common_frames": len(part),
+                "reason": "insufficient_common_frames_after_warmup",
+            }
+            continue
         t = np.array([r["time"] for r in part])
         points = np.array([vector(r["ra"], r["dec"]) for r in part])
         design = np.column_stack([np.ones(len(t)), t - t.mean()])
