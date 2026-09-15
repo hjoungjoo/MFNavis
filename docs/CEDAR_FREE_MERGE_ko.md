@@ -24,8 +24,11 @@ Cedar 미포함 소스를 유지하도록 경로를 고정하고, 검토되지 �
 
 ## 병합 때 수행할 순서
 
-1. MF의 GPL 호환 배포 근거를 결정하고 해당 버전을 PiFinder gitlink로 고정한다.
-   FSL 표기는 현재 유지됐으며 라이선스 결정은 아직 완료되지 않았다.
+1. [MF 판매용 제품 사용 정책](../python/mf_detect_star/docs/test_cedar_free_20260915/MF_COMMERCIAL_POLICY_ko.md)에
+   따라 MF의 별도 승인 조건과 PiFinder의 기존 GPL을 유지할 배포 근거를 마련한다.
+   독립 저작물 구성 또는 유효한 GPL 연결 예외를 검토하고 해당 버전을 gitlink로
+   고정한다. MF에 GPL 선택권을 추가하는 대안은 사용자 요구에 맞지 않아 제외한다.
+   현재 FSL과 ctypes 구조는 유지됐으며 문안·결합 배포 문제는 아직 해결되지 않았다.
 2. main 병합 후보에서 CI와 다음 명령을 실행한다. release를 배포한다면 같은
    변경을 release에도 포함해야 한다. `pifinder_setup.sh` 전체를 검사용으로 실행하지 않는다.
 
