@@ -39,3 +39,41 @@ PiFinder unit이 갱신된 운영 소스를 읽도록 한다.
 MF main: `c76a1ed`. PiFinder 이력 보존 병합: `78f9bae4`.
 서비스 전환 결과는 전환 후 별도 절에 기록한다. 실물 판매 이미지와 냉부팅은
 이번 검사에 포함하지 않는다.
+
+## 서비스 전환 결과
+
+22:08 KST에 운영 `/home/pifinder/PiFinder` main을 `27c6a3a6`으로 갱신했다.
+PiFinder PID 46938이 기존 unit 경로에서 실행되고 MF native worker가 솔버의
+자식 프로세스로 실행됐다. `pifinder.service`는 enabled/active,
+`cedar_detect.service`는 disabled/inactive다. systemd drop-in은 없다.
+Cedar unit 파일은 자동 승인 검토가 삭제를 거절해 복구용으로 보존했다.
+옛 Tetra3/Cedar 작업 디렉터리와 설정·로그·unit은 로컬 배포 백업으로 옮겼다.
+이 장비의 파일시스템 전체를 Cedar 없는 판매 이미지로 인증한 것은 아니다.
+
+재시작 직후 목표가 초기화됐으며 사용자가 이어서 실행한 GoTo는
+22:10:36에 제어기 오차 1.28분각으로 완료됐다. 이후 수동 이동과 SkySafari
+정렬이 기록됐다. 설정 차이는 해당 정렬에 따른 `target_pixel` 갱신뿐이었으며
+테스트 도구가 노출·gain·정렬 값을 변경하지 않았다.
+
+22:10:48–22:12:47의 120개 상태 샘플에서 목표 오차 중앙값은 0.67분각,
+p95 1.00분각, 최대 2.89분각이었다. 이는 제어기 추정 오차이며 독립 광학
+정답 오차는 아니다. 102개 서로 다른 solver frame 상태 중 sync 72 / async 30,
+RAW solved 68 / accepted 39가 관측됐다. 채택된 39개 광학 좌표의 RMSE는
+중앙값 22.8초각 / p95 25.6초각, 매칭 별 중앙값은 20개였다.
+전체 상태 샘플은 CAM 43 / CAM_FAILED 77이므로 계속되는 RAW 채택이나
+모든 프레임 성공을 의미하지 않는다. 실패·확인 구간은 전처리 동기 복구를 사용했다.
+전체 솔버 처리시간은 p50 1032ms / p95 1262ms / 최대 1599ms였다.
+
+`sep_*`는 기존 통합 경로 이름으로 MF 추출 결과에도 사용된다. 이름만으로
+SEP가 주 검출기라고 판단하지 않으며, 이번 기록은 개별 SEP fallback 전수 집계가 아니다.
+원본 상태·좌표·로그는 `PiFinder_test_data/work/main_finalization`에만 보존했다.
+
+## 원격 CI의 비공개 submodule 인증
+
+MF main CI는 성공했다. 첫 PiFinder main CI는 기본 GITHUB_TOKEN으로 다른
+비공개 MF 저장소를 읽지 못해 checkout 단계에서 실패했다. 이를 위해 MF에
+읽기 전용 deploy key를 등록하고 PiFinder Actions의 `MF_DETECT_STAR_READ_KEY`에
+연결했다. 저장소 공개 범위나 코드 쓰기 권한은 변경하지 않았다.
+checkout composite action이 부모의 gitlink SHA를 읽어 정확한 MF 커밋을 받는다.
+개인 토큰을 공유하지 않으며 작업 종료 후 checkout의 SSH 인증은 남기지 않는다.
+CI 수정은 실행 중인 검출·솔빙 코드의 변경이 아니다.

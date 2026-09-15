@@ -1,0 +1,27 @@
+name: Checkout pinned MF detector
+description: Read the private detector at the application's exact gitlink commit
+inputs:
+  ssh-key:
+    description: Read-only deploy key for hjoungjoo/mf_detect_star
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Read pinned revision
+      id: revision
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        entry=$(git ls-tree HEAD -- python/mf_detect_star)
+        read -r mode kind revision path <<< "$entry"
+        test "$mode" = 160000
+        test "$kind" = commit
+        echo "sha=$revision" >> "$GITHUB_OUTPUT"
+    - uses: actions/checkout@v5
+      with:
+        repository: hjoungjoo/mf_detect_star
+        ref: ${{ steps.revision.outputs.sha }}
+        path: python/mf_detect_star
+        ssh-key: ${{ inputs.ssh-key }}
+        persist-credentials: false

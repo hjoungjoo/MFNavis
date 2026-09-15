@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  contents: read
   issues: write
 
 jobs:
@@ -14,6 +15,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Checkout pinned private MF detector
+        uses: ./.github/actions/checkout-mf
+        with:
+          ssh-key: ${{ secrets.MF_DETECT_STAR_READ_KEY }}
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v6
