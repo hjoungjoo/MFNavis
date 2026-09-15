@@ -32,3 +32,19 @@ Cedar의 native 라이선스 조건(5년 MIT 전환)과 기존 PiFinder 통합 �
 
 [라이선스 적용·통합 검증 완료 기록](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/CONSOLIDATION_RESULTS_ko.md)
 은 정본 저장소에서 관리한다.
+
+## 검색 속도 비교
+
+Tetra3의 해시 일괄 계산과 충돌 조회 최적화는 기본 활성화된다. 후보/검색 순서,
+1000ms 솔빙 제한, 품질 기준과 전처리 대기 정책은 유지한다.
+`TETRA3_SEARCH_OPTIMIZED=0`으로 새 프로세스를 실행하면 이전 검색 연산으로
+비교할 수 있다. 운영 서비스 전환은 별도 작업 요청 때만 수행한다.
+
+```bash
+PYTHONPATH=python python3 python/mf_detect_star/integrations/pifinder/scripts/compare_search_speed.py CORPUS CACHE NEW_RESULT.json --frames 120
+```
+
+이 도구는 검출 좌표를 공유하고 검색 캐시는 방식별로 분리해 실행 순서를
+교대한다. 전처리 생성 시간을 제외한 검출+솔빙 지연을 측정한다. 상세 좌표와
+영상은 로컬에 두고 집계만 공유한다. Tetra3는 두 검출기가 공통으로 사용하는
+PiFinder 소스이며, 이 최적화는 MF native 검출기 자체의 변경이 아니다.

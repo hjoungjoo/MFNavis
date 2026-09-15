@@ -114,6 +114,7 @@ import csv
 import logging
 import math
 import itertools
+import os
 from time import perf_counter as precision_timestamp
 from datetime import datetime
 from numbers import Number
@@ -192,6 +193,21 @@ def _pattern_hash_to_index(pattern_hash, bin_factor, max_index):
     with np.errstate(over='ignore'):
         combined = (combined*_MAGIC_RAND) % max_index
     return combined
+
+def _get_table_indices_from_hash_fast(hash_index, table):
+    """Quadratic probing without per-slot NumPy scalar/boolean-array allocation.
+
+    Preserve uint64 wraparound and the complete legacy collision chain. Pattern
+    rows use unsigned integers: Python's any is equivalent to all(row == 0).
+    """
+    max_ind = table.shape[0]
+    start = int(hash_index)
+    found = []
+    for c in itertools.count():
+        i = ((start + c*c) & 0xffffffffffffffff) % max_ind
+        if not any(table[i]):
+            return np.asarray(found, dtype=np.uint64)
+        found.append(i)
 
 def _compute_vectors(centroids, size, fov):
     """Get unit vectors from star centroids (pinhole camera)."""
@@ -405,6 +421,8 @@ class Tetra3():
         # presumption that subsequent solves in the same area of the sky will likely need the same
         # patterns.
         self._pattern_cache = OrderedDict()
+        # Keep the previous search available for paired recorded-frame tests.
+        self._search_optimized = os.environ.get('TETRA3_SEARCH_OPTIMIZED', '1') != '0'
         self._pattern_cache_size_fraction = pattern_cache_size_fraction
         self._pattern_cache_capacity = 0  # Filled in when _pattern_catalog is set.
         self._pattern_cache_hits = 0
@@ -1858,12 +1876,21 @@ class Tetra3():
             pattern_hash_list = list((dist(code), code) for code in itertools.product(*pattern_hash_range))
             pattern_hash_list.sort()
 
+            # Same hashes in exactly the same search order; evaluate uint64
+            # powers/reductions once per image pattern instead of once per bin.
+            if self._search_optimized:
+                hash_indices = _pattern_hash_to_index(
+                    [code for (_, code) in pattern_hash_list],
+                    p_bins, self.pattern_catalog.shape[0]) if pattern_hash_list else []
+            else:
+                hash_indices = (_pattern_hash_to_index(
+                    code, p_bins, self.pattern_catalog.shape[0])
+                    for (_, code) in pattern_hash_list)
+
             # Iterate over pattern hash values, starting from 'image_pattern_hash' and working
             # our way outward.
-            for (_, pattern_hash) in pattern_hash_list:
+            for hash_index in hash_indices:
                 search_space_explored += 1
-                # Calculate corresponding hash index.
-                hash_index = _pattern_hash_to_index(pattern_hash, p_bins, self.pattern_catalog.shape[0])
 
                 (catalog_pattern_edges, all_catalog_pattern_vectors) = \
                     self._get_all_patterns_for_index(
@@ -2263,7 +2290,9 @@ class Tetra3():
             self._pattern_cache.popitem(last=False)  # Discard least recently used.
 
         # Iterate over table hash indices.
-        hash_match_inds = _get_table_indices_from_hash(hash_index, self.pattern_catalog)
+        probe = (_get_table_indices_from_hash_fast if self._search_optimized
+                 else _get_table_indices_from_hash)
+        hash_match_inds = probe(hash_index, self.pattern_catalog)
         if len(hash_match_inds) == 0:
             self._pattern_cache[hash_index] = (None, None)
             return (None, None)

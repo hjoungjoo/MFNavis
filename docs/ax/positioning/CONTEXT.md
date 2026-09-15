@@ -120,7 +120,9 @@ Count of stars cedar-detect extracted from the frame in the most recent solve at
 _Avoid_: detected stars (unqualified — say detected centroids), star count (that names the controller).
 
 **`RMSE`**:
-Tetra3 residual in pixels for the most recent solve. Diagnostic only.
+Tetra3 catalog-fit angular residual in arcseconds for the most recent solve
+(`rad2deg(sqrt(mean(angle**2))) * 3600` in the bundled solver). Diagnostic only;
+this does not measure absolute pointing error against an independent reference.
 _Avoid_: error, residual.
 
 **`last_solve_attempt`**:
