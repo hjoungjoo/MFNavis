@@ -218,6 +218,134 @@ def test_first_goto_requires_recent_camera_anchor(
     )
 
 
+def _wait_for_initial_anchor(monkeypatch, clock):
+    service = _make_service(monkeypatch, clock)
+    service._pointing["current"].update(
+        source="pifinder_imu_estimate", quality="medium"
+    )
+
+    # Match the production refresh's snapshot update as well as its return value.
+    def refresh():
+        service.pointing_status = {
+            **service._pointing,
+            "current": {"timestamp": clock[0], **service._pointing["current"]},
+        }
+        return service.pointing_status
+
+    monkeypatch.setattr(service, "_refresh_pointing_status", refresh)
+    service.handle_command({"type": "goto_target", "ra": 110.0, "dec": 30.0})
+    return service
+
+
+def test_initial_goto_resumes_once_with_new_optical_snapshot(monkeypatch):
+    clock = [1000.0]
+    service = _wait_for_initial_anchor(monkeypatch, clock)
+    assert service.initial_goto_deadline == 1012.0
+    assert service.tracking_target_ra is None
+    service._tick_state_machine()
+    assert not service.mountcontrol_queue.commands
+    service._pointing["current"].update(source="solve", quality="high", ra=101.0)
+    clock[0] += 1
+    service._tick_state_machine()
+    commands = service.mountcontrol_queue.commands
+    assert [c["type"] for c in commands] == ["sync_and_goto"]
+    assert commands[0]["sync_ra"] == 101.0
+    assert commands[0]["ra"] == 110.0
+    assert service.initial_goto_deadline is None
+    service._tick_state_machine()
+    assert len(commands) == 1
+
+
+def test_initial_goto_expiry_never_authorizes_a_late_solve(monkeypatch):
+    clock = [1000.0]
+    service = _wait_for_initial_anchor(monkeypatch, clock)
+    clock[0] = 1012.0
+    service._pointing["current"].update(source="solve", quality="high")
+    service._tick_state_machine()
+    assert service.initial_goto_deadline is None
+    assert "timed out" in service.wait_reason
+    service._tick_state_machine()
+    assert not service.mountcontrol_queue.commands
+
+
+@pytest.mark.parametrize("timestamp", [900.0, 1002.0])
+def test_initial_goto_wait_does_not_use_stale_or_future_optical_anchor(
+    monkeypatch, timestamp
+):
+    service = _wait_for_initial_anchor(monkeypatch, [1000.0])
+    service._pointing["current"].update(
+        source="solve", quality="high", timestamp=timestamp
+    )
+    service._tick_state_machine()
+    assert service.initial_goto_deadline == 1012.0
+    assert not service.mountcontrol_queue.commands
+
+
+def test_initial_goto_wait_is_canceled_by_config_mode_change(monkeypatch):
+    service = _wait_for_initial_anchor(monkeypatch, [1000.0])
+    service.config_values["indi_goto_method"] = "off"
+    service._pointing["current"].update(source="solve", quality="high")
+    service._tick_state_machine()
+    service.config_values["indi_goto_method"] = "pifinder"
+    service._tick_state_machine()
+    assert service.initial_goto_deadline is None
+    assert not service.mountcontrol_queue.commands
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        {"type": "stop_movement"},
+        {"type": "clear_tracking_target"},
+        {"type": "suspend_tracking_guide"},
+        {"type": "set_goto_method", "goto_method": "indi_mount"},
+        {"type": "set_tracking_target", "ra": 100.0, "dec": 20.0},
+    ],
+)
+def test_initial_goto_canceled_by_user_action(monkeypatch, command):
+    clock = [1000.0]
+    service = _wait_for_initial_anchor(monkeypatch, clock)
+    service.handle_command(command)
+    service._pointing["current"].update(source="solve", quality="high")
+    service._tick_state_machine()
+    assert service.initial_goto_deadline is None
+    assert not any(
+        c["type"] == "sync_and_goto" for c in service.mountcontrol_queue.commands
+    )
+
+
+def test_new_goto_replaces_waiting_target(monkeypatch):
+    clock = [1000.0]
+    service = _wait_for_initial_anchor(monkeypatch, clock)
+    clock[0] += 2
+    service.handle_command({"type": "goto_target", "ra": 120.0, "dec": 40.0})
+    service._pointing["current"].update(source="solve", quality="high")
+    service._tick_state_machine()
+    commands = service.mountcontrol_queue.commands
+    assert len(commands) == 1
+    assert commands[0]["ra"] == 120.0
+    assert commands[0]["dec"] == 40.0
+
+
+@pytest.mark.parametrize(
+    "mount",
+    [
+        {"park_state": "Parked"},
+        {"state": "slewing"},
+        {"mount_motion_active": True, "manual_motion_direction": "north"},
+    ],
+)
+def test_initial_goto_canceled_when_mount_state_changes(monkeypatch, mount):
+    service = _wait_for_initial_anchor(monkeypatch, [1000.0])
+    monkeypatch.setattr(
+        service, "_mount_status_summary", lambda: {"available": True, **mount}
+    )
+    service._pointing["current"].update(source="solve", quality="high")
+    service._tick_state_machine()
+    assert service.initial_goto_deadline is None
+    assert not service.mountcontrol_queue.commands
+
+
 def test_lingering_imu_flag_cannot_delay_recovery_indefinitely(monkeypatch):
     clock = [1000.0]
     service = _make_service(monkeypatch, clock)

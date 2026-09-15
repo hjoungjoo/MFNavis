@@ -193,6 +193,7 @@ class IndiGotoGuideService:
         self.solve_anchor_required_after_wall = 0.0
         # Same bounded wait for the tracking-recovery goto's sync anchor.
         self.recovery_anchor_wait_since = 0.0
+        self.initial_goto_deadline: Optional[float] = None
         self.last_action = "startup"
         self.pointing_status: dict[str, Any] = {"available": False}
 
@@ -237,6 +238,17 @@ class IndiGotoGuideService:
 
         command_type = str(command.get("type", "")).strip()
         self.last_command = command_type or "unknown"
+
+        if command_type in {
+            "shutdown",
+            "ping",
+            "set_goto_method",
+            "clear_tracking_target",
+            "set_tracking_target",
+            "suspend_tracking_guide",
+            "stop_movement",
+        }:
+            self._cancel_initial_goto_wait("pending GoTo canceled by user command")
 
         if command_type == "shutdown":
             return False
@@ -370,6 +382,7 @@ class IndiGotoGuideService:
         return True
 
     def _handle_goto_target(self, command: dict[str, Any]) -> None:
+        self.initial_goto_deadline = None
         self.alignment_target_pixel = None
         try:
             target_ra = float(command["ra"])
@@ -451,9 +464,21 @@ class IndiGotoGuideService:
             self.phase = "pifinder_goto_blocked"
             self.wait_reason = block_reason
             self.last_action = "pifinder goto blocked"
+            if block_reason == "PiFinder GoTo requires a recent plate solve":
+                self._disable_tracking_guide("waiting for new GoTo solve anchor")
+                self._reset_tracking_recovery()
+                self.tracking_target_ra = self.tracking_target_dec = None
+                self.initial_goto_deadline = (
+                    time.monotonic() + PIFINDER_SOLVE_ANCHOR_WAIT_SECONDS
+                )
+                self.last_action = "waiting for initial solve anchor"
             logger.info("PiFinder GoTo blocked: %s", self.wait_reason)
             return
 
+        self._begin_pifinder_goto(target_ra, target_dec)
+
+    def _begin_pifinder_goto(self, target_ra: float, target_dec: float) -> None:
+        """Use the same checked pointing snapshot when starting or resuming."""
         current = self.pointing_status.get("current") or {}
         self.current_ra = self._finite_float(current.get("ra"))
         self.current_dec = self._finite_float(current.get("dec"))
@@ -522,12 +547,57 @@ class IndiGotoGuideService:
         return context
 
     def _tick_state_machine(self) -> None:
+        if (
+            self.phase == "pifinder_goto_blocked"
+            and self.initial_goto_deadline is not None
+        ):
+            self._tick_initial_goto_wait()
+            return
         if self.phase == "pifinder_goto":
             self._tick_goto_wait()
             return
         if self.phase == "pifinder_pulse_align":
             self._tick_pulse_align()
             return
+
+    def _cancel_initial_goto_wait(self, reason: str) -> None:
+        if self.initial_goto_deadline is None:
+            return
+        self.initial_goto_deadline = None
+        self.service_state = "error"
+        self.wait_reason = reason
+        self.last_action = "pending GoTo canceled"
+        logger.info("PiFinder pending GoTo canceled: %s", reason)
+
+    def _tick_initial_goto_wait(self) -> None:
+        # A rejected click must not become an indefinitely armed future slew.
+        # Expiry and cancellation win even if a solve arrives on that tick.
+        deadline = self.initial_goto_deadline
+        if deadline is None:
+            return
+        if time.monotonic() >= deadline:
+            self._cancel_initial_goto_wait(
+                "timed out waiting for a recent plate solve; request GoTo again"
+            )
+            return
+        if self.config_values.get("indi_goto_method", "pifinder") != "pifinder":
+            self._cancel_initial_goto_wait("GoTo method changed while waiting")
+            return
+        mount = self._mount_status_summary()
+        if self._mount_summary_reports_parked(
+            mount
+        ) or self._mount_summary_reports_motion(mount):
+            self._cancel_initial_goto_wait("mount parked or moved while waiting")
+            return
+        reason = self._pifinder_goto_block_reason()
+        if reason:
+            self.wait_reason = reason
+            return
+        self.initial_goto_deadline = None
+        if self.active_target_ra is None or self.active_target_dec is None:
+            return
+        logger.info("PiFinder initial GoTo resumed with a recent plate solve")
+        self._begin_pifinder_goto(self.active_target_ra, self.active_target_dec)
 
     def _stop_with_error(self, reason: str) -> None:
         self._forward_to_mountcontrol({"type": "stop_movement"})
