@@ -158,11 +158,9 @@ def _solver_preprocess_enabled(shared_state) -> bool:
 def _read_matching_solver_inputs(shared_state, attempts: int = 2):
     """Read the newest 512 frame envelope and its matching full RAW.
 
-    The camera publishes full RAW first and the 512 envelope second. Reading
-    those manager values far apart can pair neighbouring frames. A short,
-    bounded retry closes that race without ever accepting mismatched RAW.
-    The latest valid 512 frame is still returned when no pair is available,
-    preserving the established safe fallback path.
+    Production state embeds the corresponding RAW in the 512 envelope, so
+    one manager call freezes the pair. Older/debug state implementations
+    retain the bounded two-getter compatibility path.
     """
 
     latest_frame = None
@@ -175,7 +173,11 @@ def _read_matching_solver_inputs(shared_state, attempts: int = 2):
         ):
             continue
         latest_frame = candidate_frame
-        candidate_raw = shared_state.solver_raw()
+        candidate_raw = (
+            candidate_frame["raw"]
+            if "raw" in candidate_frame
+            else shared_state.solver_raw()
+        )
         frame_id = candidate_frame["metadata"].get("frame_id")
         if (
             isinstance(candidate_raw, dict)
@@ -1499,6 +1501,12 @@ def solver(
                     logger.error(f"Lost connection to shared state manager: {e}")
                     continue
 
+                # An incomplete pair is not a failed plate solve. Wait for
+                # a complete exposure without consuming its frame timestamp.
+                if solver_frame_entry is not None and solver_raw_entry is None:
+                    logger.debug("Waiting for matching RAW/512 solver inputs")
+                    continue
+
                 # Check if we should process this image
                 capture_input_ready_ns = time.monotonic_ns()
                 is_new_image = last_image_metadata["exposure_end"] > last_solve_attempt
@@ -1729,6 +1737,7 @@ def solver(
                             sep_run = sep_shadow.detect(
                                 shared_state,
                                 expected_frame_id=last_image_metadata.get("frame_id"),
+                                raw_entry=solver_raw_entry,
                             )
                             if sep_run is not None:
                                 sep_count = len(sep_run.detection.centroids)

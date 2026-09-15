@@ -293,11 +293,13 @@ class SepShadowRunner:
         self._fallback_fail_streak = 0
         self._last_failed_sep_count = None
 
-    def detect(self, shared_state, expected_frame_id=None) -> Optional[SepRun]:
-        """Run SEP on the matching fresh full-frame raw, or return ``None``."""
+    def detect(
+        self, shared_state, expected_frame_id=None, *, raw_entry=None
+    ) -> Optional[SepRun]:
+        """Detect from the frozen RAW pair, or read RAW for legacy callers."""
         self._attempt_counter += 1
         try:
-            entry = shared_state.solver_raw()
+            entry = raw_entry if raw_entry is not None else shared_state.solver_raw()
             if not entry or "frame" not in entry:
                 return None
             if (

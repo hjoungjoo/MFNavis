@@ -315,13 +315,11 @@ class SharedStateObj:
             "camera_lens_focal_length_mm", None
         )
         self.__cam_raw = None
-        # Atomic latest-wins 512 solver frame and its metadata.  Keeping these
-        # in one manager payload prevents the solver from pairing an image
-        # with metadata from a neighbouring frame when capture outruns solve.
+        # Atomic latest-wins 512 frame, metadata and matching full RAW.
+        # One manager payload preserves the exposure when capture outruns solve.
         self.__solver_frame = None
-        # Uncropped raw sensor frame for the SEP full-frame detection path
-        # (dict: {"frame": uint16 ndarray, "exposure_end": float}). Only
-        # published while solver_shadow_detect / solver_sep_fallback is on.
+        # Latest uncropped sensor frame; the camera publishes this before
+        # the corresponding 512 envelope. MFDS uses the frozen envelope copy.
         self.__solver_raw = None
         # Latest frame produced by the actual solver-side star-only
         # preprocessor. LiveCam reads this cache instead of starting a second
@@ -631,6 +629,20 @@ class SharedStateObj:
         return self.__solver_frame
 
     def set_solver_frame(self, v):
+        # One immutable-by-convention envelope keeps this exposure's RAW even
+        # after the camera publishes the following RAW in its separate slot.
+        # The manager serializes the complete pair in one getter call.
+        if isinstance(v, dict):
+            raw = self.__solver_raw
+            frame_id = (v.get("metadata") or {}).get("frame_id")
+            v = {
+                **v,
+                "raw": raw
+                if isinstance(raw, dict)
+                and frame_id is not None
+                and raw.get("frame_id") == frame_id
+                else None,
+            }
         self.__solver_frame = v
 
     def solver_raw(self):
