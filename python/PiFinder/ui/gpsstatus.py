@@ -50,8 +50,28 @@ class UIGPSStatus(GuideKeyMixin, UIModule):
                 enabled=True,  # TRANSLATORS GPS Context menu: lock position
             ),
             up=MarkingMenuOption(),  # Empty option
-            down=MarkingMenuOption(),  # Empty option
+            down=MarkingMenuOption(),
         )
+        self._update_version_menu()
+
+    def _update_version_menu(self):
+        ublox = self.config_object.get_option("gps_type") == "ublox"
+        self.marking_menu.down = MarkingMenuOption(
+            label="Get VER" if ublox else "",
+            callback=self.mm_get_version if ublox else None,
+            enabled=ublox,
+        )
+
+    def mm_get_version(self, marking_menu, menu_item):
+        if self.config_object.get_option("gps_type") != "ublox":
+            return True
+        queue = self.command_queues.get("gps_command")
+        if queue is None:
+            self.message(_("GPS unavailable"), timeout=2)
+        else:
+            queue.put("get_version")
+            self.message(_("Getting GPS VER"), timeout=2)
+        return True
 
     def _send_fix_message(self, gps_reading, source):
         """Helper to send fix message to GPS queue"""
@@ -148,6 +168,7 @@ class UIGPSStatus(GuideKeyMixin, UIModule):
             )  # TRANSLATORS: Positional Error in m
 
     def active(self):
+        self._update_version_menu()
         self.command_queues["camera"].put("stop")
 
     def inactive(self):

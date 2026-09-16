@@ -222,10 +222,13 @@ async def process_messages(
         await asyncio.sleep(wait)
 
 
-async def gps_main(gps_queue, console_queue, log_queue, inject_parser=None):
+async def gps_main(
+    gps_queue, console_queue, log_queue, inject_parser=None, command_queue=None
+):
     MultiprocLogging.configurer(log_queue)
     logger.info("Using UBX GPS code")
     error_info = {"error_2d": 123_456, "error_3d": 123_456}
+    recovery = None
 
     while True:
         try:
@@ -233,6 +236,13 @@ async def gps_main(gps_queue, console_queue, log_queue, inject_parser=None):
                 parser = inject_parser
             else:
                 parser = await UBXParser.connect(log_queue, host="127.0.0.1", port=2947)
+                if recovery is not None:
+                    # Reconnecting alone must not replenish an outage's poll.
+                    parser._recovery.last_navigation = recovery.last_navigation
+                    parser._recovery.probed = recovery.probed
+                recovery = parser._recovery
+            parser.command_queue = command_queue
+            parser.result_queue = gps_queue
             await process_messages(
                 parser.parse_messages, gps_queue, console_queue, error_info
             )
@@ -241,5 +251,7 @@ async def gps_main(gps_queue, console_queue, log_queue, inject_parser=None):
             await asyncio.sleep(5)
 
 
-def gps_monitor(gps_queue, console_queue, log_queue):
-    asyncio.run(gps_main(gps_queue, console_queue, log_queue))
+def gps_monitor(gps_queue, console_queue, log_queue, command_queue=None):
+    asyncio.run(
+        gps_main(gps_queue, console_queue, log_queue, command_queue=command_queue)
+    )

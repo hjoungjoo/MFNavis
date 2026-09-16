@@ -28,28 +28,36 @@ displayed individually.
 
 See [ADR 0032](../../adr/0032-ubx-parser-yields-undecodable-frames.md).
 
-## NMEA-only u-blox identification recovery
+## Manual version query and stalled-navigation recovery
 
-The live UBX parser observes complete text lines outside UBX frames. If gpsd
-advertises one local `/dev/` receiver as `NMEA0183` or `u-blox`, and at least
-three checksum-valid navigation NMEA sentences span 10 seconds without valid
-UBX, it sends a `MON-VER` poll through gpsd's `?DEVICE` command with an explicit
-device path. A gap over 5 seconds in NMEA resets the observation window.
-This lets gpsd identify the receiver and run its normal UBX configuration.
+With `gps_type=ublox`, the GPS screen's long-square marking menu has a bottom
+`Get VER` action. A dedicated `gps_command` queue delivers `get_version` to the
+GPS process; the existing `gps` queue still carries readings to main. A manual
+query shows firmware/protocol versions, or a device/response/send failure.
+Repeated requests while a query is pending share that query. Fake and generic
+backends do not receive hardware commands.
 
-Probes are at least 30 seconds apart, capped at three per TCP connection,
-including failed writes. Successful UBX responses reset the NMEA observation
-window, but do not replenish the attempt budget. A new connection starts a
-new budget. Silence, noise, ambiguous devices, file replay and the generic
-GPSD backend never trigger this recovery. Drain waits are capped at 2 seconds.
-No service restart, baud change, reset, aiding injection or persistent receiver
-configuration command is sent by this code. gpsd can change the receiver's
-active output configuration as a result of identifying it.
+After 60 monotonic seconds without a decoded NAV message, the live UBX parser
+attempts one MON-VER query. This covers startup, silence, NMEA-only streams,
+noise and checksum failures. A one-second read timeout keeps the watchdog and
+manual command handling alive on a silent connection. No position fix is
+required: NAV messages without a satellite lock still count as normal traffic.
 
-Probe attempts, resumed UBX traffic and retry exhaustion are logged at WARNING
-under `GPS.parser.recovery`, visible with the default logging configuration.
-UBX traffic resuming is distinct from obtaining a position fix.
+Before each query, refresh gpsd's `DEVICES` report. Only one local `/dev/`
+receiver with driver `NMEA0183` or `u-blox`, not marked read-only, is eligible.
+Send `b5620a0400000e34` through gpsd `?DEVICE` with its explicit device path.
+Discovery and response waits are each limited to five seconds; drain waits to
+two seconds. An unavailable/ambiguous device or failed send consumes the
+automatic attempt for that outage. Only decoded NAV traffic rearms it; MON-VER,
+ACKs, NMEA and reconnecting do not. Manual queries remain available afterward.
+Restarting the GPS process starts a new watchdog interval.
 
-Incident evidence, tests and deployment results:
+File replay never sends queries. No receiver reset, baud change, aiding or
+persistent configuration command is sent. gpsd may change the receiver's
+active output configuration when it identifies it. Query attempts, versions,
+failures and navigation recovery are logged at WARNING. Navigation resuming
+is distinct from obtaining a position fix.
+
+Historical NMEA-only recovery (superseded by the watchdog above on 2026-09-16):
 [2026-09-09 report (English)](../../mf_report/mf_gps_ubx_recovery_20260909_en.md)
 and [Korean](../../mf_report/mf_gps_ubx_recovery_20260909_ko.md).

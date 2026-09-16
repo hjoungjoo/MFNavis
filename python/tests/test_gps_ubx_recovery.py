@@ -1,7 +1,8 @@
-"""Regression coverage for NMEA-only u-blox identification stalls."""
+"""GPS recovery, manual version queries and mixed-stream regression tests."""
 
 import asyncio
 import json
+from queue import Queue
 
 import pytest
 
@@ -48,6 +49,8 @@ class Reader:
 
     async def read(self, _size):
         self.clock.now, data = next(self.chunks, (self.clock.now, b""))
+        if data is None:
+            raise asyncio.TimeoutError
         return data
 
 
@@ -80,7 +83,7 @@ def no_throttle(monkeypatch):
     monkeypatch.setattr("PiFinder.gps_ubx_parser.asyncio.sleep", no_sleep)
 
 
-def run_stream(chunks, *, writer=None, replay=False, handshake=False):
+def run_stream(chunks, *, writer=None, replay=False, handshake=False, manual=False):
     clock = Clock()
     writer = writer if writer is not None else Writer()
     parser = UBXParser(
@@ -90,6 +93,10 @@ def run_stream(chunks, *, writer=None, replay=False, handshake=False):
         file_path="recording.ubx" if replay else None,
         clock=clock,
     )
+    parser.command_queue = Queue()
+    parser.result_queue = Queue()
+    if manual:
+        parser.command_queue.put("get_version")
 
     async def collect():
         if handshake:
@@ -103,31 +110,52 @@ def nmea_stream(end=100, path="/dev/ttyAMA2"):
     return [(0, devices(path))] + [(t, nmea()) for t in range(end + 1)]
 
 
-def test_nmea_only_polls_exact_target_at_10_40_70_seconds(caplog):
+def version_frame():
+    return frame(
+        10,
+        4,
+        b"ROM SPG 5.10".ljust(30, b"\0")
+        + b"000A0000\0\0"
+        + b"FWVER=SPG 5.10".ljust(30, b"\0")
+        + b"PROTVER=34.10".ljust(30, b"\0"),
+    )
+
+
+def polls(writer):
+    return [w for w in writer.writes if w.startswith(b"?DEVICE=")]
+
+
+def test_watchdog_once_per_outage_and_only_nav_rearms():
     recovery = UBXRecovery()
-    recovery.feed_text(devices("/dev/ttyAMA3"), 0)
-    sent = []
-    for t in range(301):
-        assert recovery.feed_text(nmea(), t)
-        command = recovery.next_probe(t)
-        if command:
-            sent.append((t, json.loads(command[len(b"?DEVICE=") : -2])))
-    assert sent == [
-        (t, {"path": "/dev/ttyAMA3", "hexdata": MON_VER_HEX}) for t in (10, 40, 70)
-    ]
-    assert caplog.text.count("retry limit reached") == 1
+    assert not recovery.needs_probe(59.99)
+    assert recovery.needs_probe(60)
+    recovery.probed = True
+    recovery.observe_ubx(61)
+    assert not recovery.needs_probe(3600)
+    recovery.observe_navigation(3601)
+    assert not recovery.needs_probe(3660)
+    assert recovery.needs_probe(3661)
 
 
 def test_parser_recovers_then_keeps_navigation_messages(caplog):
-    chunks = nmea_stream(10)
-    chunks += [(11, frame(0x0A, 4, b"version")), (12, frame()), (13, frame())]
+    chunks = nmea_stream(60)
+    chunks += [
+        (61, devices("/dev/ttyAMA3")),
+        (62, version_frame()),
+        (63, frame()),
+        (64, frame()),
+    ]
     events, writer, parser = run_stream(chunks, handshake=True)
-    assert events[-3:] == ["?0A04", "NAV-EOE", "NAV-EOE"]
+    assert events[-3:] == ["MON-VER", "NAV-EOE", "NAV-EOE"]
     assert "?NMEA" in events
     assert writer.writes[0].startswith(b"?WATCH=")
-    assert len(writer.writes) == 2
-    assert parser._recovery.attempts == 1
-    assert "UBX traffic resumed" in caplog.text
+    assert len(writer.writes) == 3
+    assert json.loads(polls(writer)[0][8:-2]) == {
+        "path": "/dev/ttyAMA3",
+        "hexdata": MON_VER_HEX,
+    }
+    assert not parser._recovery.probed
+    assert "Navigation traffic resumed" in caplog.text
 
 
 def test_handshake_keeps_coalesced_device_report_and_first_ubx():
@@ -155,7 +183,7 @@ def test_fragmented_json_and_nmea_are_detected():
         chunks.extend([(t, sentence[:12]), (t, sentence[12:])])
     events, writer, _ = run_stream(chunks)
     assert events.count("?NMEA") == 11
-    assert len(writer.writes) == 1
+    assert not writer.writes
 
 
 def test_recent_ubx_suppresses_probe_even_after_nmea_in_same_chunk():
@@ -168,39 +196,43 @@ def test_recent_ubx_suppresses_probe_even_after_nmea_in_same_chunk():
 
 def test_nmea_inside_ubx_payload_does_not_trigger_probe():
     chunks = [(0, devices("/dev/ttyAMA2"))]
-    chunks += [(t, frame(0x0A, 0xFF, nmea())) for t in range(101)]
+    chunks += [(t, frame(0x0A, 0xFF, nmea())) for t in range(59)]
     events, writer, _ = run_stream(chunks)
     assert set(events) == {"?0AFF"}
     assert not writer.writes
 
 
 @pytest.mark.parametrize("payload", [b"garbage\r\n", b"$GNRMC,invalid*00\r\n", b"{}\n"])
-def test_noise_and_invalid_nmea_never_probe(payload):
-    chunks = [(0, devices("/dev/ttyAMA2"))] + [(t, payload) for t in range(101)]
+def test_noise_and_invalid_nmea_trigger_one_long_outage_probe(payload):
+    chunks = [(0, devices("/dev/ttyAMA2"))] + [(t, payload) for t in range(61)]
+    chunks += [(61, devices("/dev/ttyAMA2")), (300, payload)]
     events, writer, _ = run_stream(chunks)
     assert events == []
-    assert not writer.writes
+    assert len(polls(writer)) == 1
 
 
-def test_corrupt_ubx_stays_a_checksum_marker_without_probe():
+def test_corrupt_ubx_stays_a_checksum_marker_and_does_not_rearm():
     corrupt = frame()[:-1] + b"\xff"
-    events, writer, _ = run_stream([(t, corrupt) for t in range(101)])
+    chunks = [(t, corrupt) for t in range(61)]
+    chunks += [(61, devices("/dev/ttyAMA2")), (62, corrupt), (600, corrupt)]
+    events, writer, _ = run_stream(chunks)
     assert set(events) == {"?CKSUM"}
-    assert not writer.writes
+    assert len(polls(writer)) == 1
 
 
-def test_silence_and_sparse_nmea_do_not_trigger_recovery():
-    recovery = UBXRecovery()
-    recovery.feed_text(devices("/dev/ttyAMA2"), 0)
-    for t in (0, 1, 2):
-        recovery.feed_text(nmea(), t)
-    assert recovery.next_probe(100) is None
-    for t in (100, 110, 120):
-        recovery.feed_text(nmea(), t)
-        assert recovery.next_probe(t) is None
-    events, writer, _ = run_stream([])
+def test_silent_reader_is_polled_once_without_waiting_for_navigation():
+    events, writer, _ = run_stream(
+        [
+            (59, None),
+            (60, None),
+            (61, devices("/dev/ttyAMA2")),
+            (62, None),
+            (300, None),
+            (600, None),
+        ]
+    )
     assert events == []
-    assert not writer.writes
+    assert len(polls(writer)) == 1
 
 
 @pytest.mark.parametrize(
@@ -217,18 +249,18 @@ def test_silence_and_sparse_nmea_do_not_trigger_recovery():
     ],
 )
 def test_unidentified_ambiguous_or_unsupported_device_never_receives_poll(report):
-    events, writer, _ = run_stream([(0, report + nmea())] + nmea_stream(100)[1:])
+    events, writer, _ = run_stream(
+        [(0, report + nmea()), (60, nmea()), (61, report + nmea()), (70, nmea())]
+    )
     assert "?NMEA" in events
-    assert not writer.writes
+    assert not polls(writer)
 
 
 def test_changed_device_pool_clears_previous_poll_target():
     recovery = UBXRecovery()
     recovery.feed_text(devices("/dev/ttyAMA2"), 0)
     recovery.feed_text(devices("/dev/ttyAMA2", "/dev/ttyUSB0"), 1)
-    for t in range(101):
-        recovery.feed_text(nmea(), t)
-        assert recovery.next_probe(t) is None
+    assert recovery.version_command() is None
 
 
 def test_file_replay_never_sends_commands_even_if_it_contains_gpsd_json():
@@ -244,14 +276,15 @@ def test_closed_writer_never_sends_commands():
     assert not writer.writes
 
 
-def test_failed_drains_count_towards_retry_limit(caplog):
+def test_failed_drain_does_not_retry_automatically(caplog):
     class SlowWriter(Writer):
         async def drain(self):
             raise asyncio.TimeoutError
 
     _, writer, parser = run_stream(nmea_stream(), writer=SlowWriter())
-    assert len(writer.writes) == parser._recovery.attempts == 3
-    assert caplog.text.count("probe drain timed out") == 3
+    assert len(writer.writes) == 1
+    assert parser._recovery.probed
+    assert caplog.text.count("command drain timed out") == 1
 
 
 def test_broken_connection_closes_instead_of_repeating_probe():
@@ -261,31 +294,79 @@ def test_broken_connection_closes_instead_of_repeating_probe():
             raise BrokenPipeError
 
     _, writer, parser = run_stream(nmea_stream(), writer=BrokenWriter())
-    assert len(writer.writes) == parser._recovery.attempts == 1
+    assert len(writer.writes) == 1
+    assert parser._recovery.probed
     assert writer.closed
 
 
-def test_success_does_not_replenish_connection_attempt_budget():
-    recovery = UBXRecovery()
-    recovery.feed_text(devices("/dev/ttyAMA2"), 0)
-    sent = []
-    for t in range(201):
-        recovery.feed_text(nmea(), t)
-        if recovery.next_probe(t):
-            sent.append(t)
-            recovery.observe_ubx(t)
-    assert sent == [10, 40, 70]
+def test_version_reply_does_not_rearm_automatic_recovery():
+    chunks = [
+        (60, None),
+        (61, devices("/dev/ttyAMA2")),
+        (62, version_frame()),
+        (300, version_frame()),
+        (600, None),
+    ]
+    _, writer, parser = run_stream(chunks)
+    assert len(polls(writer)) == 1
+    assert parser._recovery.probed
 
 
 def test_no_new_probe_immediately_after_ubx_disappears():
     recovery = UBXRecovery()
     recovery.feed_text(devices("/dev/ttyAMA2"), 0)
-    recovery.observe_ubx(100)
-    for t in range(101, 111):
-        recovery.feed_text(nmea(), t)
-        assert recovery.next_probe(t) is None
-    recovery.feed_text(nmea(), 111)
-    assert recovery.next_probe(111) is not None
+    recovery.observe_navigation(100)
+    assert not recovery.needs_probe(159)
+    assert recovery.needs_probe(160)
+
+
+def test_manual_version_works_during_normal_navigation_and_reports_result():
+    chunks = [
+        (0, devices("/dev/ttyAMA2") + frame()),
+        (1, version_frame()),
+        (2, frame()),
+    ]
+    events, writer, parser = run_stream(chunks, manual=True)
+    assert "MON-VER" in events
+    assert len(polls(writer)) == 1
+    assert parser.result_queue.get_nowait() == (
+        "version_status",
+        "SPG 5.10\nPROT 34.10",
+    )
+    assert parser.result_queue.empty()
+
+
+def test_manual_version_timeout_and_missing_device_are_reported():
+    _, writer, parser = run_stream(
+        [(0, devices("/dev/ttyAMA2")), (6, None)], manual=True
+    )
+    assert len(polls(writer)) == 1
+    assert parser.result_queue.get_nowait() == (
+        "version_status",
+        "GPS VER\nNo response",
+    )
+    _, writer, parser = run_stream([(6, None)], manual=True)
+    assert not polls(writer)
+    assert parser.result_queue.get_nowait() == ("version_status", "GPS VER\nNo device")
+
+
+def test_manual_is_allowed_after_automatic_budget_is_used():
+    clock = Clock()
+    writer = Writer()
+    parser = UBXParser(None, writer=writer, clock=clock)
+    parser._recovery.probed = True
+    parser.command_queue = Queue()
+    for _ in range(4):
+        parser.command_queue.put("get_version")
+
+    async def check():
+        await parser._service_requests()
+        parser._recovery.feed_text(devices("/dev/ttyAMA2"), 0)
+        await parser._service_requests()
+        await parser._service_requests()
+
+    asyncio.run(check())
+    assert len(polls(writer)) == 1
 
 
 def test_unterminated_text_buffer_is_bounded_and_recovers():

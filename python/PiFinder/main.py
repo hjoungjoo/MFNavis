@@ -486,6 +486,7 @@ def main(
     console_queue: Queue = Queue()
     keyboard_queue: Queue = Queue()
     gps_queue: Queue = Queue()
+    gps_command_queue: Queue = Queue()
     imu_command_queue: Queue = Queue()
     camera_command_queue: Queue = Queue()
     solver_queue: Queue = Queue()
@@ -547,6 +548,8 @@ def main(
         "mountcontrol": mountcontrol_queue,
         "goto_guide": goto_guide_queue,
     }
+    if gps_monitor.__name__ == "PiFinder.gps_ubx":
+        command_queues["gps_command"] = gps_command_queue
     gps_time_monitor = gps_time_sync.GpsTimeSyncMonitor.from_config(cfg)
     gps_time_monitor.write_startup_status()
 
@@ -605,6 +608,11 @@ def main(
         gps_process = Process(
             name="GPS",
             target=gps_monitor.gps_monitor,
+            kwargs=(
+                {"command_queue": gps_command_queue}
+                if gps_monitor.__name__ == "PiFinder.gps_ubx"
+                else {}
+            ),
             args=(
                 gps_queue,
                 console_queue,
@@ -1000,6 +1008,8 @@ def main(
                         if gps_msg == "satellites":
                             # logger.debug("Main: GPS nr sats seen: %s", gps_content)
                             shared_state.set_sats(gps_content)
+                        if gps_msg == "version_status":
+                            menu_manager.message(gps_content, 5)
                         if gps_msg == "comms":
                             # Stamp receipt in the UI process; GPS time changes
                             # must not make the elapsed time jump or go negative.

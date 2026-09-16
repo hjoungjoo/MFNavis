@@ -170,9 +170,9 @@ def test_unregistered_class_id_yields_a_named_marker(registered_parser):
 def test_marker_passes_the_class_guard(registered_parser):
     """The marker must survive parse_messages' `if "class" in parsed` guard --
     that guard is what used to drop undecodable frames."""
-    registered_parser.reader = FakeReader(make_frame(0x0A, 0x04, b"\x00" * 4))
+    registered_parser.reader = FakeReader(make_frame(0x0A, 0xFF, b"\x00" * 4))
 
-    assert [msg["class"] for msg in drain(registered_parser)] == ["?0A04"]
+    assert [msg["class"] for msg in drain(registered_parser)] == ["?0AFF"]
 
 
 @pytest.mark.unit

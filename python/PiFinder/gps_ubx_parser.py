@@ -5,6 +5,7 @@ import json
 import math
 import logging
 import time
+from queue import Empty
 from PiFinder.multiproclogging import MultiprocLogging
 from PiFinder.gps_ubx_recovery import UBXRecovery
 import asyncio
@@ -77,7 +78,13 @@ class UBXParser:
         self.message_parsers: Dict[Tuple[int, int], Callable[[bytes], dict]] = {}
         self.buffer = bytearray()
         self._clock = clock
-        self._recovery = UBXRecovery()
+        self._recovery = UBXRecovery(clock())
+        self.command_queue = None
+        self.result_queue = None
+        self._probe_reason = None
+        self._probe_deadline = None
+        self._version_deadline = None
+        self._manual_version = False
         self._poll_task = None  # Store polling task for cleanup
         self._running = True  # Control flag for polling loop
         self._initialize_parsers()
@@ -95,6 +102,70 @@ class UBXParser:
             UBXClass.NAV, NAVMessageId.POSECEF, self._parse_nav_posecef
         )
         self._register_parser(UBXClass.NAV, NAVMessageId.EOE, self._parse_nav_eoe)
+        self.message_parsers[(0x0A, 0x04)] = self._parse_mon_ver
+
+    @staticmethod
+    def _parse_mon_ver(data):
+        if len(data) < 40 or (len(data) - 40) % 30:
+            return {"error": "Invalid MON-VER payload"}
+
+        def text(field):
+            return field.split(b"\0", 1)[0].decode("ascii", errors="replace")
+
+        return {
+            "class": "MON-VER",
+            "software": text(data[:30]),
+            "hardware": text(data[30:40]),
+            "extensions": [text(data[i : i + 30]) for i in range(40, len(data), 30)],
+        }
+
+    def _version_result(self, message):
+        if self._manual_version and self.result_queue is not None:
+            self.result_queue.put(("version_status", message))
+        self._manual_version = False
+        self._version_deadline = None
+
+    async def _write_command(self, command):
+        self.writer.write(command)
+        await asyncio.wait_for(self.writer.drain(), timeout=2.0)
+
+    async def _service_requests(self):
+        """Run even on a silent stream; refresh device identity before polling."""
+        if self.file_path or not self.writer or self.writer.is_closing():
+            return
+        now = self._clock()
+        requested = False
+        if self.command_queue is not None:
+            for _ in range(16):
+                try:
+                    requested |= self.command_queue.get_nowait() == "get_version"
+                except Empty:
+                    break
+        if requested:
+            self._manual_version = True
+        if self._version_deadline is not None:
+            if now >= self._version_deadline:
+                self._version_result("GPS VER\nNo response")
+            return
+        if self._probe_reason is not None:
+            command = self._recovery.version_command()
+            if command is not None:
+                reason = self._probe_reason
+                self._probe_reason = None
+                self._version_deadline = now + 5.0
+                logger.warning("MON-VER poll (%s) on %s", reason, self._recovery.device)
+                await self._write_command(command)
+            elif now >= self._probe_deadline:
+                self._probe_reason = None
+                logger.warning("MON-VER skipped: no unambiguous supported GPS device")
+                self._version_result("GPS VER\nNo device")
+            return
+        if requested or self._recovery.needs_probe(now):
+            self._probe_reason = "manual" if requested else "NAV absent for 60s"
+            self._probe_deadline = now + 5.0
+            self._recovery.probed = True
+            self._recovery.device = None
+            await self._write_command(b"?DEVICES;\n")
 
     def _register_parser(
         self, msg_class: UBXClass, msg_id: int, parser: Callable[[bytes], dict]
@@ -205,7 +276,11 @@ class UBXParser:
                     logger.error("Reader not available")
                     break
 
-                data = await self.reader.read(1024)
+                await self._service_requests()
+                try:
+                    data = await asyncio.wait_for(self.reader.read(1024), timeout=1.0)
+                except asyncio.TimeoutError:
+                    continue
                 if not data:
                     logger.warning("Read failed. Connection closed by server")
                     break
@@ -237,6 +312,20 @@ class UBXParser:
                     if msg_data[-2] == ck_a and msg_data[-1] == ck_b:
                         self._recovery.observe_ubx(now)
                         parsed = self._parse_ubx(bytes(msg_data))
+                        if parsed.get("class", "").startswith("NAV-"):
+                            self._recovery.observe_navigation(now)
+                            if self._probe_reason and not self._manual_version:
+                                self._probe_reason = None
+                        elif parsed.get("class") == "MON-VER":
+                            logger.warning("GPS version: %s", parsed)
+                            fields = dict(
+                                item.split("=", 1)
+                                for item in parsed["extensions"]
+                                if "=" in item
+                            )
+                            firmware = fields.get("FWVER", parsed["software"])
+                            protocol = fields.get("PROTVER", "--")
+                            self._version_result(f"{firmware}\nPROT {protocol}")
                         if "class" in parsed:
                             logger.debug(f"Parsed UBX message: {parsed}")
                             yield parsed
@@ -251,20 +340,10 @@ class UBXParser:
                     self.buffer = self.buffer[total_length:]
                 if nmea_seen and self._recovery.last_ubx != now:
                     yield {"class": "?NMEA"}
-                    # No polling on silence, noise, file replay, or a closed
-                    # writer. Normal UBX in this batch suppresses the probe.
-                    if (
-                        self.writer
-                        and not self.file_path
-                        and not self.writer.is_closing()
-                    ):
-                        command = self._recovery.next_probe(self._clock())
-                        if command is not None:
-                            self.writer.write(command)
-                            try:
-                                await asyncio.wait_for(self.writer.drain(), timeout=2.0)
-                            except asyncio.TimeoutError:
-                                logger.warning("MON-VER probe drain timed out")
+            except asyncio.TimeoutError:
+                logger.warning("MON-VER command drain timed out")
+                self._probe_reason = None
+                self._version_result("GPS VER\nSend timeout")
             except (ConnectionResetError, BrokenPipeError):
                 logger.exception("Connection error")
                 break
@@ -275,6 +354,7 @@ class UBXParser:
             await asyncio.sleep(0.1)  # Prevent tight loop
 
         # Ensure cleanup when loop ends
+        self._version_result("GPS VER\nDisconnected")
         await self.close()
 
     def _parse_ubx(self, data: bytes) -> dict:

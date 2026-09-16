@@ -1,4 +1,4 @@
-"""Bounded u-blox identification retry for a live gpsd NMEA-only stream."""
+"""Device selection and one-shot recovery of stalled UBX navigation."""
 
 import json
 import logging
@@ -6,10 +6,7 @@ import re
 
 logger = logging.getLogger("GPS.parser.recovery")
 
-NMEA_ONLY_SECONDS = 10.0
-NMEA_MAX_GAP_SECONDS = 5.0
-PROBE_INTERVAL_SECONDS = 30.0
-MAX_PROBES = 3  # Per connection, including failed writes; UBX does not reset it.
+NAV_STALE_SECONDS = 60.0
 MAX_TEXT_BYTES = 8192
 MON_VER_HEX = "b5620a0400000e34"
 NMEA_SENTENCE = re.compile(
@@ -20,22 +17,16 @@ NMEA_SENTENCE = re.compile(
 class UBXRecovery:
     """Observe text outside UBX frames; never scan binary payloads as NMEA.
 
-    A single gpsd-advertised device is required before sending a poll. The
-    connection's attempt budget survives successful responses, so a flapping
-    receiver cannot cause an unbounded stream of identification commands.
+    A single supported local device is required before sending a poll.
+    Only decoded NAV messages rearm an automatic recovery attempt.
     """
 
-    def __init__(self):
+    def __init__(self, started_at=0.0):
         self.text = bytearray()
         self.device = None
-        self.nmea_since = None
-        self.last_nmea = None
-        self.nmea_count = 0
         self.last_ubx = None
-        self.attempts = 0
-        self.last_probe = None
-        self.awaiting_ubx = False
-        self.exhausted_logged = False
+        self.last_navigation = started_at
+        self.probed = False
 
     def feed_text(self, data, now):
         """Return whether complete, checksum-valid navigation NMEA arrived."""
@@ -55,14 +46,6 @@ class UBXRecovery:
                     checksum ^= value
                 if checksum != int(line[-2:], 16):
                     continue
-                if (
-                    self.last_nmea is None
-                    or now - self.last_nmea > NMEA_MAX_GAP_SECONDS
-                ):
-                    self.nmea_since = now
-                    self.nmea_count = 0
-                self.last_nmea = now
-                self.nmea_count += 1
                 seen = True
         if len(self.text) > MAX_TEXT_BYTES:
             self.text.clear()
@@ -96,52 +79,23 @@ class UBXRecovery:
         """Any checksum-valid UBX frame proves binary communication is alive."""
         self.text.clear()
         self.last_ubx = now
-        self.nmea_since = None
-        self.last_nmea = None
-        self.nmea_count = 0
-        if self.awaiting_ubx:
+
+    def observe_navigation(self, now):
+        """Only decoded NAV traffic rearms recovery, never a version or ACK."""
+        if self.probed:
             logger.warning(
-                "UBX traffic resumed after MON-VER probe %d/%d on %s",
-                self.attempts,
-                MAX_PROBES,
+                "Navigation traffic resumed after MON-VER recovery on %s",
                 self.device,
             )
-            self.awaiting_ubx = False
+        self.last_navigation = now
+        self.probed = False
 
-    def next_probe(self, now):
-        """Reserve a bounded attempt; caller sends it only on a live stream."""
-        if (
-            self.device is None
-            or self.nmea_since is None
-            or self.nmea_count < 3
-            or now - self.nmea_since < NMEA_ONLY_SECONDS
-            or now - self.last_nmea > NMEA_MAX_GAP_SECONDS
-            or (self.last_ubx is not None and now - self.last_ubx < NMEA_ONLY_SECONDS)
-            or (
-                self.last_probe is not None
-                and now - self.last_probe < PROBE_INTERVAL_SECONDS
-            )
-        ):
+    def needs_probe(self, now):
+        return not self.probed and now - self.last_navigation >= NAV_STALE_SECONDS
+
+    def version_command(self):
+        if self.device is None:
             return None
-        if self.attempts >= MAX_PROBES:
-            if not self.exhausted_logged:
-                logger.warning(
-                    "UBX identification retry limit reached on %s; "
-                    "NMEA continues, no further probes on this connection",
-                    self.device,
-                )
-                self.exhausted_logged = True
-            return None
-        self.attempts += 1
-        self.last_probe = now
-        self.awaiting_ubx = True
-        logger.warning(
-            "NMEA-only GPS stream for %.1fs on %s; MON-VER probe %d/%d",
-            now - self.nmea_since,
-            self.device,
-            self.attempts,
-            MAX_PROBES,
-        )
         command = {"path": self.device, "hexdata": MON_VER_HEX}
         return (
             "?DEVICE=" + json.dumps(command, separators=(",", ":")) + ";\n"
