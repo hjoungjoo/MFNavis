@@ -5,7 +5,7 @@
 재부팅 후 추가 개선은
 [통합 최적화 결과](docs/test_cedar_free_20260915/INTEGRATED_OPTIMIZATION_RESULTS_ko.md)를 참조한다.
 
-검출기·전처리·비교 도구·실험 문서의 정본은 `python/mf_detect_star` submodule이다.
+검출기·전처리·비교 도구·실험 문서의 정본은 `python/MFDS` submodule이다.
 [통합 관리 안내](docs/DETECTOR_INTEGRATION_ko.md)와
 [라이선스 범위](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/LICENSING.md)를 따른다.
 
@@ -40,7 +40,7 @@
 ```bash
 cd /home/pifinder/PiFinder_test
 bash scripts/ensure_tetra3_link.sh .
-bash scripts/setup_mf_detect_star.sh
+bash scripts/setup_mfds.sh
 PYTHONPATH=python python3 python/scripts/replay_star_preprocess_ab.py \
   /home/pifinder/PiFinder_test_data/corpora/20260915_fixed_lights \
   --lens manual --manual-focal 10.3889 \

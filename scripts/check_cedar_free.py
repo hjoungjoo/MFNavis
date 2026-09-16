@@ -38,7 +38,7 @@ def check_repo(repo, ref="HEAD"):
             problems.append("invalid Cedar-free deployment marker")
     except (subprocess.CalledProcessError, ValueError, AttributeError):
         problems.append("missing/invalid Cedar-free deployment marker")
-    entry = git(repo, "ls-tree", commit, "--", "python/mf_detect_star").decode()
+    entry = git(repo, "ls-tree", commit, "--", "python/MFDS").decode()
     if not entry.startswith("160000 commit "):
         problems.append("MF detector is not pinned as a submodule")
     return problems

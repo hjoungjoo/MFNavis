@@ -25,10 +25,10 @@
 ```bash
 git -c fetch.recurseSubmodules=false fetch origin release
 git merge --ff-only origin/release
-git submodule sync -- python/mf_detect_star
-git submodule update --init -- python/mf_detect_star
+git submodule sync -- python/MFDS
+git submodule update --init -- python/MFDS
 bash scripts/ensure_tetra3_link.sh .
-bash scripts/setup_mf_detect_star.sh
+bash scripts/setup_mfds.sh
 ```
 
 이 절차는 새 소스와 빌드를 준비한다. 이번 전환은 native 실행 코드가 동일해
@@ -45,3 +45,13 @@ MFDS 공개 CI와 인증 없는 clone/build, native 6/6 및 라이선스/레이�
 통과했다. 최종 원격 CI와 삭제 결과는 릴리즈 본문 및 로컬 이관 기록에 남긴다.
 마운트 전원 OFF 조건이며 이번 저장소 전환으로 검출 성능이나 GoTo 이동을
 새롭게 측정한 것은 아니다. 사용자 완료 기준 90초각 설정을 유지한다.
+
+## MFDS 디렉터리 명칭 통일
+
+현재 통합 경로는 `python/MFDS`, 설치 명령은 `bash scripts/setup_mfds.sh`입니다.
+기존 공개 MFDS 체크아웃이 이전 경로에 남아 있으면 설치 스크립트가 빌드 파일까지 함께 이동합니다.
+두 경로에 파일이 동시에 존재하거나 이전 저장소가 공개 MFDS가 아니면 자동 이동을 중단합니다.
+이 경로 전환은 `.gitmodules` 변경을 포함하므로 기존 코드 전용 자동 갱신에서는 별도 설치가 필요하다고 안내합니다.
+서비스를 중지한 상태에서 새 소스를 적용하고 설치 스크립트를 실행한 후 서비스를 시작하세요.
+과거 릴리즈 안내의 설치 명령은 호환 진입점으로 유지합니다.
+MFDS의 C API, Python 모듈명, 실행 파일명은 호환성을 위해 유지하며 소스 관리 경로와는 별개입니다.

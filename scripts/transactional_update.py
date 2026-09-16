@@ -24,7 +24,7 @@ def git(repo, *args):
 
 def restore(repo, state, journal):
     run(repo, "git", "reset", "--hard", journal["before"])
-    detector = repo / "python/mf_detect_star"
+    detector = repo / "python/MFDS"
     if journal["detector_before"]:
         run(detector, "git", "checkout", "--detach", journal["detector_before"])
     build = detector / "build"
@@ -53,7 +53,7 @@ def recover(repo):
         ):
             # A changed submodule HEAD alone is part of an interrupted activation.
             changed = git(repo, "diff", "--name-only")
-            if changed != "python/mf_detect_star" or git(
+            if changed != "python/MFDS" or git(
                 repo, "diff", "--cached", "--name-only"
             ):
                 raise RuntimeError("Tracked edits after interruption; inspect manually")
@@ -102,7 +102,7 @@ def update(repo):
                 "Dependency/OS/submodule layout changes require a separate staged installation: "
                 + sensitive
             )
-        detector = repo / "python/mf_detect_star"
+        detector = repo / "python/MFDS"
         detector_before = (
             git(detector, "rev-parse", "HEAD") if (detector / ".git").exists() else None
         )
@@ -142,7 +142,7 @@ def update(repo):
             activated = True
             run(repo, "git", "merge", "--ff-only", target)
             run(repo, "git", "submodule", "update", "--init", "--recursive")
-            staged_build = candidate / "python/mf_detect_star/build"
+            staged_build = candidate / "python/MFDS/build"
             if not staged_build.is_dir():
                 raise RuntimeError("Prepared MF build is missing")
             replacement = detector / "build.update"

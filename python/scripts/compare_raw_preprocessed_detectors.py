@@ -1,1 +1,1 @@
-../mf_detect_star/integrations/pifinder/scripts/compare_raw_preprocessed_detectors.py
+../MFDS/integrations/pifinder/scripts/compare_raw_preprocessed_detectors.py

@@ -3,7 +3,7 @@
 사용자 요청에 따라 검증된 테스트 브랜치를 main에 병합하고 운영 서비스도
 최종 소스로 전환한다. 확정 구성은 MF4p RAW + MF4p 전처리, auto 스케줄,
 native process/memfd, 전처리 3작업자/5프레임, SEP 검출 실패 보조다.
-[MF 정본 결정](../python/mf_detect_star/docs/MAIN_FINALIZATION_ko.md)에 근거를 정리했다.
+[MF 정본 결정](../python/MFDS/docs/MAIN_FINALIZATION_ko.md)에 근거를 정리했다.
 
 ## 작업 전 계획과 변경 범위
 

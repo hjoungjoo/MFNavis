@@ -1,1 +1,1 @@
-../mf_detect_star/integrations/pifinder/scripts/replay_star_preprocess_ab.py
+../MFDS/integrations/pifinder/scripts/replay_star_preprocess_ab.py

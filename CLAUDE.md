@@ -25,13 +25,13 @@ git remote set-head origin main
 ```
 
 **Initialise the pinned detector and Tetra3 import alias in every new checkout.**
-This main branch vendors the Tetra3 solver core. `python/mf_detect_star` is a
+This main branch vendors the Tetra3 solver core. `python/MFDS` is a
 pinned submodule containing the canonical detector, preprocessing, comparison
 tools and tests. Existing PiFinder paths are relative symlinks into that tree.
 
 ```bash
 bash scripts/ensure_tetra3_link.sh .
-bash scripts/setup_mf_detect_star.sh
+bash scripts/setup_mfds.sh
 ```
 
 These helpers do not change services or boot configuration. Edit detector-related
@@ -80,7 +80,7 @@ Watch out for .venv directories containing virtual environments, that you need t
 
 **Running the application:**
 
-Build the pinned MF detector with `bash scripts/setup_mf_detect_star.sh` first.
+Build the pinned MF detector with `bash scripts/setup_mfds.sh` first.
 This main branch starts persistent native MF child workers automatically, with
 private memfd image memory. It needs no Cedar server or additional systemd unit.
 `MF_DETECT_TRANSPORT=ctypes` is an explicit comparison mode; process is default.

@@ -9,7 +9,7 @@ runs:
       working-directory: ${{ github.workspace }}
       run: |
         set -euo pipefail
-        entry=$(git ls-tree HEAD -- python/mf_detect_star)
+        entry=$(git ls-tree HEAD -- python/MFDS)
         read -r mode kind revision path <<< "$entry"
         test "$mode" = 160000
         test "$kind" = commit
@@ -18,5 +18,5 @@ runs:
       with:
         repository: hjoungjoo/MFDS
         ref: ${{ steps.revision.outputs.sha }}
-        path: python/mf_detect_star
+        path: python/MFDS
         persist-credentials: false

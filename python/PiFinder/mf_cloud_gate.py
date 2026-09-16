@@ -1,1 +1,1 @@
-../mf_detect_star/integrations/pifinder/PiFinder/mf_cloud_gate.py
+../MFDS/integrations/pifinder/PiFinder/mf_cloud_gate.py

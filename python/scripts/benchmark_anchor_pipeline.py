@@ -1,1 +1,1 @@
-../mf_detect_star/integrations/pifinder/scripts/benchmark_anchor_pipeline.py
+../MFDS/integrations/pifinder/scripts/benchmark_anchor_pipeline.py

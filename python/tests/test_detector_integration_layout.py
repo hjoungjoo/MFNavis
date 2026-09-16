@@ -12,7 +12,7 @@ pytestmark = pytest.mark.unit
 
 def test_all_integration_paths_resolve_to_the_submodule():
     root = Path(__file__).resolve().parents[2]
-    submodule = root / "python/mf_detect_star"
+    submodule = root / "python/MFDS"
     manifest = json.loads((submodule / "integrations/pifinder/SOURCE.json").read_text())
     for entry in manifest["files"]:
         source = root / entry["from"]
@@ -28,7 +28,7 @@ def test_native_default_is_from_the_same_source_tree(monkeypatch):
     root = Path(__file__).resolve().parents[1]
     assert (
         star_detect.native_library_path()
-        == root / "mf_detect_star/build/libmf_detect_star.so"
+        == root / "MFDS/build/libmf_detect_star.so"
     )
     monkeypatch.setenv("MF_DETECT_LIBRARY", "/tmp/explicit-mfds.so")
     assert star_detect.native_library_path() == Path("/tmp/explicit-mfds.so")
@@ -40,7 +40,7 @@ def test_submodule_uses_a_portable_remote():
     root = Path(__file__).resolve().parents[2]
     config = configparser.ConfigParser()
     config.read(root / ".gitmodules")
-    assert config['submodule "mf_detect_star"']["url"] == (
+    assert config['submodule "MFDS"']["url"] == (
         "https://github.com/hjoungjoo/MFDS.git"
     )
-    assert config['submodule "mf_detect_star"']["path"] == "python/mf_detect_star"
+    assert config['submodule "MFDS"']["path"] == "python/MFDS"

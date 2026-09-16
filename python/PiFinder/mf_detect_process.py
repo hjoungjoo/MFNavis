@@ -1,1 +1,1 @@
-../mf_detect_star/integrations/pifinder/PiFinder/mf_detect_process.py
+../MFDS/integrations/pifinder/PiFinder/mf_detect_process.py

@@ -1,1 +1,1 @@
-../mf_detect_star/integrations/pifinder/PiFinder/sep_detect.py
+../MFDS/integrations/pifinder/PiFinder/sep_detect.py

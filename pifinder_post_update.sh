@@ -10,7 +10,7 @@ if [[ "${PIFINDER_CODE_UPDATE:-0}" == "1" ]]; then
 fi
 git submodule update --init --recursive
 bash "${PIFINDER_REPO_DIR}/scripts/ensure_tetra3_link.sh" "${PIFINDER_REPO_DIR}"
-bash "${PIFINDER_REPO_DIR}/scripts/setup_mf_detect_star.sh"
+bash "${PIFINDER_REPO_DIR}/scripts/setup_mfds.sh"
 sudo python3 -m pip install --break-system-packages -r "${PIFINDER_REPO_DIR}/python/requirements.txt"
 
 # wifi_status.txt is runtime state and no longer tracked, so the update that

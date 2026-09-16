@@ -43,8 +43,8 @@ def repository(tmp_path):
     shutil.copy(ROOT / "pifinder_update.sh", repo)
     shutil.copy(ROOT / "scripts/transactional_update.py", repo / "scripts")
     (repo / "scripts/prepare_code_update.sh").write_text(
-        "set -e\ngit submodule update --init\nmkdir -p python/mf_detect_star/build\n"
-        "cp seed python/mf_detect_star/build/artifact\n"
+        "set -e\ngit submodule update --init\nmkdir -p python/MFDS/build\n"
+        "cp seed python/MFDS/build/artifact\n"
     )
     (repo / "scripts/ensure_tetra3_link.sh").write_text(":\n")
     (repo / "pifinder_paths.sh").write_text(":\n")
@@ -65,7 +65,7 @@ def repository(tmp_path):
         "submodule",
         "add",
         str(native),
-        "python/mf_detect_star",
+        "python/MFDS",
     )
     git(repo, "add", ".")
     git(repo, "commit", "-m", "Cedar-free candidate")
@@ -132,8 +132,8 @@ def update_clone(repository, tmp_path):
         ["git", "clone", str(repository), str(clone)], check=True, capture_output=True
     )
     git(clone, "-c", "protocol.file.allow=always", "submodule", "update", "--init")
-    (clone / "python/mf_detect_star/build").mkdir()
-    (clone / "python/mf_detect_star/build/artifact").write_text("original build")
+    (clone / "python/MFDS/build").mkdir()
+    (clone / "python/MFDS/build/artifact").write_text("original build")
     return clone
 
 
@@ -180,8 +180,8 @@ def test_failed_update_restores_source_and_native_build(
     repository, update_clone, phase
 ):
     before = git(update_clone, "rev-parse", "HEAD")
-    native_before = git(update_clone / "python/mf_detect_star", "rev-parse", "HEAD")
-    native = repository / "python/mf_detect_star"
+    native_before = git(update_clone / "python/MFDS", "rev-parse", "HEAD")
+    native = repository / "python/MFDS"
     origin = Path(git(native, "remote", "get-url", "origin"))
     (origin / "source").write_text("next native source")
     commit(origin)
@@ -199,13 +199,8 @@ def test_failed_update_restores_source_and_native_build(
     result = run_update(update_clone)
     assert result.returncode != 0
     assert git(update_clone, "rev-parse", "HEAD") == before
-    assert (
-        git(update_clone / "python/mf_detect_star", "rev-parse", "HEAD")
-        == native_before
-    )
-    assert (
-        update_clone / "python/mf_detect_star/build/artifact"
-    ).read_text() == "original build"
+    assert git(update_clone / "python/MFDS", "rev-parse", "HEAD") == native_before
+    assert (update_clone / "python/MFDS/build/artifact").read_text() == "original build"
     assert not (update_clone / ".git/update-transaction").exists()
 
 
@@ -243,7 +238,42 @@ def test_interrupted_activation_keeps_journal_and_can_be_recovered(
     )
     assert result.returncode == 0, result.stderr
     assert git(update_clone, "rev-parse", "HEAD") == before
-    assert (
-        update_clone / "python/mf_detect_star/build/artifact"
-    ).read_text() == "original build"
+    assert (update_clone / "python/MFDS/build/artifact").read_text() == "original build"
     assert not (update_clone / ".git/update-transaction").exists()
+
+
+def test_mfds_path_migration_preserves_submodule_and_build(repository):
+    spec = importlib.util.spec_from_file_location(
+        "mfds_path", ROOT / "scripts/migrate_mfds_path.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    detector = repository / "python/MFDS"
+    before = git(detector, "rev-parse", "HEAD")
+    git(
+        detector, "remote", "set-url", "origin", "https://github.com/hjoungjoo/MFDS.git"
+    )
+    (detector / "build").mkdir()
+    (detector / "build/artifact").write_text("preserved")
+    git(repository, "mv", "python/MFDS", "python/mf_detect_star")
+    module.migrate(repository)
+    module.migrate(repository)
+    assert not (repository / "python/mf_detect_star").exists()
+    assert git(detector, "rev-parse", "HEAD") == before
+    assert (detector / "build/artifact").read_text() == "preserved"
+
+
+def test_mfds_path_migration_rejects_conflicting_directories(tmp_path):
+    spec = importlib.util.spec_from_file_location(
+        "mfds_path", ROOT / "scripts/migrate_mfds_path.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    for name in ("MFDS", "mf_detect_star"):
+        path = tmp_path / "python" / name
+        path.mkdir(parents=True)
+        (path / "keep").write_text(name)
+    with pytest.raises(RuntimeError, match="Both detector directories"):
+        module.migrate(tmp_path)
+    for name in ("MFDS", "mf_detect_star"):
+        assert (tmp_path / "python" / name / "keep").read_text() == name

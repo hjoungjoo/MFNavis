@@ -1,1 +1,1 @@
-../mf_detect_star/integrations/pifinder/scripts/evaluate_preprocessed_anchor.py
+../MFDS/integrations/pifinder/scripts/evaluate_preprocessed_anchor.py

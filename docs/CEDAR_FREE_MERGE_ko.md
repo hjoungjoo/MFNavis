@@ -16,7 +16,7 @@ Cedar 미포함 소스를 유지하도록 경로를 고정하고, 검토되지 �
   로컬 변경은 거부하며, fast-forward만 허용한다. `release`로 자동 이동하지 않는다.
 - updater는 checkout 전에 FETCH_HEAD의 marker, 알려진 Cedar 파일, MF gitlink를
   검사한다. 설치 재실행도 fast-forward 전 marker를 요구하며 이후 전체 목록을 검사한다.
-- `scripts/setup_mf_detect_star.sh`로 고정 submodule을 빌드/검사한다.
+- `scripts/setup_mfds.sh`로 고정 submodule을 빌드/검사한다.
 - 과거 설치 백업은 실행 파일 위치에서 `docs/history/pifinder_setup_legacy.txt`로
   이동했다. 이력 문서이며 설치 진입점이 아니다.
 - PR 및 main/release의 기존 nox CI에 `check_cedar_free.py` 검사를 추가했다.
@@ -24,7 +24,7 @@ Cedar 미포함 소스를 유지하도록 경로를 고정하고, 검토되지 �
 
 ## 병합 때 수행할 순서
 
-1. [MF 판매용 제품 사용 정책](../python/mf_detect_star/docs/test_cedar_free_20260915/MF_COMMERCIAL_POLICY_ko.md)에
+1. [MF 판매용 제품 사용 정책](../python/MFDS/docs/test_cedar_free_20260915/MF_COMMERCIAL_POLICY_ko.md)에
    따라 MF의 별도 승인 조건과 PiFinder의 기존 GPL을 유지할 배포 근거를 마련한다.
    독립 저작물 구성 또는 유효한 GPL 연결 예외를 검토하고 해당 버전을 gitlink로
    고정한다. MF에 GPL 선택권을 추가하는 대안은 사용자 요구에 맞지 않아 제외한다.
@@ -36,7 +36,7 @@ Cedar 미포함 소스를 유지하도록 경로를 고정하고, 검토되지 �
 
    ```bash
    python3 scripts/check_cedar_free.py --repo .
-   bash scripts/setup_mf_detect_star.sh
+   bash scripts/setup_mfds.sh
    ```
 
 3. 판매 이미지는 별도 staging 이미지에서 만든다. 현재 운영 SD 전체나 개발

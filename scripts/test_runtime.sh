@@ -17,9 +17,9 @@ case "${1:-status}" in
     test -f "$repo_dir/python/PiFinder/star_detect.py"
     if [[ "$profile" != sep ]]; then
       if [[ "$transport" == process ]]; then
-        test -x "$repo_dir/python/mf_detect_star/build/mf_detect_star_server"
+        test -x "$repo_dir/python/MFDS/build/mf_detect_star_server"
       else
-        test -f "$repo_dir/python/mf_detect_star/build/libmf_detect_star.so"
+        test -f "$repo_dir/python/MFDS/build/libmf_detect_star.so"
       fi
     fi
     mkdir -p "$override_dir"
@@ -29,8 +29,8 @@ WorkingDirectory=$repo_dir/python
 Environment=PIFINDER_DATA_DIR=/home/pifinder/PiFinder_test_data
 Environment=PIFINDER_RUNTIME_DIR=/dev/shm/pifinder_test
 $profile_lines
-Environment=MF_DETECT_SERVER=$repo_dir/python/mf_detect_star/build/mf_detect_star_server
-Environment=MF_DETECT_LIBRARY=$repo_dir/python/mf_detect_star/build/libmf_detect_star.so
+Environment=MF_DETECT_SERVER=$repo_dir/python/MFDS/build/mf_detect_star_server
+Environment=MF_DETECT_LIBRARY=$repo_dir/python/MFDS/build/libmf_detect_star.so
 EOF
     systemctl daemon-reload
     if ! (systemctl restart pifinder.service && sleep 2 && systemctl is-active --quiet pifinder.service); then

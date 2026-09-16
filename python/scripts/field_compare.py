@@ -1,1 +1,1 @@
-../mf_detect_star/integrations/pifinder/scripts/field_compare.py
+../MFDS/integrations/pifinder/scripts/field_compare.py

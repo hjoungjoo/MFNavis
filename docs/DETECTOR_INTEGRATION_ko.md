@@ -2,14 +2,14 @@
 
 MF native 검출기, Python 전처리/검출 연결/프로필/anchor 실험/SEP 보조,
 비교 스크립트와 관련 테스트·실험 문서의 정본은
-[`mf_detect_star`](../python/mf_detect_star/README.md) 저장소다.
-PiFinder의 `python/mf_detect_star` submodule은 사용할 정확한 커밋을 고정한다.
+[`mf_detect_star`](../python/MFDS/README.md) 저장소다.
+PiFinder의 `python/MFDS` submodule은 사용할 정확한 커밋을 고정한다.
 기존 `PiFinder.*` import 및 scripts/tests 경로는 상대 심볼릭 링크로 유지한다.
 
 ## 설치와 사용
 
 ```bash
-bash scripts/setup_mf_detect_star.sh
+bash scripts/setup_mfds.sh
 PYTHONPATH=python python3 -m PiFinder.detector_profiles mf4p
 PYTHONPATH=python python3 python/scripts/field_compare.py --help
 ```
@@ -23,12 +23,12 @@ setup은 고정 커밋 checkout과 빌드/검사만 한다. 서비스 전환이�
 로드하지 않고 기존 SEP 보조 정책을 따른다. 임의의 형제 checkout을 암묵적으로
 읽지 않는다. submodule이 없으면 먼저 setup을 실행해야 한다.
 
-[프로토콜·종료·timeout 정책](../python/mf_detect_star/docs/PROCESS_PROTOCOL.md)을
+[프로토콜·종료·timeout 정책](../python/MFDS/docs/PROCESS_PROTOCOL.md)을
 참고한다. 별도 systemd 서비스 설치는 필요하지 않으며 호출 프로세스가 worker를
 관리한다. 기본 요청 timeout은 500ms, 최초 시작 대기는 최소 2초다.
 
 수정은 mf_detect_star 정본에서 수행하고 검사·커밋·푸시한다. 이후 PiFinder에서
-승인된 커밋을 checkout하고 `git add python/mf_detect_star`로 참조 버전을 갱신한다.
+승인된 커밋을 checkout하고 `git add python/MFDS`로 참조 버전을 갱신한다.
 `git submodule update --remote`를 부팅/실행 시 호출하지 않는다.
 소스 배포는 submodule까지 포함한 recursive clone 또는 전체 source bundle로 제공한다.
 
@@ -50,7 +50,7 @@ Tetra3의 해시 일괄 계산과 충돌 조회 최적화는 기본 활성화된
 비교할 수 있다. 운영 서비스 전환은 별도 작업 요청 때만 수행한다.
 
 ```bash
-PYTHONPATH=python python3 python/mf_detect_star/integrations/pifinder/scripts/compare_search_speed.py CORPUS CACHE NEW_RESULT.json --frames 120
+PYTHONPATH=python python3 python/MFDS/integrations/pifinder/scripts/compare_search_speed.py CORPUS CACHE NEW_RESULT.json --frames 120
 ```
 
 이 도구는 검출 좌표를 공유하고 검색 캐시는 방식별로 분리해 실행 순서를
@@ -83,7 +83,7 @@ MFDS 공개 이관(m2.6.4): [공개 저장소](https://github.com/hjoungjoo/MFDS
 
 ## 운영 빌드와 비교 도구
 
-운영 설치·갱신은 `bash scripts/setup_mf_detect_star.sh --runtime`으로
+운영 설치·갱신은 `bash scripts/setup_mfds.sh --runtime`으로
 MFDS 프로세스 서버와 라이선스 고지만 빌드한다. 기본값인 `--with-tools`는
 CLI·ctypes 라이브러리·네이티브 테스트도 빌드하고 테스트를 실행하므로
 개발과 CI, 실측 비교에 사용한다. 기존 비교 도구나 기록을 삭제하지 않는다.

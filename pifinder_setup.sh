@@ -130,7 +130,7 @@ install_optional_indi_archive() {
 
 git submodule update --init --recursive
 bash "${PIFINDER_REPO_DIR}/scripts/ensure_tetra3_link.sh" "${PIFINDER_REPO_DIR}"
-bash "${PIFINDER_REPO_DIR}/scripts/setup_mf_detect_star.sh"
+bash "${PIFINDER_REPO_DIR}/scripts/setup_mfds.sh"
 sudo python3 -m pip install --break-system-packages -r python/requirements.txt
 
 # Setup GPSD

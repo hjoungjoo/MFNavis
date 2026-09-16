@@ -1,4 +1,4 @@
-[submodule "mf_detect_star"]
-	path = python/mf_detect_star
+[submodule "MFDS"]
+	path = python/MFDS
 	url = https://github.com/hjoungjoo/MFDS.git
 	branch = main
