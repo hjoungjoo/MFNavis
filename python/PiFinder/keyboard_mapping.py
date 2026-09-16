@@ -372,6 +372,36 @@ class KeyboardMappingManager:
         if self._dispatcher is not None:
             self._dispatcher.tick(time.monotonic() if now is None else now)
 
+    def suspend_for_error(self) -> None:
+        """Stop held shortcuts while the LCD owns input for acknowledgement."""
+        dispatcher = self._dispatcher
+        if dispatcher is not None and dispatcher._held_direction is not None:
+            if dispatcher._held_key is not None:
+                self._suppressed_until_release.add(dispatcher._held_key)
+            dispatcher.mountcontrol_queue.put({"type": "stop_movement"})
+            dispatcher._held_direction = None
+            dispatcher._held_key = None
+
+    def error_dialog_key(self, event: dict[str, Any]) -> int | None:
+        """Bypass mount bindings and swallow the eventual acknowledgement release."""
+        identifier = str(event.get("key_id") or key_id(int(event.get("code", 0))))
+        with self._lock:
+            if not event.get("pressed"):
+                self._suppressed_until_release.discard(identifier)
+                return None
+            already_held = identifier in self._suppressed_until_release
+            self._suppressed_until_release.add(identifier)
+        if already_held or event.get("repeat"):
+            return None
+        return {
+            106: KeyboardInterface.RIGHT,
+            105: KeyboardInterface.LEFT,
+            103: KeyboardInterface.UP,
+            108: KeyboardInterface.DOWN,
+            28: KeyboardInterface.SQUARE,
+            96: KeyboardInterface.SQUARE,
+        }.get(int(event.get("code", 0)), int(event.get("keycode", 0)) or None)
+
 
 _manager: Optional[KeyboardMappingManager] = None
 

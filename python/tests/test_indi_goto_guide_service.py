@@ -100,6 +100,189 @@ def test_lower_configured_pulse_align_threshold_is_preserved(monkeypatch):
     assert service._pulse_align_threshold_arcmin() == pytest.approx(12.0)
 
 
+def test_goto_near_stage_requests_hybrid_approach(monkeypatch):
+    service = _make_service(monkeypatch, [1000.0])
+    service.active_target_ra, service.active_target_dec = 100.0, 20.0
+    service._begin_pulse_align()
+    assert service.mountcontrol_queue.commands[-1]["manual_approach"] is True
+
+
+def test_goto_waits_during_manual_approach_and_for_post_stop_solve(monkeypatch):
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    service.active_target_ra, service.active_target_dec = 100.0, 20.0
+    service._begin_pulse_align()
+    status = {
+        "available": True,
+        "mount_motion_active": True,
+        "manual_motion_origin": "guide_correction",
+    }
+    monkeypatch.setattr(service, "_mount_status_summary", lambda: status)
+    service._pointing["usable_for_goto"] = False
+    service._tick_pulse_align()
+    assert service.phase == "pifinder_pulse_align"
+    assert service.last_action == "pifinder manual approach"
+    status.update(mount_motion_active=False, guide_observation_after_wall=1000.5)
+    service._pointing["usable_for_goto"] = True
+    service._pointing["current"].update(ra=100.0, dec=20.0)
+    finished = []
+    monkeypatch.setattr(service, "_send_final_sync_once", lambda: finished.append(True))
+    service._tick_pulse_align()
+    assert not finished
+    clock[0] = 1001.0
+    service._tick_pulse_align()
+    assert finished == [True]
+
+
+@pytest.mark.parametrize(
+    "phase", ["pifinder_goto", "pifinder_pulse_align", "pifinder_goto_blocked"]
+)
+@pytest.mark.parametrize("guide_enabled", [False, True])
+def test_commanded_manual_move_replaces_goto_target_after_release(
+    monkeypatch, phase, guide_enabled
+):
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    service.config_values["indi_tracking_guide_enabled"] = guide_enabled
+    service.active_target_ra, service.active_target_dec = 100.0, 20.0
+    service.phase = phase
+    service.pulse_align_sent = phase == "pifinder_pulse_align"
+    status = {
+        "available": True,
+        "mount_motion_active": True,
+        "manual_motion_direction": "north",
+        "manual_motion_origin": "user",
+    }
+    monkeypatch.setattr(service, "_mount_status_summary", lambda: status)
+    service._tick_state_machine()
+    service._tick_tracking_guide()
+    assert service.phase == "manual_retarget"
+    assert service.active_target_dec == 20.0  # No moving exposure becomes a target.
+    status.clear()
+    status.update(available=True, mount_motion_active=False)
+    clock[0] += 1.0
+    service._tick_state_machine()
+    clock[0] += 4.1
+    service._tick_state_machine()
+    assert service.phase == "tracking"
+    assert (service.active_target_ra, service.active_target_dec) == (100.0, 22.0)
+    assert (service.tracking_target_ra, service.tracking_target_dec) == (100.0, 22.0)
+    assert not any(
+        c["type"] in {"sync", "goto_target", "sync_and_goto", "stop_movement"}
+        for c in service.mountcontrol_queue.commands
+    )
+
+
+def test_brief_user_command_between_ticks_still_retargets(monkeypatch):
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    service.phase = "pifinder_pulse_align"
+    status = {
+        "available": True,
+        "mount_motion_active": False,
+        "last_user_motion_started_wall": 1000.1,
+        "last_user_motion_stopped_wall": 1000.4,
+    }
+    monkeypatch.setattr(service, "_mount_status_summary", lambda: status)
+    clock[0] = 1001.0
+    service._tick_state_machine()
+    assert service.phase == "manual_retarget"
+    clock[0] = 1006.0
+    service._tick_state_machine()
+    assert service.tracking_target_dec == 22.0
+
+
+@pytest.mark.parametrize("phase", ["complete", "tracking"])
+@pytest.mark.parametrize("recovering", [False, True])
+@pytest.mark.parametrize("guide_enabled", [False, True])
+def test_tracking_key_tap_retargets_before_old_target_can_recover(
+    monkeypatch, phase, recovering, guide_enabled
+):
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    service.config_values["indi_tracking_guide_manual_retarget_enabled"] = True
+    service.config_values["indi_tracking_guide_enabled"] = guide_enabled
+    service.phase = phase
+    service.tracking_guide_active_sent = True
+    if recovering:
+        service.tracking_recovery_state = "goto_wait"
+    status = {
+        "available": True,
+        "mount_motion_active": False,
+        "last_user_motion_started_wall": 1000.1,
+        "last_user_motion_stopped_wall": 1000.3,
+    }
+    monkeypatch.setattr(service, "_mount_status_summary", lambda: status)
+    clock[0] = 1001.0
+    service._tick_state_machine()
+    service._tick_tracking_guide()
+    assert service.phase == "manual_retarget"
+    assert service.tracking_recovery_state == "idle"
+    assert not service.tracking_guide_active_sent
+
+    # A recently published mount coordinate or pre-settle exposure must not
+    # become the destination, even when usable_for_goto is true.
+    clock[0] = 1006.0
+    service._pointing["current"].update(source="mount", timestamp=1006.0)
+    service._tick_state_machine()
+    assert service.phase == "manual_retarget"
+    service._pointing["current"].update(source="solve", timestamp=1002.0)
+    service._tick_state_machine()
+    assert service.phase == "manual_retarget"
+    assert service.tracking_target_dec == 20.0
+
+    service._pointing["current"].update(timestamp=1006.0, dec=23.0)
+    service._tick_state_machine()
+    assert service.phase == "tracking"
+    assert service.active_target_dec == service.tracking_target_dec == 23.0
+    service._tick_state_machine()
+    assert service.phase == "tracking"  # Persistent event is consumed once.
+    assert service.manual_target_origin == (100.0, 20.0)
+    assert service._status_payload()["manual_target_origin"] == (100.0, 20.0)
+    assert not any(
+        command["type"] in {"goto_target", "sync_and_goto", "sync"}
+        for command in service.mountcontrol_queue.commands
+    )
+
+
+def test_hand_push_and_automatic_approach_keep_original_goto_target(monkeypatch):
+    service = _make_service(monkeypatch, [1000.0])
+    service.phase = "pifinder_pulse_align"
+    service.active_target_ra, service.active_target_dec = 100.0, 20.0
+    _set_imu_moving(service, True)
+    monkeypatch.setattr(service, "_tick_pulse_align", lambda: None)
+    service._tick_state_machine()
+    assert service.phase == "pifinder_pulse_align"
+    monkeypatch.setattr(
+        service,
+        "_mount_status_summary",
+        lambda: {
+            "available": True,
+            "mount_motion_active": True,
+            "manual_motion_direction": "north",
+            "manual_motion_origin": "guide_correction",
+        },
+    )
+    service._tick_state_machine()
+    assert service.phase == "pifinder_pulse_align"
+    assert service.active_target_dec == 20.0
+
+
+def test_tracking_off_does_not_chase_sidereal_drift(monkeypatch):
+    service = _make_service(monkeypatch, [1000.0])
+    service.tracking_guide_active_sent = True
+    monkeypatch.setattr(
+        service,
+        "_mount_status_summary",
+        lambda: {"available": True, "tracking_enabled": False},
+    )
+    service._tick_tracking_guide()
+    assert service.tracking_guide_state == "paused"
+    assert service.tracking_guide_last_action == "mount tracking off"
+    assert not service.tracking_guide_active_sent
+    assert service.tracking_recovery_state == "idle"
+
+
 def test_arrival_solve_must_be_captured_after_mount_became_idle(monkeypatch):
     service = _make_service(monkeypatch, [1000.0])
     service.solve_anchor_required_after_wall = 999.0
@@ -499,6 +682,7 @@ def test_guide_fallback_motion_never_retargets(monkeypatch):
     }
     monkeypatch.setattr(service, "_mount_status_summary", lambda: mount_status)
 
+    service._tick_state_machine()
     service._tick_tracking_guide()
 
     assert service.manual_retarget_pending is False
@@ -511,9 +695,11 @@ def test_external_disturbance_recovers_with_manual_retarget_enabled(monkeypatch)
     service = _make_service(monkeypatch, clock)
     service.config_values["indi_tracking_guide_manual_retarget_enabled"] = True
 
+    service._tick_state_machine()
     service._tick_tracking_guide()
     for _ in range(4):
         clock[0] += 1.0
+        service._tick_state_machine()
         service._tick_tracking_guide()
 
     assert service.manual_retarget_pending is False
@@ -737,3 +923,44 @@ def test_recent_post_idle_solve_can_finish_goto_without_extra_wait(monkeypatch):
     assert service.phase == "complete"
     assert service.final_sync_sent is True
     assert [c["type"] for c in service.mountcontrol_queue.commands] == ["sync"]
+
+
+def test_goto_timeout_and_tracking_failure_notify_lcd(monkeypatch, tmp_path):
+    import queue
+
+    service = _make_service(monkeypatch, [1000.0])
+    alerts = queue.Queue()
+    service.error_notifier.queue = alerts
+    monkeypatch.setattr(iggs, "STATUS_FILE", tmp_path / "guide.json")
+    monkeypatch.setattr(iggs.utils, "runtime_dir", tmp_path)
+    service._stop_with_error("Timeout: waiting_sync_coordinates")
+    IndiGotoGuideService._write_status(service, force=True)
+    IndiGotoGuideService._write_status(service, force=True)
+    assert alerts.qsize() == 1
+    assert "Timeout" in alerts.get_nowait()["message"]
+    service.service_state = "idle"
+    service.tracking_guide_state = "failed"
+    service.tracking_guide_last_action = "goto recovery limit reached"
+    IndiGotoGuideService._write_status(service, force=True)
+    assert alerts.get_nowait()["code"] == "tracking_failed"
+
+
+def test_manual_target_wait_reports_missing_solve_without_resuming_old_target(
+    monkeypatch,
+):
+    import queue
+
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    alerts = queue.Queue()
+    service.error_notifier.queue = alerts
+    service._begin_manual_retarget()
+    service._pointing["current"]["timestamp"] = 900.0
+    service._tick_manual_retarget()
+    clock[0] += iggs.PIFINDER_SOLVE_ANCHOR_WAIT_SECONDS + 5
+    service._tick_manual_retarget()
+    service._tick_manual_retarget()
+    assert alerts.qsize() == 1
+    assert alerts.get_nowait()["code"] == "manual_target_waiting_solve"
+    assert service.phase == "manual_retarget"
+    assert not service.tracking_guide_active_sent

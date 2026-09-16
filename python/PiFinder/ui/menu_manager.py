@@ -8,6 +8,8 @@ from PiFinder.ui import menu_structure
 from PiFinder.ui.object_details import UIObjectDetails
 from PiFinder.displays import DisplayBase
 from PiFinder.ui.text_menu import UITextMenu
+from PiFinder.ui.operation_error import UIOperationError
+from PiFinder.keyboard_interface import KeyboardInterface
 from PiFinder.ui.marking_menus import (
     MarkingMenu,
     MarkingMenuOption,
@@ -185,6 +187,7 @@ class MenuManager:
         self._stack_anim_direction: int = 0
 
         self.stack: list[UIModule] = []
+        self.error_dialog: Union[UIOperationError, None] = None
         self.add_to_stack(menu_structure.pifinder_menu)
 
         self.marking_menu_stack: list[MarkingMenu] = []
@@ -287,6 +290,43 @@ class MenuManager:
     def message(self, message: str, timeout: float) -> None:
         self.stack[-1].message(message, timeout)
 
+    def show_error(self, error) -> None:
+        if self.error_dialog is None:
+            self.stack[-1]._guide_stop_motion_if_active()
+            self.error_dialog = UIOperationError(
+                self.display_class,
+                self.camera_image,
+                self.shared_state,
+                self.command_queues,
+                self.config_object,
+                self.catalogs,
+            )
+        self.error_dialog.add_error(error)
+        # Errors outrank transient speed/settings messages.
+        self.ui_state.set_message_timeout(0)
+
+    def consume_error_key(self, keycode) -> bool:
+        if self.error_dialog is None:
+            return False
+        if keycode in {
+            KeyboardInterface.RIGHT,
+            KeyboardInterface.LEFT,
+            KeyboardInterface.SQUARE,
+        }:
+            self.error_dialog = None
+            self._stack_anim_counter = 0
+            if self.help_images is not None:
+                self.update_screen(self.help_images[self.help_image_index])
+            elif self.marking_menu_stack:
+                self.display_marking_menu()
+            else:
+                self.update()
+        elif keycode == KeyboardInterface.UP:
+            self.error_dialog.key_up()
+        elif keycode == KeyboardInterface.DOWN:
+            self.error_dialog.key_down()
+        return True
+
     def jump_to_label(self, label: str) -> None:
         # to prevent many recent/object UI modules
         # being added to the list upon repeated object
@@ -345,6 +385,11 @@ class MenuManager:
         time.sleep(0.15)
 
     def update(self) -> None:
+        if self.error_dialog is not None:
+            self.error_dialog.update()
+            self.ui_state.set_message_timeout(0)
+            self.update_screen(self.error_dialog.screen)
+            return
         self.stack[-1]._guide_send_motion_keepalive()
 
         if self.help_images is not None:
@@ -628,6 +673,8 @@ class MenuManager:
         """
         Serializes the current UI state for inter-process communication
         """
+        if self.error_dialog is not None:
+            return self.error_dialog.serialize_ui_state()
         if not self.stack:
             return {"error": "No active UI items"}
 

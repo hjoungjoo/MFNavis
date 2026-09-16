@@ -410,10 +410,8 @@ def test_manual_motion_deadman_sends_stop_after_expired_lease():
     mount._check_manual_motion_deadline()
 
     assert mount._manual_motion_direction is None
-    assert any(
-        "TELESCOPE_ABORT_MOTION.ABORT=On" in prop
-        for prop in mount.applied_properties[-1]
-    )
+    assert all("=Off" in prop for prop in mount.applied_properties[-1])
+    assert not any("ABORT" in prop for prop in mount.applied_properties[-1])
 
 
 def test_manual_motion_keepalive_extends_matching_motion():
@@ -426,6 +424,41 @@ def test_manual_motion_keepalive_extends_matching_motion():
     assert mount._manual_motion_deadline is not None
     assert original_deadline is not None
     assert mount._manual_motion_deadline > original_deadline
+
+
+@pytest.mark.parametrize("tracking", [False, True])
+def test_direction_release_preserves_tracking_without_global_abort(
+    monkeypatch, tracking
+):
+    mount = DummyMountControl()
+    monkeypatch.setattr(mount, "_cached_tracking_enabled", lambda: tracking)
+    assert mount.manual_move("northeast")
+    assert mount.stop_mount()
+    stops = mount.applied_properties[-1]
+    assert len(stops) == 2
+    assert all("TELESCOPE_MOTION_" in prop and "=Off" in prop for prop in stops)
+    assert not any("TRACK_STATE" in prop or "ABORT" in prop for prop in stops)
+
+
+def test_failed_axis_stop_falls_back_to_abort_and_restores_tracking(monkeypatch):
+    mount = DummyMountControl()
+    assert mount.manual_move("north")
+    monkeypatch.setattr(mount, "_cached_tracking_enabled", lambda: True)
+    events = []
+
+    def apply(properties, *args):
+        events.append(properties)
+        return "ABORT" in properties[0]
+
+    monkeypatch.setattr(mount, "_apply_indi_properties", apply)
+    monkeypatch.setattr(
+        mount, "set_tracking", lambda enabled: events.append(enabled) or True
+    )
+    assert mount.stop_mount()
+    assert "MOTION_NS" in events[0][0]
+    assert "ABORT" in events[1][0]
+    assert events[2] is True
+    assert mount._manual_motion_direction is None
 
 
 def test_manual_motion_keepalive_ignores_other_direction():
@@ -2391,6 +2424,165 @@ def test_guide_correction_requires_a_target():
     assert not mount._guide_correction_enabled
 
 
+def _manual_approach_mount(monkeypatch, axis_errors=(0.2, 0.03)):
+    clock = [1000.0]
+    observation = [999.9]
+    monkeypatch.setattr(mci.time, "time", lambda: clock[0])
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    mount = DummyConnectedMount()
+    mount.shared_state = DummySharedState(DummySolution(10.1, 20.0, 999.9))
+    monkeypatch.setattr(
+        mount, "_current_plate_solve", lambda: (10.1, 20.0, observation[0])
+    )
+    errors = list(axis_errors)
+    monkeypatch.setattr(mci.calc_utils, "pointing_axis_errors", lambda *args: errors)
+    motions = []
+    monkeypatch.setattr(
+        mount,
+        "_apply_indi_properties",
+        lambda props, *args: motions.append(props) or True,
+    )
+    pulses = []
+    monkeypatch.setattr(mount, "_guide_pulse_supported", lambda: True)
+    monkeypatch.setattr(mount, "_apply_guide_pulse", lambda *args: pulses.append(args))
+    assert mount.toggle_guide_correction(True, 10.0, 20.0, 1.5, manual_approach=True)
+    return mount, clock, observation, errors, motions, pulses
+
+
+def _approach_ack(mount, rate, state="ok"):
+    mount.receive_sync_property(
+        "TELESCOPE_SLEW_RATE", state, {str(rate): True}, mount._client_generation
+    )
+
+
+def test_goto_approach_waits_for_speed_ack_and_uses_physical_altaz(monkeypatch):
+    mount, clock, _observation, _errors, motions, pulses = _manual_approach_mount(
+        monkeypatch
+    )
+    saved_rate = mount.slew_rate
+    _approach_ack(mount, 6)  # Cached matching state is not an acknowledgement.
+    mount._check_guide_correction()
+    assert mount.client.switches[-1][1:] == ("TELESCOPE_SLEW_RATE", "6")
+    assert not motions and not pulses
+    _approach_ack(mount, 6, "busy")
+    mount._check_guide_correction()
+    assert not motions
+    _approach_ack(mount, 6)
+    mount._check_guide_correction()
+    # Target RA is lower, but target azimuth is higher: physical east, not west.
+    assert mount._manual_motion_direction == "east"
+    assert mount._manual_motion_origin == "guide_correction"
+    assert motions[-1] == ["LX200 OnStep.TELESCOPE_MOTION_WE.MOTION_WEST=On"]
+    assert mount._manual_motion_deadline - clock[0] <= 1.0
+    assert mount.slew_rate == saved_rate
+    assert not pulses
+
+
+@pytest.mark.parametrize("failure", ["alert", "timeout", "disconnect"])
+def test_goto_approach_speed_failure_never_starts_motion(monkeypatch, failure):
+    mount, clock, _observation, _errors, motions, pulses = _manual_approach_mount(
+        monkeypatch
+    )
+    mount._check_guide_correction()
+    if failure == "alert":
+        _approach_ack(mount, 6, "alert")
+    elif failure == "timeout":
+        clock[0] += 5.1
+    else:
+        mount.mark_disconnected("test disconnect")
+    mount._check_guide_correction()
+    assert not motions and not pulses
+    assert not mount._guide_correction_enabled
+    assert mount._guide_correction_mode == "failed"
+
+
+def test_goto_approach_stops_and_waits_for_post_stop_solve_before_pulse(monkeypatch):
+    mount, clock, observation, errors, motions, pulses = _manual_approach_mount(
+        monkeypatch, axis_errors=(0.02, -0.12)
+    )
+    mount._check_guide_correction()
+    _approach_ack(mount, 5)
+    mount._check_guide_correction()
+    assert mount._manual_motion_direction == "south"
+    clock[0] += 1.1
+    mount._check_manual_motion_deadline()
+    assert mount._manual_motion_direction is None
+    assert all("=Off" in prop for prop in motions[-1])
+    assert not any("ABORT" in prop for prop in motions[-1])
+    assert mount._guide_correction_mode == "settling"
+    clock[0] += 0.6
+    # Newer than the previous solve, but still taken during the approach.
+    observation[0] = 1000.8
+    mount._check_guide_correction()
+    assert not pulses and len(motions) == 2
+    errors[:] = [0.02, -0.03]
+    monkeypatch.setattr(mount, "_current_plate_solve", lambda: (10.02, 20.0, clock[0]))
+    mount._check_guide_correction()
+    assert len(pulses) == 1
+    assert mount._guide_correction_mode == "pulse"
+    assert mount._confirmed_guide_rates == (0.5, 0.5)
+    assert mount.client.numbers[-1][1] == "GUIDE_RATE"
+
+
+@pytest.mark.parametrize("when", ["waiting_speed", "moving"])
+def test_disabling_goto_approach_cancels_pending_or_active_move(monkeypatch, when):
+    mount, _clock, _observation, _errors, motions, pulses = _manual_approach_mount(
+        monkeypatch
+    )
+    mount._check_guide_correction()
+    if when == "moving":
+        _approach_ack(mount, 6)
+        mount._check_guide_correction()
+    mount.toggle_guide_correction(False)
+    _approach_ack(mount, 6)
+    mount._check_guide_correction()
+    assert mount._manual_motion_direction is None
+    assert mount._approach_rate_request is None
+    assert mount._guide_correction_mode == "off"
+    assert len(motions) == (2 if when == "moving" else 0)
+    assert not pulses
+
+
+def test_goto_approach_stops_after_three_moves_without_progress(monkeypatch):
+    mount, clock, observation, _errors, motions, _pulses = _manual_approach_mount(
+        monkeypatch
+    )
+    for _ in range(4):
+        observation[0] = clock[0]
+        mount._check_guide_correction()
+        _approach_ack(mount, 6)
+        mount._check_guide_correction()
+        clock[0] += 1.1
+        mount._check_manual_motion_deadline()
+        clock[0] += 0.6
+    assert not mount._guide_correction_enabled
+    assert mount._guide_correction_mode == "failed"
+    assert len(motions) == 6  # Three bounded moves, each followed by stop.
+
+
+def test_tracking_guide_does_not_enable_manual_approach(monkeypatch):
+    mount, _clock, _observation, _errors, motions, pulses = _manual_approach_mount(
+        monkeypatch
+    )
+    mount.toggle_guide_correction(True, 10.0, 20.0, 1.5)
+    mount._check_guide_correction()
+    assert not mount._guide_manual_approach
+    assert not motions and len(pulses) == 1
+
+
+def test_final_manual_approach_slows_down_before_two_arcmin_band(monkeypatch):
+    mount, _clock, _observation, _errors, motions, pulses = _manual_approach_mount(
+        monkeypatch, axis_errors=(0.0, 0.04)
+    )
+    monkeypatch.setattr(mount, "_current_plate_solve", lambda: (10.01, 20.0, 999.9))
+    mount._check_guide_correction()
+    assert mount.client.switches[-1][1:] == ("TELESCOPE_SLEW_RATE", "4")
+    _approach_ack(mount, 4)
+    mount._check_guide_correction()
+    assert mount._manual_motion_direction == "north"
+    assert len(motions) == 1 and not pulses
+
+
 def test_guide_correction_pulses_toward_target_on_fresh_solve(monkeypatch):
     solve_time = time.time()
     mount = DummyMountControl(DummySharedState(DummySolution(9.9, 20.0, solve_time)))
@@ -2676,6 +2868,24 @@ def test_manual_takeover_orders_abort_speed_then_motion(monkeypatch, reject):
     assert events == expected[reject]
 
 
+def test_short_user_move_disables_tracking_correction_before_service_tick(monkeypatch):
+    mount = DummyConnectedMount()
+    monkeypatch.setattr(mount, "_apply_indi_properties", lambda *args: True)
+    mount._guide_correction_enabled = True
+    mount._guide_correction_target = (10.0, 20.0)
+    mount._guide_manual_approach = False
+    monkeypatch.setattr(mount, "_publish_manual_motion_progress", lambda **kwargs: None)
+    assert mount.manual_move("north")
+    assert not mount._guide_correction_enabled
+    assert mount.stop_mount()
+    # Releasing a key must not wake correction toward the pre-move target,
+    # even before the slower guide-service process can consume the event.
+    monkeypatch.setattr(
+        mount, "_current_plate_solve", lambda: pytest.fail("old target resumed")
+    )
+    mount._check_guide_correction()
+
+
 @pytest.mark.parametrize("rate", [float("nan"), float("inf"), 0, -1, 241])
 def test_invalid_guide_settings_do_not_replace_saved_profile(rate):
     mount = DummyMountControl()
@@ -2774,3 +2984,206 @@ def test_guide_confirmation_failure_or_takeover_blocks_late_pulse(monkeypatch, f
         mount._client_generation,
     )
     assert not mount._select_guide_rate_for_error(0.0)
+
+
+def test_mount_failure_reaches_lcd_even_when_heartbeat_replaces_status():
+    import queue
+
+    mount = DummyMountControl()
+    alerts = queue.Queue()
+    mount.error_notifier.queue = alerts
+    mount._write_controller_status("sync_failed", "Driver rejected coordinates")
+    mount._write_controller_status("connected", "Mount position updated")
+    mount._write_controller_status("sync_failed", "Driver rejected coordinates")
+    assert alerts.qsize() == 1
+    alert = alerts.get_nowait()
+    assert alert["type"] == "operation_error"
+    assert alert["code"] == "sync_failed"
+    assert alert["message"] == "Driver rejected coordinates"
+
+
+def _initial_site_mount(monkeypatch):
+    mount = DummyConnectedMount()
+    clock = [100.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(mount, "_use_direct_onstep_location_time_sync", lambda: False)
+    monkeypatch.setattr(
+        mount,
+        "_shared_location_time_values",
+        lambda *a, **kw: (37.5, 127.0, 30.0, "2026-07-01T14:45:00+00:00"),
+    )
+    monkeypatch.setattr(mount, "_sync_location_time_once", lambda *a, **kw: True)
+    monkeypatch.setattr(
+        mount.client, "unpark_mount", lambda device: True, raising=False
+    )
+    monkeypatch.setattr(mount, "set_tracking", lambda enabled: True)
+    assert mount.sync_location_time()
+    return mount, clock
+
+
+def _site_ack(mount, state="ok", lat=37.5, lon=127.0):
+    mount.receive_sync_property(
+        "GEOGRAPHIC_COORD", state, {"LAT": lat, "LONG": lon}, mount._client_generation
+    )
+    mount.receive_sync_property(
+        "TIME_UTC", state, {"UTC": "2026-07-01T14:45:00"}, mount._client_generation
+    )
+
+
+def test_initial_site_sync_verifies_real_ack_and_tracking(monkeypatch):
+    mount, _clock = _initial_site_mount(monkeypatch)
+    reboots = []
+    monkeypatch.setattr(mount, "reboot_mount", lambda: reboots.append(True) or True)
+    mount._check_initial_location_sync()
+    assert not mount._initial_site_complete
+    _site_ack(mount)
+    mount._check_initial_location_sync()
+    assert mount._initial_site_complete
+    assert not reboots
+
+
+@pytest.mark.parametrize(
+    "failure", ["send", "alert", "timeout", "wrong_location", "tracking"]
+)
+def test_initial_site_failure_resets_once_then_resyncs_selected_location(
+    monkeypatch, failure
+):
+    mount, clock = _initial_site_mount(monkeypatch)
+    # The web Location choice can differ from the old shared-state position.
+    assert mount.sync_location_time(latitude=35.0, longitude=-120.0, elevation=50.0)
+    if failure == "send":
+        mount._initial_site_write_ok = False
+    elif failure == "alert":
+        _site_ack(mount, state="alert")
+    elif failure == "wrong_location":
+        _site_ack(mount)  # Reply is fresh but not the selected location.
+        clock[0] += 9
+    elif failure == "tracking":
+        _site_ack(mount, lat=35.0, lon=240.0)
+        monkeypatch.setattr(mount, "set_tracking", lambda enabled: False)
+    else:
+        clock[0] += 9
+    reboots = []
+
+    def reboot():
+        reboots.append(True)
+        # The real reboot reconnects and invokes this without explicit coords.
+        mount.sync_location_time()
+        _site_ack(mount, lat=35.0, lon=240.0)
+        monkeypatch.setattr(mount, "set_tracking", lambda enabled: True)
+        return True
+
+    monkeypatch.setattr(mount, "reboot_mount", reboot)
+    mount._check_initial_location_sync()
+    mount._check_initial_location_sync()
+    assert reboots == [True]
+    assert mount._initial_site_complete
+    assert mount._initial_site_request == {
+        "latitude": 35.0,
+        "longitude": -120.0,
+        "elevation": 50.0,
+    }
+
+
+def test_initial_site_failed_reset_stops_retry_loop_and_reports_failure(monkeypatch):
+    mount, clock = _initial_site_mount(monkeypatch)
+    clock[0] += 9
+    calls = []
+    monkeypatch.setattr(mount, "reboot_mount", lambda: calls.append(True) or True)
+    mount._check_initial_location_sync()
+    mount._check_initial_location_sync()
+    mount._check_initial_location_sync()
+    assert calls == [True]
+    assert mount._initial_site_failed
+    assert mount.statuses[-1][0] == "initialization_failed"
+
+
+@pytest.mark.parametrize("blocked", ["disconnected", "manual", "goto", "no_location"])
+def test_initial_site_does_not_reset_missing_or_moving_mount(monkeypatch, blocked):
+    mount, clock = _initial_site_mount(monkeypatch)
+    clock[0] += 9
+    calls = []
+    monkeypatch.setattr(mount, "reboot_mount", lambda: calls.append(True) or True)
+    if blocked == "disconnected":
+        mount.connected = False
+    elif blocked == "manual":
+        mount._manual_motion_direction = "north"
+    elif blocked == "goto":
+        mount._goto_motion = {"target_ra": 10.0}
+    else:
+        mount._initial_site_request = None
+    mount._check_initial_location_sync()
+    assert not calls
+
+
+def test_initial_site_does_not_accept_stale_ack(monkeypatch):
+    mount, _clock = _initial_site_mount(monkeypatch)
+    _site_ack(mount)
+    mount.sync_location_time()
+    mount._check_initial_location_sync()
+    assert not mount._initial_site_complete
+    assert not mount._initial_site_reset_attempted
+
+
+def test_connection_ready_is_announced_once_after_validated_connect():
+    import queue
+
+    mount = DummyMountControl()
+    mount.console_queue = queue.Queue()
+    mount._announce_connection_ready()
+    mount._announce_connection_ready()
+    assert mount.console_queue.qsize() == 1
+    assert mount.console_queue.get_nowait()["type"] == "mount_ready"
+
+
+def test_startup_failure_can_be_reported_again_after_connection():
+    import queue
+
+    mount = DummyMountControl()
+    alerts = queue.Queue()
+    mount.error_notifier.queue = alerts
+    mount._write_controller_status("disconnected", "Connection lost")
+    mount._announce_connection_ready()
+    mount._write_controller_status("disconnected", "Connection lost")
+    assert alerts.qsize() == 2
+
+
+def test_initial_sync_only_hides_recoverable_errors():
+    import queue
+
+    mount = DummyMountControl()
+    alerts = queue.Queue()
+    mount.error_notifier.queue = alerts
+    mount._initial_site_request = {"latitude": 37.5, "longitude": 127.0}
+    mount._write_controller_status("sync_failed", "Location rejected")
+    assert alerts.empty()
+    mount._write_controller_status("disconnected", "USB unplugged")
+    assert alerts.get_nowait()["code"] == "disconnected"
+    mount._initial_site_recovering = True
+    mount._write_controller_status("reboot_failed", "Reset failed")
+    assert alerts.empty()
+    mount._initial_site_recovering = False
+    mount._initial_site_failed = True
+    mount._write_controller_status("initialization_failed", "Reset failed")
+    assert alerts.get_nowait()["code"] == "initialization_failed"
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_initial_reset_failure_reports_error_without_retry(monkeypatch, raises):
+    mount, clock = _initial_site_mount(monkeypatch)
+    clock[0] += 9
+    calls = []
+
+    def reboot():
+        calls.append(True)
+        if raises:
+            raise RuntimeError("Controller unavailable")
+        return False
+
+    monkeypatch.setattr(mount, "reboot_mount", reboot)
+    mount._check_initial_location_sync()
+    mount._check_initial_location_sync()
+    assert calls == [True]
+    assert mount._initial_site_failed
+    assert not mount._initial_site_recovering
+    assert mount.statuses[-1][0] == "initialization_failed"

@@ -372,3 +372,38 @@ def test_lcd_status_uses_current_error_not_historical_complete(
     guide["tracking_target_ra"] = 13.0
     if state_name == "enabled":
         assert UIObjectDetails._tracking_status_label(view, guide) == "Other target"
+
+
+def test_manual_target_updates_lcd_and_chart_without_mutating_catalog():
+    from PiFinder.ui.object_details import UIObjectDetails
+
+    catalog = SimpleNamespace(ra=12.49, dec=2.44)
+    published = []
+    view = SimpleNamespace(
+        object=catalog, ui_state=SimpleNamespace(set_target=published.append)
+    )
+    guide = {
+        "manual_target_origin": [12.49, 2.44],
+        "tracking_target_ra": 12.7,
+        "tracking_target_dec": 2.6,
+    }
+    UIObjectDetails._adopt_manual_tracking_target(view, guide)
+    assert (view.object.ra, view.object.dec) == (12.7, 2.6)
+    assert published[-1] is view.object
+    assert (catalog.ra, catalog.dec) == (12.49, 2.44)
+    guide["tracking_target_ra"] = 12.8
+    UIObjectDetails._adopt_manual_tracking_target(view, guide)
+    assert view.object.ra == 12.8
+    # Browsing another object must not apply the running target's offset.
+    view.object = SimpleNamespace(ra=50.0, dec=10.0)
+    UIObjectDetails._adopt_manual_tracking_target(view, guide)
+    assert view.object.ra == 50.0
+
+
+def test_lcd_does_not_label_disabled_mount_tracking_as_tracking(monkeypatch):
+    import builtins
+    from PiFinder.ui.object_details import UIObjectDetails
+
+    monkeypatch.setattr(builtins, "_", lambda value: value, raising=False)
+    guide = {"mount_status": {"tracking_enabled": False}}
+    assert UIObjectDetails._tracking_status_label(SimpleNamespace(), guide) == "Paused"

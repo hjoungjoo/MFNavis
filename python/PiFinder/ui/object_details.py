@@ -26,6 +26,7 @@ from PiFinder.ui.ui_utils import (
 )
 from PiFinder import calc_utils, utils
 import functools
+import copy
 import json
 import logging
 import math
@@ -421,6 +422,8 @@ class UIObjectDetails(UIModule):
         self._push_solve_interval = None
 
     def _tracking_status_label(self, guide):
+        if (guide.get("mount_status") or {}).get("tracking_enabled") is False:
+            return _("Paused")
         tracking_state = guide.get("tracking_guide_state")
         if tracking_state in {"failed", "waiting_coordinate", "waiting_mount"}:
             return _("WAIT")
@@ -458,7 +461,36 @@ class UIObjectDetails(UIModule):
             )
         return _("Adjusting") if tracking_state == "enabled" else _("Off target")
 
-    def _render_push_status(self):
+    def _adopt_manual_tracking_target(self, guide):
+        """Keep the displayed aim and chart target with a user-adjusted target.
+
+        Match the original displayed target so browsing another catalog entry
+        never silently changes that entry or steals its coordinates.
+        """
+        origin = guide.get("manual_target_origin")
+        ra, dec = guide.get("tracking_target_ra"), guide.get("tracking_target_dec")
+        if not origin or ra is None or dec is None:
+            return
+        previous = (
+            getattr(self, "_manual_display_target", None)
+            if getattr(self, "_manual_display_origin", None) == tuple(origin)
+            else None
+        )
+        if not any(
+            pair is not None
+            and abs((self.object.ra - pair[0] + 180) % 360 - 180) < 1e-4
+            and abs(self.object.dec - pair[1]) < 1e-4
+            for pair in (origin, previous)
+        ):
+            return
+        # Catalog objects are shared; update a display copy only.
+        self.object = copy.copy(self.object)
+        self.object.ra, self.object.dec = ra, dec
+        self._manual_display_target = (ra, dec)
+        self._manual_display_origin = tuple(origin)
+        self.ui_state.set_target(self.object)
+
+    def _refresh_push_status(self):
         now = time.time()
         if time.monotonic() >= self._push_status_next_read:
             self._push_status_next_read = time.monotonic() + 0.5
@@ -474,7 +506,11 @@ class UIObjectDetails(UIModule):
                 except (OSError, ValueError, TypeError, AttributeError):
                     status = {}
                 setattr(self, attr, status)
+            self._adopt_manual_tracking_target(self._push_guide_status)
 
+    def _render_push_status(self):
+        self._refresh_push_status()
+        now = time.time()
         mount, guide = self._push_mount_status, self._push_guide_status
         phase = guide.get("phase")
         imu = self.shared_state.imu()
@@ -580,6 +616,7 @@ class UIObjectDetails(UIModule):
         return catalog and catalog.initialized
 
     def _render_pointing_instructions(self):
+        self._refresh_push_status()
         # Pointing Instructions
         if not self.shared_state.solution().has_pointing():
             self.draw.text(

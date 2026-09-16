@@ -98,6 +98,7 @@ from PiFinder.ui.lens_measurement import UILensMeasurement
 from PiFinder.ui.sqm_calibration import UISQMCalibration
 from PiFinder.ui.sqm_sweep import UISQMSweep
 from PiFinder.ui.software import UIMigrationConfirm, UIMigrationProgress
+from PiFinder.ui.operation_error import UIOperationError
 
 
 # --------------------------------------------------------------------------- #
@@ -188,6 +189,7 @@ _MENU_IDS = [_node_id(n) for n in _MENU_NODES]
 # Dynamic-only modules, parametrized by id; item_definition built at run time
 # (some need a real catalog object).
 _DYNAMIC_IDS = [
+    "UIOperationError",
     "UIObjectDetails",
     "UILog",
     "UIDateEntry",
@@ -203,6 +205,8 @@ _DYNAMIC_IDS = [
 
 def _build_dynamic_item_definition(spec_id: str, sample_object) -> dict:
     """Return an item_definition modeled on each module's real launch site."""
+    if spec_id == "UIOperationError":
+        return {"name": "ERROR", "class": UIOperationError}
     if spec_id == "UIObjectDetails":
         # object_list.py:748
         return {

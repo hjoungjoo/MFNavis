@@ -26,6 +26,7 @@ from PiFinder import calc_utils, config
 from PiFinder import gps_time_sync
 from PiFinder import nonsidereal
 from PiFinder import sys_utils, utils
+from PiFinder.operation_errors import ErrorNotifier, mount_failure
 from PiFinder.indi_align import (
     ALIGN_STAR_MAX_ALTITUDE_DEG,
     ALIGN_STAR_MIN_ALTITUDE_DEG,
@@ -113,6 +114,12 @@ SYNC_GOTO_COORD_TOLERANCE_ARCMIN = 0.5
 # Manual-move fallback lease used only when the driver does not expose the INDI
 # timed guide-pulse interface.
 GUIDE_CORRECTION_PULSE_SECONDS = 0.4
+# OnStep manual approach uses physical Alt/Az axes above the pulse band.
+# Keep each move short, then remeasure from a post-stop camera exposure.
+GOTO_APPROACH_PULSE_BAND_ARCMIN = 2.0
+GOTO_APPROACH_MAX_SECONDS = 1.0
+GOTO_APPROACH_SETTLE_SECONDS = 0.5
+GOTO_APPROACH_GAIN = 0.5
 # Real INDI timed guide pulse (TELESCOPE_TIMED_GUIDE_*): the pulse duration is
 # computed from the axis error and the mount's guide rate, so the mount moves
 # exactly the time proportional to the correction angle.
@@ -377,7 +384,11 @@ if PyIndi is not None:
                 self.telescope_device = None
 
         def newNumber(self, nvp):
-            if nvp.name not in {"EQUATORIAL_EOD_COORD", "GUIDE_RATE"}:
+            if nvp.name not in {
+                "EQUATORIAL_EOD_COORD",
+                "GUIDE_RATE",
+                "GEOGRAPHIC_COORD",
+            }:
                 return
             self._record_sync_property(
                 nvp.name,
@@ -385,7 +396,7 @@ if PyIndi is not None:
                 {widget.name: widget.value for widget in nvp},
                 getattr(nvp, "device", None),
             )
-            if nvp.name == "GUIDE_RATE":
+            if nvp.name != "EQUATORIAL_EOD_COORD":
                 return
 
             ra_hours = None
@@ -419,7 +430,7 @@ if PyIndi is not None:
             )
 
         def newSwitch(self, svp):
-            if svp.name == "ON_COORD_SET":
+            if svp.name in {"ON_COORD_SET", "TELESCOPE_SLEW_RATE"}:
                 self._record_sync_property(
                     svp.name,
                     svp.s,
@@ -428,6 +439,13 @@ if PyIndi is not None:
                 )
 
         def newText(self, tvp):
+            if getattr(tvp, "name", "") == "TIME_UTC":
+                self._record_sync_property(
+                    tvp.name,
+                    tvp.s,
+                    {w.name: w.text for w in tvp},
+                    getattr(tvp, "device", None),
+                )
             if (
                 self.mount_control is not None
                 and getattr(tvp, "name", "") == "OnStep Status"
@@ -443,7 +461,7 @@ if PyIndi is not None:
             try:
                 # Snapshot only server callbacks. set_number/set_switch mutate
                 # the local property cache before sending and cannot be ACKs.
-                if prop.getName() == "ON_COORD_SET":
+                if prop.getName() in {"ON_COORD_SET", "TELESCOPE_SLEW_RATE"}:
                     svp = PyIndi.PropertySwitch(prop)
                     self._record_sync_property(
                         prop.getName(),
@@ -453,9 +471,21 @@ if PyIndi is not None:
                     )
                 if prop.getName() == "OnStep Status" and self.mount_control is not None:
                     self.mount_control.receive_onstep_status()
+                if prop.getName() == "TIME_UTC":
+                    tvp = PyIndi.PropertyText(prop)
+                    self._record_sync_property(
+                        prop.getName(),
+                        prop.getState(),
+                        {w.getName(): w.getText() for w in tvp},
+                        prop.getDeviceName(),
+                    )
                 if prop.getType() != PyIndi.INDI_NUMBER:
                     return
-                if prop.getName() not in {"EQUATORIAL_EOD_COORD", "GUIDE_RATE"}:
+                if prop.getName() not in {
+                    "EQUATORIAL_EOD_COORD",
+                    "GUIDE_RATE",
+                    "GEOGRAPHIC_COORD",
+                }:
                     return
                 nvp = PyIndi.PropertyNumber(prop)
                 self._record_sync_property(
@@ -464,7 +494,7 @@ if PyIndi is not None:
                     {w.getName(): w.getValue() for w in nvp},
                     prop.getDeviceName(),
                 )
-                if prop.getName() == "GUIDE_RATE":
+                if prop.getName() != "EQUATORIAL_EOD_COORD":
                     return
                 ra_widget = nvp.findWidgetByName("RA")
                 dec_widget = nvp.findWidgetByName("DEC")
@@ -526,6 +556,18 @@ class MountControlIndi(BacklashCalibrationMixin):
     ):
         self.mount_queue = mount_queue
         self.console_queue = console_queue
+        self.error_notifier = ErrorNotifier(console_queue, "INDI Mount")
+        self._connection_announced = False
+        self._initial_site_request: Optional[dict[str, Any]] = None
+        self._initial_site_after_sequence = 0
+        self._initial_site_deadline = 0.0
+        self._initial_site_write_ok = False
+        self._initial_site_sent_connected = False
+        self._initial_site_complete = False
+        self._initial_site_failed = False
+        self._initial_site_reset_attempted = False
+        self._initial_site_recovering = False
+        self._initial_site_expected_time: Any = None
         self.shared_state = shared_state
         self.imu_command_queue = imu_command_queue
         self.indi_host = indi_host
@@ -552,6 +594,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         # Tracking Guide's driver fallback uses ``guide_correction`` so it can
         # never be mistaken for an intentional re-target.
         self._manual_motion_origin: Optional[str] = None
+        self._last_user_motion_started_wall = 0.0
+        self._last_user_motion_stopped_wall = 0.0
         self._manual_motion_deadline: Optional[float] = None
         self._manual_motion_started_at: Optional[float] = None
         self._manual_motion_stop_retry_at = 0.0
@@ -566,6 +610,12 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._guide_correction_next_at = 0.0
         self._guide_correction_observation: dict[str, Any] = {}
         self._guide_correction_last_solve_time = 0.0
+        self._guide_manual_approach = False
+        self._guide_correction_mode = "off"
+        self._guide_observation_after_wall = 0.0
+        self._approach_rate_request: Optional[dict[str, Any]] = None
+        self._approach_previous_error: Optional[float] = None
+        self._approach_no_progress = 0
         # Cached result of INDI timed-guide-pulse capability detection (None =
         # not yet probed). When False, guide correction uses the manual-move
         # fallback.
@@ -723,6 +773,20 @@ class MountControlIndi(BacklashCalibrationMixin):
 
     def _status_fields(self, state: str = "", **extra: Any) -> dict[str, Any]:
         payload: dict[str, Any] = {
+            "connection_established": self._connection_announced,
+            "initial_location_sync_state": (
+                "resetting"
+                if self._initial_site_recovering
+                else "failed"
+                if self._initial_site_failed
+                else "ready"
+                if self._initial_site_complete
+                else "verifying"
+                if self._initial_site_request
+                else "waiting_location"
+            ),
+            "initial_location_reset_attempted": self._initial_site_reset_attempted,
+            "tracking_enabled": self._cached_tracking_enabled(),
             "slew_rate": self.slew_rate,
             "manual_slew_rate": self.slew_rate,
             "pulse_guide_rate": self.guide_rate_we,
@@ -771,6 +835,10 @@ class MountControlIndi(BacklashCalibrationMixin):
         if self._time_sync_provisional:
             payload["time_sync_provisional"] = True
         payload["guide_correction_enabled"] = self._guide_correction_enabled
+        payload["last_user_motion_started_wall"] = self._last_user_motion_started_wall
+        payload["last_user_motion_stopped_wall"] = self._last_user_motion_stopped_wall
+        payload["guide_correction_mode"] = self._guide_correction_mode
+        payload["guide_observation_after_wall"] = self._guide_observation_after_wall
         payload["guide_pulse_until_wall"] = (
             time.time() + self._guide_pulse_until - time.monotonic()
             if self._guide_pulse_until > 0
@@ -866,6 +934,14 @@ class MountControlIndi(BacklashCalibrationMixin):
     def _write_controller_status(
         self, state: str, message: str = "", **extra: Any
     ) -> None:
+        initial_recovery_pending = self._initial_site_request is not None and not (
+            self._initial_site_complete or self._initial_site_failed
+        )
+        recovering_error = self._initial_site_recovering or (
+            initial_recovery_pending and state in {"sync_failed", "tracking_failed"}
+        )
+        if mount_failure(state) and not recovering_error:
+            self.error_notifier.emit(state, message or state)
         _write_status(state, message, **self._status_fields(state, **extra))
 
     def _indi_device_name(self) -> str:
@@ -1169,6 +1245,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         now = time.monotonic()
         self._manual_motion_direction = direction
         self._manual_motion_origin = origin
+        if origin == "user":
+            self._last_user_motion_started_wall = time.time()
         self._manual_motion_deadline = now + self._manual_motion_lease(lease_seconds)
         self._manual_motion_started_at = now
         self._manual_motion_stop_retry_at = 0.0
@@ -1197,7 +1275,11 @@ class MountControlIndi(BacklashCalibrationMixin):
         return True
 
     def _manual_motion_queue_timeout(self) -> float:
-        if self._pending_sync_goto is not None or self._pending_guide_rate is not None:
+        if (
+            self._pending_sync_goto is not None
+            or self._pending_guide_rate is not None
+            or self._approach_rate_request is not None
+        ):
             return MANUAL_MOTION_POLL_SECONDS
         if self._manual_motion_deadline is None:
             return 1.0
@@ -1473,6 +1555,7 @@ class MountControlIndi(BacklashCalibrationMixin):
                 self._console("INDI mount\nconnect failed")
             return False
         self.connected = True
+        self._announce_connection_ready()
         self._last_position_status_at = time.monotonic()
         if publish_connected:
             self._write_controller_status(
@@ -1483,6 +1566,16 @@ class MountControlIndi(BacklashCalibrationMixin):
         if announce and publish_connected:
             self._console("INDI mount\nconnected")
         return True
+
+    def _announce_connection_ready(self) -> None:
+        if not self._connection_announced:
+            self._connection_announced = True
+            # Startup failures were deliberately hidden; they must not suppress
+            # an identical failure after the mount has become operational.
+            self.error_notifier.reset()
+            self.console_queue.put(
+                {"type": "mount_ready", "monotonic": time.monotonic()}
+            )
 
     def mark_disconnected(
         self, message: str, client_generation: Optional[int] = None
@@ -1506,6 +1599,10 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._slew_rate_polluted = True
         self._guide_pulse_until = 0.0
         self._coordinate_sync = None
+        self._approach_rate_request = None
+        if self._guide_manual_approach:
+            self._guide_correction_enabled = False
+            self._guide_correction_mode = "failed"
         self._cancel_sync_goto("INDI disconnected")
         if was_connected:
             # A connected->disconnected transition is a state change: let the
@@ -1902,6 +1999,9 @@ class MountControlIndi(BacklashCalibrationMixin):
         ~35s; the follow-up ``connect()`` re-runs location/time sync, unpark,
         and tracking enable so GoTo works again without a full restart.
         """
+        if not self._initial_site_recovering:
+            self._initial_site_failed = False
+            self._initial_site_complete = False
         onstep_cfg = self._onstep_connection_config()
         logger.info("Rebooting OnStep mount controller via :ERESET#")
         self._write_controller_status("rebooting", "Rebooting OnStep mount controller")
@@ -2690,6 +2790,160 @@ class MountControlIndi(BacklashCalibrationMixin):
         longitude: Optional[float] = None,
         elevation: Optional[float] = None,
     ) -> bool:
+        # Keep the explicit Location selection across the reset; shared_state
+        # may still be processing the web/GPS location update.
+        if self._initial_site_recovering and self._initial_site_request:
+            latitude = self._initial_site_request["latitude"]
+            longitude = self._initial_site_request["longitude"]
+            elevation = self._initial_site_request["elevation"]
+        try:
+            lat, lon, alt, dt = self._shared_location_time_values(
+                include_default_location
+            )
+            request = {
+                "latitude": lat if latitude is None else latitude,
+                "longitude": lon if longitude is None else longitude,
+                "elevation": alt if elevation is None else elevation,
+            }
+            initial = (
+                not self._initial_site_complete
+                and not self._initial_site_failed
+                and request["latitude"] is not None
+                and request["longitude"] is not None
+                and dt is not None
+                and sys_utils.is_onstep_family_device_name(self._indi_device_name())
+            )
+        except Exception:
+            initial = False
+        if initial:
+            self._initial_site_request = request
+            self._initial_site_expected_time = dt
+            self._initial_site_sent_connected = self._device_is_connected()
+            with self._sync_property_lock:
+                self._initial_site_after_sequence = self._sync_property_sequence
+            self._initial_site_deadline = time.monotonic() + 8.0
+        ok = self._sync_location_time_once(
+            reconnect_after, include_default_location, latitude, longitude, elevation
+        )
+        if initial:
+            self._initial_site_write_ok = ok
+        return ok
+
+    def _check_initial_location_sync(self) -> None:
+        if (
+            not self.connected
+            or self._initial_site_request is None
+            or self._initial_site_complete
+            or self._initial_site_failed
+            or self._initial_site_recovering
+            or self._manual_motion_direction is not None
+            or self._goto_motion is not None
+            or self._pending_sync_goto is not None
+            or self._pending_goto_refine is not None
+        ):
+            return
+        if not self._initial_site_sent_connected:
+            self.sync_location_time(**self._initial_site_request)
+            return
+        reason = self._initial_location_ack_failure()
+        if reason is None:  # Still waiting for fresh server callbacks.
+            return
+        if not reason:
+            # OnStep can accept site/time writes while refusing tracking. A
+            # successful send is not proof the controller is operational.
+            if self.client is not None and self.device is not None:
+                if self.client.unpark_mount(self.device) and self.set_tracking(True):
+                    self._initial_site_complete = True
+                    self._write_controller_status(
+                        "connected", "Initial location/time and tracking verified"
+                    )
+                    return
+            reason = "Tracking did not start after initial location/time sync"
+        self._recover_initial_location_sync(reason)
+
+    def _initial_location_ack_failure(self) -> Optional[str]:
+        if not self._initial_site_write_ok:
+            return "Initial location/time command failed"
+        # The direct LX200 helper already checks its command replies, and
+        # reconnecting replaces the INDI client/receipt generation.
+        if self._use_direct_onstep_location_time_sync():
+            return ""
+        with self._sync_property_lock:
+            receipts = [
+                self._sync_property_receipts.get(n)
+                for n in ("GEOGRAPHIC_COORD", "TIME_UTC")
+            ]
+        fresh = [
+            r
+            for r in receipts
+            if r and r["sequence"] > self._initial_site_after_sequence
+        ]
+        if any(r["state"] == "alert" for r in fresh):
+            return "Driver rejected initial location/time sync"
+        if len(fresh) == 2 and all(r["state"] in {"idle", "ok"} for r in fresh):
+            try:
+                site, clock = fresh[0]["values"], fresh[1]["values"]
+                expected = self._initial_site_request or {}
+                delta_lon = (
+                    float(site["LONG"]) - float(expected["longitude"]) + 180
+                ) % 360 - 180
+                delta_time = abs(
+                    (
+                        sys_utils.parse_indi_utc_datetime(clock["UTC"])
+                        - sys_utils.parse_indi_utc_datetime(
+                            self._initial_site_expected_time
+                        )
+                    ).total_seconds()
+                )
+                if (
+                    abs(float(site["LAT"]) - float(expected["latitude"])) < 0.001
+                    and abs(delta_lon) < 0.001
+                    and delta_time < 10
+                ):
+                    return ""
+            except (KeyError, TypeError, ValueError):
+                pass
+        if time.monotonic() >= self._initial_site_deadline:
+            return "Timeout confirming initial location/time sync"
+        return None
+
+    def _recover_initial_location_sync(self, reason: str) -> None:
+        if self._initial_site_reset_attempted:
+            self._initial_site_failed = True
+            self._write_controller_status(
+                "initialization_failed",
+                f"Automatic INDI reset did not recover initialization: {reason}",
+            )
+            return
+        self._initial_site_reset_attempted = True
+        self._initial_site_recovering = True
+        self._write_controller_status(
+            "initialization_reset",
+            f"Initial location sync stalled; automatically resetting INDI: {reason}",
+        )
+        self._console("INDI init\nauto reset")
+        try:
+            ok = self.reboot_mount()
+        except Exception:
+            logger.exception("Automatic initial location recovery failed")
+            ok = False
+        finally:
+            self._initial_site_recovering = False
+        if not ok:
+            self._initial_site_failed = True
+            self._write_controller_status(
+                "initialization_failed",
+                "Automatic INDI reset failed; check mount connection and power",
+            )
+
+    def _sync_location_time_once(
+        self,
+        reconnect_after: bool = True,
+        include_default_location: bool = False,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        elevation: Optional[float] = None,
+    ) -> bool:
         try:
             # A4 clock-trust gate, softened (2026-08-08): an untrusted clock
             # (stale fake-hwclock restore, field session before GPS/NTP sync)
@@ -3192,12 +3446,20 @@ class MountControlIndi(BacklashCalibrationMixin):
         target_ra: Any = None,
         target_dec: Any = None,
         accuracy_arcmin: Any = None,
+        manual_approach: bool = False,
     ) -> bool:
         if enabled is None:
             enabled = not self._guide_correction_enabled
 
         if not enabled:
             self._guide_correction_enabled = False
+            self._guide_manual_approach = False
+            self._approach_rate_request = None
+            self._guide_correction_mode = "off"
+            if self._manual_motion_origin == "guide_correction":
+                if not self.stop_mount():
+                    return False
+            self._guide_correction_mode = "off"
             self._restore_fine_guide_rate()
             self._pending_guide_rate = None
             self._write_controller_status("connected", "Guide correction disabled")
@@ -3232,6 +3494,16 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._guide_mount_type = config.Config().get_option("mount_type", "Alt/Az")
         self._guide_correction_next_at = time.monotonic()
         self._guide_correction_last_solve_time = 0.0
+        self._guide_manual_approach = bool(
+            manual_approach
+            and self._guide_mount_type == "Alt/Az"
+            and "onstep" in self._indi_device_name().lower()
+        )
+        self._guide_correction_mode = "waiting_solve"
+        self._guide_observation_after_wall = 0.0
+        self._approach_rate_request = None
+        self._approach_previous_error = None
+        self._approach_no_progress = 0
         self._write_controller_status(
             "guide_correction",
             "Guide correction enabled",
@@ -3245,6 +3517,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         if self._pending_guide_rate is not None:
             self._finish_guide_rate_request()
         if self._pending_sync_goto is not None:
+            return
+        if self._goto_motion is not None:
             return
         if time.monotonic() < self._guide_pulse_until:
             return
@@ -3271,6 +3545,8 @@ class MountControlIndi(BacklashCalibrationMixin):
             return
         if not 0.0 <= solve_age <= GUIDE_CORRECTION_MAX_SOLVE_AGE_SECONDS:
             return
+        if solve_time < self._guide_observation_after_wall:
+            return
 
         target_ra, target_dec = self._guide_correction_target
         separation = radec_separation_arcmin(
@@ -3289,6 +3565,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         # a large LCD longitude error. Lower the pulse deadband accordingly.
         self._guide_axis_scale = min(1.0, separation / error) if error > 0 else 1.0
         if error <= self._guide_correction_accuracy_arcmin:
+            self._guide_correction_mode = "complete"
             self._guide_correction_last_solve_time = solve_time
             self._guide_correction_next_at = now + GUIDE_CORRECTION_INTERVAL_SECONDS
             self._restore_fine_guide_rate()
@@ -3298,6 +3575,18 @@ class MountControlIndi(BacklashCalibrationMixin):
                 guide_error_arcmin=separation,
             )
             return
+
+        pulse_band = max(
+            GOTO_APPROACH_PULSE_BAND_ARCMIN,
+            1.25 * self._guide_correction_accuracy_arcmin,
+        )
+        if self._guide_manual_approach and error > pulse_band:
+            self._apply_manual_approach(
+                current_ra, current_dec, target_ra, target_dec, error, solve_time
+            )
+            return
+        self._approach_rate_request = None
+        self._guide_correction_mode = "pulse"
 
         # Preferred: real INDI timed guide pulses (moves the mount for a time
         # computed from the axis error and guide rate; NOT a manual move, so it
@@ -3309,6 +3598,10 @@ class MountControlIndi(BacklashCalibrationMixin):
             self._guide_correction_next_at = now + GUIDE_CORRECTION_INTERVAL_SECONDS
             self._apply_guide_pulse(
                 current_ra, current_dec, target_ra, target_dec, separation
+            )
+            self._guide_observation_after_wall = max(
+                self._guide_observation_after_wall,
+                time.time() + max(0.0, self._guide_pulse_until - time.monotonic()),
             )
             return
 
@@ -3341,6 +3634,121 @@ class MountControlIndi(BacklashCalibrationMixin):
                 guide_error_arcmin=separation,
                 guide_direction=direction,
             )
+
+    def _fail_manual_approach(self, reason: str) -> None:
+        self._guide_correction_enabled = False
+        self._approach_rate_request = None
+        self._guide_correction_mode = "failed"
+        self._write_controller_status("guide_correction_failed", reason)
+        logger.warning("GoTo manual approach stopped: %s", reason)
+
+    def _select_approach_rate(self, rate: int) -> bool:
+        """Confirm a fresh slew-selector ACK without changing the saved rate."""
+        if self.client is None or self.device is None:
+            self._fail_manual_approach("Manual approach mount unavailable")
+            return False
+        pending = self._approach_rate_request
+        if pending is None or pending["rate"] != rate:
+            with self._sync_property_lock:
+                sequence = self._sync_property_sequence
+            pending = {
+                "rate": rate,
+                "after_sequence": sequence,
+                "deadline": time.monotonic() + SYNC_GOTO_STAGE_TIMEOUT_SECONDS,
+            }
+            self._approach_rate_request = pending
+            self._guide_rate_needs_reassert = True
+            self._confirmed_guide_rates = None
+            self._pending_guide_rate = None
+            self._slew_rate_polluted = True
+            self._slew_rate_reassert_at = None
+            if not self.client.set_switch(
+                self.device, "TELESCOPE_SLEW_RATE", str(rate)
+            ):
+                self._fail_manual_approach("Manual approach speed request failed")
+                return False
+        with self._sync_property_lock:
+            receipt = self._sync_property_receipts.get("TELESCOPE_SLEW_RATE")
+        fresh = receipt is not None and receipt["sequence"] > pending["after_sequence"]
+        if fresh and receipt is not None and receipt["state"] == "ok":
+            if receipt["values"].get(str(rate)):
+                return True
+        if (
+            fresh and receipt is not None and receipt["state"] == "alert"
+        ) or time.monotonic() >= pending["deadline"]:
+            self._fail_manual_approach("Manual approach speed not confirmed")
+        return False
+
+    def _apply_manual_approach(
+        self, ra, dec, target_ra, target_dec, error, solve_time
+    ) -> None:
+        # Above 2x OnStep moves physical axes; pulse guiding instead uses
+        # equatorial offsets. Use Alt/Az here, not the pulse RA/Dec direction.
+        if self.shared_state is None:
+            return
+        errors = calc_utils.pointing_axis_errors(
+            ra,
+            dec,
+            target_ra,
+            target_dec,
+            "Alt/Az",
+            self.shared_state.location(),
+            self.shared_state.datetime(),
+        )
+        if errors is None or not all(math.isfinite(v) for v in errors):
+            return
+        az_error, alt_error = (v * 60.0 for v in errors)
+        if abs(az_error) >= abs(alt_error):
+            axis_error = az_error
+            direction = "east" if az_error > 0 else "west"
+        else:
+            axis_error = alt_error
+            direction = "north" if alt_error > 0 else "south"
+        # Slow down before the pulse band to allow a bounded final approach.
+        # One axis per move avoids over-correcting the smaller component.
+        if abs(axis_error) > 10.0:
+            rate, multiplier = 6, 20.0
+        elif abs(axis_error) > 3.0:
+            rate, multiplier = 5, 8.0
+        else:
+            rate, multiplier = 4, 4.0
+        self._guide_correction_mode = "manual_approach"
+        if not self._select_approach_rate(rate):
+            return
+        if self._approach_previous_error is not None:
+            if error >= self._approach_previous_error - 0.2:
+                self._approach_no_progress += 1
+            else:
+                self._approach_no_progress = 0
+            if self._approach_no_progress >= 3:
+                self._fail_manual_approach("Manual approach did not converge")
+                return
+        duration = min(
+            GOTO_APPROACH_MAX_SECONDS,
+            abs(axis_error)
+            * 60.0
+            * GOTO_APPROACH_GAIN
+            / (multiplier * SIDEREAL_ARCSEC_PER_SEC),
+        )
+        self._guide_correction_last_solve_time = solve_time
+        self._approach_previous_error = error
+        self._approach_rate_request = None
+        if not self.manual_move(
+            direction,
+            lease_seconds=duration,
+            reassert_slew_rate=False,
+            origin="guide_correction",
+        ):
+            self._fail_manual_approach("Manual approach movement failed")
+            return
+        self._guide_correction_next_at = time.monotonic()
+        logger.info(
+            "GoTo manual approach: %s rate=%dx duration=%.3fs error=%.2f arcmin",
+            direction,
+            multiplier,
+            duration,
+            error,
+        )
 
     def _guide_axis_error(self, ra, dec, target_ra, target_dec):
         if self.shared_state is None:
@@ -3738,7 +4146,14 @@ class MountControlIndi(BacklashCalibrationMixin):
         """Keep immutable snapshots of actual driver acknowledgements."""
         if client_generation != self._client_generation:
             return
-        if name not in {"ON_COORD_SET", "EQUATORIAL_EOD_COORD", "GUIDE_RATE"}:
+        if name not in {
+            "ON_COORD_SET",
+            "EQUATORIAL_EOD_COORD",
+            "GUIDE_RATE",
+            "TELESCOPE_SLEW_RATE",
+            "GEOGRAPHIC_COORD",
+            "TIME_UTC",
+        }:
             return
         with self._sync_property_lock:
             self._sync_property_sequence += 1
@@ -3989,20 +4404,58 @@ class MountControlIndi(BacklashCalibrationMixin):
             self._arm_goto_refine(target_ra, dec_deg, refine_accuracy_arcmin)
         return True
 
-    def stop_mount(self) -> bool:
+    def stop_mount(self, preserve_tracking: bool = False) -> bool:
         self._cancel_sync_goto("stop requested")
-        if not self._apply_indi_properties(
-            [self._indi_property_on("TELESCOPE_ABORT_MOTION.ABORT")],
+        # Releasing a direction button stops the axes, not sidereal tracking.
+        # OnStep's global abort can turn tracking off, leaving the guide loop
+        # trying to chase the sky's full drift after an otherwise good retarget.
+        manual_stop = self._manual_motion_direction is not None
+        was_tracking = (
+            manual_stop or preserve_tracking
+        ) and self._cached_tracking_enabled() is True
+        used_abort = not manual_stop
+        properties = (
+            [
+                f"{self._indi_property_name('TELESCOPE_MOTION_NS')}.MOTION_NORTH=Off;MOTION_SOUTH=Off",
+                f"{self._indi_property_name('TELESCOPE_MOTION_WE')}.MOTION_WEST=Off;MOTION_EAST=Off",
+            ]
+            if manual_stop
+            else [self._indi_property_on("TELESCOPE_ABORT_MOTION.ABORT")]
+        )
+        stopped = self._apply_indi_properties(
+            properties,
             "stopped",
             "Mount stop command sent",
             "stop_failed",
-        ):
+        )
+        if not stopped and manual_stop:
+            used_abort = True
+            # Retain an emergency stop if the directional stop was rejected.
+            stopped = self._apply_indi_properties(
+                [self._indi_property_on("TELESCOPE_ABORT_MOTION.ABORT")],
+                "stopped",
+                "Manual axis stop failed; mount aborted",
+                "stop_failed",
+            )
+        if not stopped:
             self._console("INDI stop\nfailed")
             return False
 
+        if self._manual_motion_origin == "user":
+            self._last_user_motion_stopped_wall = time.time()
+        if self._manual_motion_origin == "guide_correction":
+            self._guide_observation_after_wall = (
+                time.time() + GOTO_APPROACH_SETTLE_SECONDS
+            )
+            self._guide_correction_next_at = (
+                time.monotonic() + GOTO_APPROACH_SETTLE_SECONDS
+            )
+            self._guide_correction_mode = "settling"
         self._clear_manual_motion_deadline()
         self._goto_motion = None
         self._guide_pulse_until = 0.0
+        if used_abort and was_tracking and not self.set_tracking(True):
+            return False
         logger.info("Mount stop command sent")
         self._console("INDI mount\nstopped")
         return True
@@ -4015,6 +4468,15 @@ class MountControlIndi(BacklashCalibrationMixin):
         origin: str = "user",
     ) -> bool:
         self._cancel_sync_goto("manual movement requested")
+        if origin == "user" and self._goto_motion is not None:
+            if not self.stop_mount(preserve_tracking=True):
+                return False
+        # Stop the correction loop immediately, including normal tracking.
+        # A short key tap can end before the guide service sees motion; leaving
+        # this armed would resume pulses toward the old target after release.
+        if origin == "user" and self._guide_correction_enabled:
+            if not self.toggle_guide_correction(enabled=False):
+                return False
         direction = direction.lower()
         # A guide-rate write may have just dragged the shared :R<n># selector
         # down to 0.5x/1x; put the user's rate back before the move starts.
@@ -4049,7 +4511,9 @@ class MountControlIndi(BacklashCalibrationMixin):
         if reassert_slew_rate:
             # Never switch the firmware's shared rate under an active pulse.
             # Manual input takes over only after the abort request succeeds.
-            if time.monotonic() < self._guide_pulse_until and not self.stop_mount():
+            if time.monotonic() < self._guide_pulse_until and not self.stop_mount(
+                preserve_tracking=origin == "user"
+            ):
                 return False
             if not self._reassert_slew_rate():
                 self._write_controller_status(
@@ -5093,6 +5557,19 @@ class MountControlIndi(BacklashCalibrationMixin):
             return True
 
         command_type = command.get("type")
+        if command_type in {
+            "init",
+            "goto_target",
+            "sync_and_goto",
+            "manual_movement",
+            "sync",
+            "set_tracking",
+            "reboot_mount",
+            "restart_driver",
+            "park_action",
+            "connection_config_changed",
+        }:
+            self.error_notifier.reset()
         if command_type == "shutdown":
             return False
         if command_type == "init":
@@ -5133,6 +5610,7 @@ class MountControlIndi(BacklashCalibrationMixin):
                 command.get("target_ra"),
                 command.get("target_dec"),
                 command.get("accuracy_arcmin"),
+                manual_approach=bool(command.get("manual_approach", False)),
             )
         elif command_type == "stop_movement":
             self.stop_mount()
@@ -5241,6 +5719,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         running = True
         next_auto_connect_at = time.monotonic() + AUTO_CONNECT_START_DELAY
         while running:
+            self._check_initial_location_sync()
             self._check_usb_serial_reinsert()
             self._check_manual_motion_deadline()
             self._publish_manual_motion_progress()

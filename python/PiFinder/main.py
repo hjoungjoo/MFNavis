@@ -527,6 +527,14 @@ def main(
     init_keypad_pwm()
     setup_dirs()
 
+    from PiFinder.operation_errors import MountErrorGate
+
+    mount_error_gate = MountErrorGate()
+
+    def show_mount_process_error(error):
+        if mount_error_gate.ready_at is not None:
+            menu_manager.show_error(error)
+
     # Instantiate base keyboard class for keycode
     keyboard_base = keyboard_interface.KeyboardInterface()
 
@@ -808,6 +816,7 @@ def main(
                         mountcontrol_queue,
                         shared_state,
                         goto_guide_logqueue,
+                        console_queue,
                     ),
                 )
                 process.start()
@@ -907,7 +916,17 @@ def main(
                 # Console
                 try:
                     console_msg = console_queue.get(block=False)
-                    if (
+                    if isinstance(console_msg, dict) and console_msg.get("type") in {
+                        "operation_error",
+                        "mount_ready",
+                    }:
+                        if console_msg.get("type") == "operation_error":
+                            console.write(
+                                f"{console_msg['source']}: {console_msg['message']}"
+                            )
+                        if mount_error_gate.observe(console_msg):
+                            menu_manager.show_error(console_msg)
+                    elif (
                         isinstance(console_msg, tuple)
                         and len(console_msg) == 2
                         and console_msg[0] == "slew_rate_popup"
@@ -1071,9 +1090,18 @@ def main(
                 except queue.Empty:
                     pass
 
-                keyboard_mapping_manager.tick()
+                if menu_manager.error_dialog is not None:
+                    power_manager.register_activity()
+                    keyboard_mapping_manager.suspend_for_error()
+                else:
+                    keyboard_mapping_manager.tick()
                 keyboard_activity = keycode is not None
-                if keyboard_mapping.is_keyboard_event(keycode):
+                if menu_manager.error_dialog is not None:
+                    if keyboard_mapping.is_keyboard_event(keycode):
+                        keycode = keyboard_mapping_manager.error_dialog_key(keycode)
+                    menu_manager.consume_error_key(keycode)
+                    keycode = None
+                elif keyboard_mapping.is_keyboard_event(keycode):
                     keycode = keyboard_mapping_manager.handle_event(keycode)
 
                 # Register activity here will return True if the power
@@ -1259,7 +1287,15 @@ def main(
                         logger.warning(
                             "INDI mount-control process is not running; restarting"
                         )
-                        menu_manager.message(_("INDI Mount\nrestarting"), 3)
+                        show_mount_process_error(
+                            {
+                                "source": "INDI Mount",
+                                "code": "process_exited",
+                                "message": _(
+                                    "Mount control stopped. Restarting service."
+                                ),
+                            }
+                        )
                         mountcontrol_process = start_mountcontrol_process()
                     elif not mountcontrol_process.is_alive():
                         exitcode = mountcontrol_process.exitcode
@@ -1269,7 +1305,15 @@ def main(
                             exitcode,
                         )
                         mountcontrol_process.join(timeout=0)
-                        menu_manager.message(_("INDI Mount\nrestarting"), 3)
+                        show_mount_process_error(
+                            {
+                                "source": "INDI Mount",
+                                "code": "process_exited",
+                                "message": _(
+                                    "Mount control stopped. Restarting service."
+                                ),
+                            }
+                        )
                         mountcontrol_process = start_mountcontrol_process()
 
                 if (
@@ -1281,7 +1325,13 @@ def main(
                         logger.warning(
                             "INDI GoTo/Guide service is not running; restarting"
                         )
-                        menu_manager.message(_("INDI GoTo/Guide\nrestarting"), 3)
+                        show_mount_process_error(
+                            {
+                                "source": "GoTo / Guide",
+                                "code": "process_exited",
+                                "message": _("GoTo/Guide stopped. Restarting service."),
+                            }
+                        )
                         goto_guide_process = start_goto_guide_process()
                     elif not goto_guide_process.is_alive():
                         exitcode = goto_guide_process.exitcode
@@ -1290,7 +1340,13 @@ def main(
                             exitcode,
                         )
                         goto_guide_process.join(timeout=0)
-                        menu_manager.message(_("INDI GoTo/Guide\nrestarting"), 3)
+                        show_mount_process_error(
+                            {
+                                "source": "GoTo / Guide",
+                                "code": "process_exited",
+                                "message": _("GoTo/Guide stopped. Restarting service."),
+                            }
+                        )
                         goto_guide_process = start_goto_guide_process()
 
         except KeyboardInterrupt:
