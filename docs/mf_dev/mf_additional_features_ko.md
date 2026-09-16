@@ -18,7 +18,7 @@
 
 | 기능 | 설명 | 문서 |
 | --- | --- | --- |
-| Bookworm 64-bit 설치 | Pi 4, Pi 5, CM5 환경의 설치·서비스·부트 설정 | [Bookworm 설치](mf_bookworm_install_ko.md) |
+| Bookworm 64-bit 설치 | Pi 4, Pi 5, CM5 환경의 설치·서비스·부트 설정 | [릴리즈/main 설치](../../README_ko.md#2-mf-pifinder-설치-릴리즈-또는-main) |
 | 보드 호환성 | Pi 4/Pi 5/CM5별 SPI, UART, 카메라 차이 | [플랫폼 호환성](mf_pifinder_rpi4_pi5_compatibility_ko.md) |
 | AP+STA 네트워크 | 액세스 포인트와 기존 Wi-Fi 연결을 함께 다루는 네트워크 구성 | [AP+STA Wi-Fi](mf_wifi_apsta_ko.md) |
 | 시간 동기화 | chronyd와 GPS 기반 시간 관리 | [시간 동기화](mf_time_sync_ko.md) |
@@ -48,8 +48,7 @@
 
 | 기능 | 설명 | 문서 |
 | --- | --- | --- |
-| Cedar+SEP 하이브리드 솔빙 | 광해와 별 검출 조건에 대응하는 솔빙 경로 | [하이브리드 솔빙](mf_cedar_sep_hybrid_design_ko.md) |
-| Cedar 풀프레임 경로 | 풀프레임 검출을 우선하는 솔빙 구현 | [풀프레임 구현](mf_sep_fullframe_impl_ko.md) |
+| MFDS 별 검출 | 설치 스크립트로 자동 설치하며 버전별 설치 방식은 해당 릴리즈 노트 참고 | [MFDS 설치](../MFDS_BINARY_DISTRIBUTION_ko.md) |
 | 자동 노출 | 별 수를 기준으로 한 자동 노출 제어 | [자동 노출](mf_auto_exposure_methods_ko.md) |
 | SQM·색 보정 | 하늘 밝기 측정 및 센서 색 보정 | [SQM 스택](mf_sqm_stack_port_plan_ko.md) |
 | LiveCam/라이브 스택 | 웹 RAW 프리뷰와 라이브 스택 기능 | [Live Stack 연구](mf_live_stack_stabilization_research_ko.md), [RAW Live Stack](mf_raw_live_stack_plan_ko.md) |

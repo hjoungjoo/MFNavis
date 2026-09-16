@@ -10,67 +10,170 @@ basic references remain below under **Original PiFinder Project**.
 
 ## Quick start
 
-### 1. Install
+### 1. Prepare Raspberry Pi OS
 
-For a first installation, the original project's prebuilt release image is the
-simplest option. For a source-based Bookworm installation or Pi 4/Pi 5/CM5
-setup, start with these references:
+Install **Raspberry Pi OS Bookworm 64-bit** on the Pi 4, Pi 5, or CM5 boot
+media with Raspberry Pi Imager. Configure a username, hostname, SSH, and Wi-Fi
+before first boot, then log in as that user and confirm internet access.
+Choose Bookworm explicitly for this installation.
 
-- [Original software setup](https://pifinder.readthedocs.io/en/release/software.html)
-- [Bookworm 64-bit setup (한국어)](./docs/mf_dev/mf_bookworm_install_ko.md)
-- [Pi 4/Pi 5/CM5 compatibility (한국어)](./docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_ko.md)
-- [AP+STA Wi-Fi (한국어)](./docs/mf_dev/mf_wifi_apsta_ko.md)
+See the [Raspberry Pi OS installation instructions](https://www.raspberrypi.com/documentation/computers/getting-started.html#install-an-operating-system)
+for imaging and first boot, and the [board compatibility guide](./docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_ko.md)
+for Pi 4/Pi 5/CM5 wiring differences.
 
-After installation, connect a phone, tablet, or computer to the same network as
-PiFinder and open `http://pifinder.local`. In AP mode, use
-`http://10.10.10.1` if the hostname does not resolve.
+### 2. Install MF PiFinder: release or main
 
-### 2. Download offline caches
+Check the [MF PiFinder releases page](https://github.com/hjoungjoo/MF_PiFinder/releases)
+for the latest published version, its exact tag, and release-specific instructions.
+Use the tagged release for a fixed version, or `main` for the latest development
+changes. These instructions install MF PiFinder onto the prepared OS.
 
-While internet access is available, pre-download the star/catalog runtime caches
-and survey images for faster offline catalog browsing and detail pages.
+Run **one** of the following on a new installation, as the target OS user
+without `sudo`; the script requests sudo where needed. It installs dependencies,
+configures hardware interfaces and services, and **automatically installs the MFDS
+detector**. The installation method differs by version:
+
+| Version | Automatic detector installation |
+| --- | --- |
+| Published release | Uses the detector installation method included in the selected tag. Check the release notes for installation requirements and any build steps. |
+| `main` | Downloads and verifies the MFDS binary release pinned in `deployment/mfds.lock.json`; no detector source build is required. |
+
+Both paths are handled by the installation script; no separate manual MFDS
+installation is needed.
+
+**Published release:**
+
+The command automatically looks up the latest published release on GitHub and
+installs that tag. No version entry is needed. If the lookup fails, installation
+stops. These commands are for a new installation with no existing `~/PiFinder`.
 
 ```bash
-cd /home/pifinder/PiFinder
+PF_RELEASE_TAG="$(python3 -c 'import json, urllib.request; print(json.load(urllib.request.urlopen("https://api.github.com/repos/hjoungjoo/MF_PiFinder/releases/latest"))["tag_name"])')" &&
+[ -n "$PF_RELEASE_TAG" ] &&
+wget -O /tmp/mf-pifinder-setup.sh "https://raw.githubusercontent.com/hjoungjoo/MF_PiFinder/${PF_RELEASE_TAG}/pifinder_setup.sh" &&
+PIFINDER_INSTALL_BRANCH="$PF_RELEASE_TAG" bash /tmp/mf-pifinder-setup.sh
+```
+
+**Development version (main):**
+
+```bash
+wget -O /tmp/mf-pifinder-setup.sh https://raw.githubusercontent.com/hjoungjoo/MF_PiFinder/main/pifinder_setup.sh &&
+PIFINDER_INSTALL_BRANCH=main bash /tmp/mf-pifinder-setup.sh
+```
+
+After the script reports successful completion, reboot:
+
+```bash
+sudo reboot
+```
+
+#### Installation paths and existing checkouts
+
+| Situation | Behavior / action |
+| --- | --- |
+| User `pifinder` | Code: `/home/pifinder/PiFinder`; data: `/home/pifinder/PiFinder_data`. |
+| Another OS user | The same commands use that user's home: `~/PiFinder` and `~/PiFinder_data`. Use that user's account for subsequent commands. |
+| Custom code directory, such as `~/PiFinder_main` | The setup script always targets `PiFinder` in the selected user's home, even when launched elsewhere; setting `PIFINDER_REPO_DIR` does not override this. Use the standard location for a new installation. |
+| Custom data directory | Pass `PIFINDER_DATA_DIR=/absolute/path` with the installation command. Use the same value for later updates and cache commands. This does not move existing data. |
+| `~/PiFinder` already exists | Setup updates its **current branch** with a fast-forward merge; `PIFINDER_INSTALL_BRANCH` only selects a version when cloning a new directory. Local tracked changes cause setup to stop. |
+| Existing tagged release checkout | A fresh tag install succeeds, but rerunning setup on its detached HEAD stops. Do not use these fresh-install commands to switch an existing checkout between a release and `main`. |
+
+For an existing deployment, first check `git -C ~/PiFinder status -sb` and
+back up `~/PiFinder_data` and any local changes. A branch checkout must be on
+the intended branch before updating. After updating an existing installation's
+code, run `bash pifinder_post_update.sh` from its repository root to apply
+runtime updates, including automatic MFDS installation. This is an update hook,
+not a substitute for first-time OS and service setup.
+
+See the [MFDS binary installation guide](./docs/MFDS_BINARY_DISTRIBUTION_ko.md)
+for package details. INDI mount support is optional: setup installs it only
+when an INDI archive is available/configured; otherwise follow the
+[INDI installation guide](./docs/mf_dev/mf_indi_mount_install_en.md).
+
+### 3. Download offline caches
+
+**The full image download takes a long time.** Thousands of survey images can
+take hours depending on the connection and survey servers; reserve time before
+an observing trip. Keep the PiFinder itself online and powered, and allow at
+least **6 GB free** for the full POSS+SDSS cache. A phone connected to PiFinder's
+AP alone does not necessarily give the device internet access.
+
+From the installed repository, build the star/catalog runtime caches and
+download both image surveys:
+
+```bash
+cd ~/PiFinder
 python3 scripts/warm_pifinder_caches.py
 ```
 
-To download only the POSS images used by the web catalog:
+To download only the POSS images used by the device and web catalog:
 
 ```bash
 python3 scripts/warm_pifinder_caches.py --images poss
 ```
 
+Use `--images none` to prepare runtime caches without downloading images.
+The terminal shows progress; `Cache warm-up complete` indicates completion.
+You can stop with `Ctrl-C` and rerun the same command to resume; existing images
+are skipped. Keep the SSH session open while downloading. For a custom data
+location, prefix the command with `PIFINDER_DATA_DIR=/absolute/path`.
+
 [Offline cache guide](./docs/mf_dev/mf_cache_download_en.md) |
 [한국어](./docs/mf_dev/mf_cache_download_ko.md)
 
-### 3. Configure an INDI mount
+### 4. Basic device setup
 
-INDI is optional and disabled by default. First verify the connection, GoTo, and
-Sync using Telescope Simulator before using a physical mount.
+1. **Check startup and controls.** After reboot, confirm the LCD and keypad
+   respond. See [input controls](./docs/mf_dev/mf_input_controls_en.md) and
+   [keyboard mapping](./docs/mf_dev/mf_keyboard_mapping_en.md).
+2. **Select the hardware.** In `Settings > Advanced`, set `PiFinder Type` to
+   match the mounting orientation, select `Camera Type`, and check the GPS
+   type, port, and baud rate in `GPS Settings`. Follow any restart prompts.
+3. **Check networking and the web UI.** On the same network, open
+   `http://<hostname>.local` (`http://pifinder.local` if that is your hostname).
+   In AP mode, use `http://10.10.10.1` if name resolution fails. See
+   [AP+STA setup](./docs/mf_dev/mf_wifi_apsta_ko.md) to configure field Wi-Fi.
+4. **Confirm location and time.** Outdoors, use `Start > GPS Status` and wait
+   for a fix. Without GPS, enter location and time in `Tools > Place & Time`.
+5. **Focus the lens.** Remove the lens cap, point at a clear star field, and
+   open `Start > Focus`. Adjust the lens for sharp stars and a low HFD reading.
+6. **Measure the lens automatically.** Select
+   `Settings > Advanced > Lens > Auto (Measure)` and hold the device still.
+   After five stable star frames, the screen shows `MEASURED`, the measured
+   field of view, and focal length. The result is automatically saved as a
+   **Manual** lens; seeing Manual selected afterwards is normal. Auto measures
+   field of view and effective focal length; it does not focus the lens, so
+   complete the previous step first. If stars are insufficient or measurement
+   fails, check focus and sky conditions, then retry. Pressing LEFT during
+   measurement cancels it and keeps the previous lens setting.
+7. **Measure lens distortion.** After Auto completes, select
+   `Settings > Advanced > Distortion > Measure Sky`. Aim at a star field with
+   stars extending to the image edges and hold still until at least five valid
+   frames and a stable result produce `MEASURED`. The result is saved
+   automatically. Press LEFT to return, then check `Distortion > Status` for
+   `Sky measured` and the `k1` value. If `Need edge stars` persists, point at a
+   more evenly populated star field and hold still again. Auto and distortion
+   measurement are separate operations. Repeat both after changing the lens
+   or camera, then confirm that sky positions solve. See the
+   [lens correction guide](./docs/mf_dev/mf_lens_distortion_correction_en.md)
+   for profile application conditions and details.
+8. **Align with the telescope.** Center a known star in the eyepiece and use
+   `Start > Align` to align PiFinder's pointing with the telescope. Select a
+   catalog target and check the Push-to directions.
+9. **Configure optional mount control.** INDI is disabled by default. Follow
+   the [INDI setup guide](./docs/mf_dev/mf_indi_mount_install_en.md) and verify
+   connection, GoTo, and Sync with Telescope Simulator before a physical mount.
 
-- [INDI mount installation and setup](./docs/mf_dev/mf_indi_mount_install_en.md) |
-  [한국어](./docs/mf_dev/mf_indi_mount_install_ko.md)
-- [Mount-mode compatibility (한국어)](./docs/mf_dev/mf_mount_mode_compatibility_ko.md)
-
-### 4. Keypad and keyboard controls
-
-Use these references for global LCD controls, page-specific controls, and
-USB/Bluetooth keyboard mapping:
-
-- [Input controls](./docs/mf_dev/mf_input_controls_en.md) |
-  [한국어](./docs/mf_dev/mf_input_controls_ko.md)
-- [Keyboard mapping](./docs/mf_dev/mf_keyboard_mapping_en.md) |
-  [한국어](./docs/mf_dev/mf_keyboard_mapping_ko.md)
+See the [quick-start manual](./docs/source/quick_start.rst) and
+[user manual](./docs/source/user_guide.rst) for detailed device operation.
 
 ### 5. MF feature documentation
 
 The [MF additional-features index](./docs/mf_dev/mf_additional_features_en.md)
-groups documentation for web catalogs, location catalogs, LiveCam, automatic
-exposure, Cedar/SEP solving, SQM, and IMU calibration. Its Korean equivalent is
-[available here](./docs/mf_dev/mf_additional_features_ko.md). For current test
-status and history, see the [feature review checklist](./docs/mf_dev/mf_feature_review_checklist_en.md)
-and [Korean change history](./docs/mf_dev/mf_change_history_ko.md).
+covers web catalogs, location catalogs, LiveCam, automatic exposure, MFDS,
+SQM, and IMU calibration. Its Korean equivalent is
+[available here](./docs/mf_dev/mf_additional_features_ko.md). For validation
+status, see the [feature review checklist](./docs/mf_dev/mf_feature_review_checklist_en.md).
 
 ---
 
@@ -142,10 +245,11 @@ If you'd like to learn more about how it works, and potentially build your own, 
 ## Discord
 Join the  [PiFinder™ Discord server](https://discord.gg/Nk5fHcAtWD) for support with your build, usage questions, and suggestions for improvement.
 
-## Public MF detector source (m2.6.6)
+## MF detector distribution
 
 The detector and Python integration are maintained and built at [MFDS](https://github.com/hjoungjoo/MFDS).
-PiFinder installs the [MFDS v0.3.0 binary release](https://github.com/hjoungjoo/MFDS/releases/tag/v0.3.0)
+For a tagged PiFinder release, consult its release notes for the detector installation method.
+The current `main` branch installs a pinned [MFDS binary release](https://github.com/hjoungjoo/MFDS/releases)
 using `bash scripts/setup_mfds.sh`; it does not clone or compile MFDS sources.
 The version, source revision and platform-specific checksums are pinned in `deployment/mfds.lock.json`.
 See [binary installation and update guide](docs/MFDS_BINARY_DISTRIBUTION_ko.md).

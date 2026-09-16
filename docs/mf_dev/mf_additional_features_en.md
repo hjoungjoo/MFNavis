@@ -18,7 +18,7 @@ linked document for design details, limitations, and validation status.
 
 | Feature | Description | Documentation |
 | --- | --- | --- |
-| Bookworm 64-bit setup | Pi 4, Pi 5, and CM5 installation, services, and boot configuration | [Korean Bookworm guide](mf_bookworm_install_ko.md) |
+| Bookworm 64-bit setup | Pi 4, Pi 5, and CM5 installation, services, and boot configuration | [Release/main installation](../../README.md#2-install-mf-pifinder-release-or-main) |
 | Board compatibility | Pi 4/Pi 5/CM5 SPI, UART, and camera differences | [Korean platform guide](mf_pifinder_rpi4_pi5_compatibility_ko.md) |
 | AP+STA networking | Use an access point alongside an existing Wi-Fi connection | [Korean AP+STA guide](mf_wifi_apsta_ko.md) |
 | Time synchronization | chronyd and GPS-based time management | [Korean time-sync guide](mf_time_sync_ko.md) |
@@ -48,8 +48,7 @@ linked document for design details, limitations, and validation status.
 
 | Feature | Description | Documentation |
 | --- | --- | --- |
-| Cedar+SEP hybrid solving | Solver paths for light-pollution and star-detection conditions | [Hybrid solving (Korean)](mf_cedar_sep_hybrid_design_ko.md) |
-| Cedar full-frame path | Full-frame detection as the primary solving path | [Full-frame implementation (Korean)](mf_sep_fullframe_impl_ko.md) |
+| MFDS star detection | Automatic detector installation; see the selected release notes for its installation method | [MFDS installation (Korean)](../MFDS_BINARY_DISTRIBUTION_ko.md) |
 | Automatic exposure | Star-count-based exposure control | [Automatic exposure (Korean)](mf_auto_exposure_methods_ko.md) |
 | SQM and color correction | Sky-brightness measurements and sensor color correction | [SQM stack (Korean)](mf_sqm_stack_port_plan_ko.md) |
 | LiveCam/live stacking | Web RAW preview and live stacking | [Live Stack research (Korean)](mf_live_stack_stabilization_research_ko.md) |
