@@ -8,7 +8,7 @@ link_path="${repo_dir}/python/tetra3"
 target="PiFinder/tetra3/tetra3"
 
 if ! [ -d "${repo_dir}/python/${target}" ]; then
-    echo "vendored tetra3 source is missing: ${repo_dir}/python/${target}" >&2
+    echo "vendored tetra3 source is not initialized: ${repo_dir}/python/${target}" >&2
     exit 1
 fi
 
