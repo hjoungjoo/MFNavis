@@ -14,3 +14,9 @@ for the previous search. That file carries an explicit modification notice.
 The other eight retained upstream files, including the database and license,
 matched the pinned upstream commit during the 2026-09-15 license audit.
 Original Apache-2.0 and Tetra attribution notices remain in place.
+
+On 2026-09-17, hash-neighborhood distance/tie ordering was moved into a
+bounded cache of relative integer offsets. The optimized path translates
+these offsets and batches the hashes. The legacy search remains available;
+candidate order, uint64 overflow, matching thresholds and deadlines are
+unchanged. Cached offset arrays retain at most 8 MiB in total.

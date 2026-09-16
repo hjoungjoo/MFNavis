@@ -1043,6 +1043,23 @@ def _calibration_input_from_run(
     }
 
 
+def _make_async_preprocess_worker(runner):
+    """Confine the clone's frame history to the lifetime of its worker."""
+
+    def process(job):
+        return runner.preprocess_frame(
+            job["frame"],
+            fingerprint=job["fingerprint"],
+            frame_id=job["metadata"].get("frame_id"),
+        )
+
+    return LatestFrameWorker(
+        process,
+        thread_name="solver-preprocess",
+        on_close=lambda: runner.reset_preprocessor("inactive"),
+    )
+
+
 def _solve_preprocessed_run(
     t3,
     runner,
@@ -1673,6 +1690,10 @@ def solver(
                     capture_counts = {}
                     preprocess_ms = 0.0
                     preprocess_context = None
+                    # Results carry full-size frame/evidence arrays. Do not
+                    # retain the last async result during sync/disabled mode.
+                    completed_preprocess = None
+                    preprocessed_run = None
 
                     # Mark that we're attempting a solve - use image exposure_end timestamp.
                     # This is more accurate than wall clock and ties the attempt to the
@@ -1705,7 +1726,9 @@ def solver(
                             preprocess_bias.reset()
                             solve_scheduling.reset("moving")
                             if async_preprocess_worker is not None:
-                                async_preprocess_worker.clear_pending()
+                                async_preprocess_worker.close(wait=False)
+                                async_preprocess_worker = None
+                                async_preprocess_runner = None
                         async_motion_seen = True
                     else:
                         async_motion_seen = False
@@ -2200,7 +2223,9 @@ def solver(
                             async_preprocess_generation += 1
                             async_preprocess_mode_active = False
                         if async_preprocess_worker is not None:
-                            async_preprocess_worker.clear_pending()
+                            async_preprocess_worker.close(wait=False)
+                            async_preprocess_worker = None
+                            async_preprocess_runner = None
                         if sep_shadow is not None:
                             sep_shadow.reset_preprocessor("disabled")
                         _publish_solver_preprocess_status(
@@ -2288,11 +2313,17 @@ def solver(
                             if async_preprocess_active != async_preprocess_mode_active:
                                 async_preprocess_generation += 1
                                 if async_preprocess_worker is not None:
-                                    async_preprocess_worker.clear_pending()
+                                    async_preprocess_worker.close(wait=False)
+                                    async_preprocess_worker = None
+                                    async_preprocess_runner = None
                                 if not async_preprocess_active:
                                     # The synchronous accumulator has not seen
                                     # intervening frames during background mode.
                                     sep_shadow.reset_preprocessor("sync_recovery")
+                                else:
+                                    # This history is stale on returning to sync
+                                    # mode. Release it as the clone takes over.
+                                    sep_shadow.reset_preprocessor("async_mode")
                                 logger.info(
                                     "Solver scheduling -> %s: %s (raw streak=%d)",
                                     execution,
@@ -2306,20 +2337,10 @@ def solver(
                                     async_preprocess_runner = (
                                         sep_shadow.preprocessing_clone()
                                     )
-                                    preprocess_runner = async_preprocess_runner
-
-                                    def _process_async_preprocess(
-                                        job, runner=preprocess_runner
-                                    ):
-                                        return runner.preprocess_frame(
-                                            job["frame"],
-                                            fingerprint=job["fingerprint"],
-                                            frame_id=job["metadata"].get("frame_id"),
+                                    async_preprocess_worker = (
+                                        _make_async_preprocess_worker(
+                                            async_preprocess_runner
                                         )
-
-                                    async_preprocess_worker = LatestFrameWorker(
-                                        _process_async_preprocess,
-                                        thread_name="solver-preprocess",
                                     )
                                     logger.info(
                                         "Asynchronous latest-frame preprocessing enabled"

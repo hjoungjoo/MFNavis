@@ -7,7 +7,11 @@ import pytest
 
 from PiFinder.lens_measurement import measure_lens_frame
 from PiFinder.sep_shadow import PreprocessedRun, SepRun, SepShadowRunner
-from PiFinder.solver import _calibration_input_from_run, _solve_preprocessed_run
+from PiFinder.solver import (
+    _calibration_input_from_run,
+    _make_async_preprocess_worker,
+    _solve_preprocessed_run,
+)
 
 pytestmark = pytest.mark.unit
 GEOMETRY = {
@@ -16,6 +20,43 @@ GEOMETRY = {
     "base_fov_degrees": 12.0,
 }
 POINTS = np.array([(400 + i * 10, 700 + i * 13) for i in range(40)], dtype=float)
+
+
+def test_retiring_preprocess_worker_releases_temporal_history():
+    import weakref
+
+    from PiFinder.mf_star_only_preprocess import MFStarOnlyAccumulator
+
+    accumulator = MFStarOnlyAccumulator()
+
+    class Runner:
+        def preprocess_frame(self, frame, *, fingerprint, frame_id):
+            return accumulator.add(
+                frame, saturation_level=4095, fingerprint=fingerprint
+            )
+
+        def reset_preprocessor(self, reason):
+            accumulator.reset()
+
+    worker = _make_async_preprocess_worker(Runner())
+    try:
+        for index in range(5):
+            worker.exchange(
+                {
+                    "frame": np.full((96, 100), 500, dtype=np.uint16),
+                    "fingerprint": "same",
+                    "metadata": {"frame_id": index},
+                }
+            )
+            worker._future.result(timeout=2)
+        assert accumulator.frame_count == 5
+        refs = [weakref.ref(a) for a in accumulator._signals + accumulator._evidence]
+        worker.close()
+        assert accumulator.frame_count == 0
+        assert all(ref() is None for ref in refs)
+    finally:
+        worker.close()
+        accumulator.close()
 
 
 def run_with(points=POINTS, frame_id=12, backend="mf"):

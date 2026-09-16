@@ -1,5 +1,6 @@
 import threading
 import time
+import weakref
 
 import pytest
 
@@ -146,3 +147,58 @@ def test_result_age_includes_queue_and_consumption_delay(monkeypatch):
         assert not result.is_fresh()
         now[0] = 9.0
         assert not result.is_fresh()
+
+
+def test_close_releases_unconsumed_frame_and_result():
+    class Frame:
+        pass
+
+    worker = LatestFrameWorker(lambda frame: Frame())
+    frame = Frame()
+    frame_ref = weakref.ref(frame)
+    worker.offer(frame)
+    result = worker._future.result(timeout=1)
+    value_ref = weakref.ref(result.value)
+    del result, frame
+    worker.close()
+    assert frame_ref() is None
+    assert value_ref() is None
+    assert worker.poll() is None
+
+
+def test_nonblocking_close_cleans_up_after_active_task_only_once():
+    started = threading.Event()
+    release = threading.Event()
+    cleaned = threading.Event()
+    calls = []
+
+    def process(item):
+        started.set()
+        assert release.wait(2)
+        calls.append(item)
+
+    def cleanup():
+        calls.append("cleanup")
+        cleaned.set()
+
+    worker = LatestFrameWorker(process, on_close=cleanup)
+    try:
+        worker.offer("active")
+        assert started.wait(1)
+        worker.offer("pending")
+        worker.close(wait=False)
+        worker.close(wait=False)
+        assert not cleaned.is_set()
+        release.set()
+        assert cleaned.wait(1)
+        assert calls == ["active", "cleanup"]
+    finally:
+        release.set()
+
+
+def test_close_cleans_up_without_any_frame():
+    calls = []
+    worker = LatestFrameWorker(lambda item: item, on_close=lambda: calls.append(1))
+    worker.close()
+    worker.close()
+    assert calls == [1]

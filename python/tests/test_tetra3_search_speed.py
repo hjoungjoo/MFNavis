@@ -1,5 +1,7 @@
 """Search acceleration must preserve uint64 hashes and collision order."""
 
+import itertools
+
 import numpy as np
 import pytest
 
@@ -7,9 +9,58 @@ from tetra3.tetra3 import (
     _get_table_indices_from_hash,
     _get_table_indices_from_hash_fast,
     _pattern_hash_to_index,
+    _ordered_hash_offsets,
+    _ordered_pattern_hash_codes,
 )
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize("width", [5, 9])
+def test_cached_neighborhood_preserves_distance_and_tie_order(width):
+    rng = np.random.default_rng(45)
+    for _ in range(30):
+        center = rng.integers(0, 50, width)
+        lower = np.maximum(0, center - rng.integers(0, 2, width))
+        upper = np.minimum(50, center + rng.integers(0, 2, width))
+        expected = list(
+            itertools.product(*(range(a, b + 1) for a, b in zip(lower, upper)))
+        )
+        expected.sort(
+            key=lambda code: (
+                sum((int(a) - int(b)) ** 2 for a, b in zip(code, center)),
+                code,
+            )
+        )
+        np.testing.assert_array_equal(
+            _ordered_pattern_hash_codes(lower, upper, center), expected
+        )
+
+
+def test_hash_neighborhood_cache_is_bounded_and_caller_cannot_mutate_it():
+    _ordered_hash_offsets.cache_clear()
+    for shift in range(40):
+        center = np.zeros(5, dtype=int)
+        lower = np.array([shift, 0, 0, 0, 0])
+        _ordered_pattern_hash_codes(lower, lower + 1, center)
+    assert _ordered_hash_offsets.cache_info().currsize == 32
+    first = _ordered_pattern_hash_codes(np.zeros(5, int), np.ones(5, int), center)
+    first[:] = 100
+    assert (
+        _ordered_pattern_hash_codes(np.zeros(5, int), np.ones(5, int), center)[0, 0]
+        == 0
+    )
+    before = _ordered_hash_offsets.cache_info()
+    large = _ordered_pattern_hash_codes(np.zeros(5, int), np.full(5, 5), center)
+    assert large.shape == (6**5, 5)
+    assert _ordered_hash_offsets.cache_info() == before
+
+
+def test_empty_hash_neighborhood():
+    codes = _ordered_pattern_hash_codes(
+        np.ones(5, int), np.zeros(5, int), np.zeros(5, int)
+    )
+    assert codes.shape == (0, 5)
 
 
 @pytest.mark.parametrize("bins", [10, 50, 250, 1000])

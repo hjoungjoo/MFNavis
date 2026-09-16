@@ -58,8 +58,10 @@ class LatestFrameWorker(Generic[InputT, OutputT]):
         process: Callable[[InputT], OutputT],
         *,
         thread_name: str = "latest-frame-worker",
+        on_close: Optional[Callable[[], None]] = None,
     ) -> None:
         self._process = process
+        self._on_close = on_close
         self._executor = ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix=thread_name,
@@ -177,12 +179,22 @@ class LatestFrameWorker(Generic[InputT, OutputT]):
             return True
 
     def close(self, *, wait: bool = True) -> None:
+        """Release frames and clean up on the worker after any active task.
+
+        Cleanup is serialized with processing, including nonblocking close,
+        so an accumulator can safely release its history without racing add().
+        """
         with self._lock:
             if self._closed:
                 return
             self._closed = True
             self._pending = None
-        self._executor.shutdown(wait=wait, cancel_futures=True)
+            self._future = None
+            if self._on_close is not None:
+                self._executor.submit(self._on_close)
+                self._on_close = None
+        # There is at most one processing task; the only queued task is cleanup.
+        self._executor.shutdown(wait=wait, cancel_futures=False)
 
     def __enter__(self) -> "LatestFrameWorker[InputT, OutputT]":
         return self

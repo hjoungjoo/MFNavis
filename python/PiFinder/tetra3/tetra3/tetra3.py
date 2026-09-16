@@ -3,6 +3,8 @@ MF_PiFinder modification notice (2026-09-15): this file was changed from
 smroid/cedar-solve commit 38c3f48f57d1005e9b65cbb26136f9f13ec0a1b0 to batch
 pattern hashes and accelerate collision probing, with a legacy-search switch.
 The original license and attribution notices below are retained.
+2026-09-17: reuse bounded, distance-ordered hash neighborhoods without changing
+candidate order, uint64 hashing, matching thresholds or search deadlines.
 
 tetra3: A fast lost-in-space plate solver for star trackers.
 ============================================================
@@ -125,6 +127,7 @@ from contextvars import ContextVar
 from datetime import datetime
 from numbers import Number
 from collections import OrderedDict
+from functools import lru_cache
 
 # External imports:
 import numpy as np
@@ -239,6 +242,29 @@ def _get_table_indices_from_hash_fast(hash_index, table):
         if not any(table[i]):
             return np.asarray(found, dtype=np.uint64)
         found.append(i)
+
+@lru_cache(maxsize=32)
+def _ordered_hash_offsets(lower, upper):
+    """Rank integer offsets once per neighborhood, with legacy tie ordering."""
+    ranges = [range(lo, hi + 1) for lo, hi in zip(lower, upper)]
+    offsets = list(itertools.product(*ranges))
+    offsets.sort(key=lambda code: (sum(value*value for value in code), code))
+    result = np.asarray(offsets, dtype=np.int64).reshape(-1, len(lower))
+    result.setflags(write=False)
+    return result
+
+def _ordered_pattern_hash_codes(lower, upper, center):
+    """Translate a cached neighborhood; equal distances remain lexicographic.
+
+    Limit retained arrays to 256 KiB per entry (8 MiB across 32 entries).
+    Unusual larger neighborhoods follow the same order without being cached.
+    """
+    lo = tuple(int(a) - int(b) for a, b in zip(lower, center))
+    hi = tuple(int(a) - int(b) for a, b in zip(upper, center))
+    count = math.prod(max(0, b - a + 1) for a, b in zip(lo, hi))
+    build = (_ordered_hash_offsets if count * len(lo) <= 32768
+             else _ordered_hash_offsets.__wrapped__)
+    return build(lo, hi) + center
 
 def _compute_vectors(centroids, size, fov):
     """Get unit vectors from star centroids (pinhole camera)."""
@@ -1898,28 +1924,24 @@ class Tetra3():
             # Possible range of pattern hashes we need to look up
             pattern_hash_space_min = np.maximum(0, image_pattern_edge_ratio_min*p_bins).astype(int)
             pattern_hash_space_max = np.minimum(p_bins, image_pattern_edge_ratio_max*p_bins).astype(int)
-            # Make a list of the low/high values in each binned edge ratio position.
-            pattern_hash_range = list(range(low, high + 1) for (low, high) in zip(pattern_hash_space_min,
-                                                                                  pattern_hash_space_max))
-            def dist(pattern_hash):
-                return sum((a-b)*(a-b) for (a, b) in zip(pattern_hash, image_pattern_hash))
-
-            # Make a list of all pattern hash values to explore; tag each with its distance from
-            # 'image_pattern_hash' for sorting, so the first pattern hash values we try are the
-            # ones closest to what we measured in the image to be solved.
-            pattern_hash_list = list((dist(code), code) for code in itertools.product(*pattern_hash_range))
-            pattern_hash_list.sort()
-
-            # Same hashes in exactly the same search order; evaluate uint64
-            # powers/reductions once per image pattern instead of once per bin.
             if self._search_optimized:
+                codes = _ordered_pattern_hash_codes(
+                    pattern_hash_space_min, pattern_hash_space_max, image_pattern_hash)
                 hash_indices = _pattern_hash_to_index(
-                    [code for (_, code) in pattern_hash_list],
-                    p_bins, self.pattern_catalog.shape[0]) if pattern_hash_list else []
+                    codes, p_bins, self.pattern_catalog.shape[0]) if len(codes) else []
             else:
+                pattern_hash_range = [range(low, high + 1) for low, high in zip(
+                    pattern_hash_space_min, pattern_hash_space_max)]
+
+                def dist(pattern_hash):
+                    return sum((a-b)*(a-b) for a, b in zip(pattern_hash, image_pattern_hash))
+
+                pattern_hash_list = [(dist(code), code)
+                                     for code in itertools.product(*pattern_hash_range)]
+                pattern_hash_list.sort()
                 hash_indices = (_pattern_hash_to_index(
                     code, p_bins, self.pattern_catalog.shape[0])
-                    for (_, code) in pattern_hash_list)
+                    for _, code in pattern_hash_list)
 
             # Iterate over pattern hash values, starting from 'image_pattern_hash' and working
             # our way outward.
