@@ -194,6 +194,11 @@ def _write_pointing_status(state) -> None:
             "solved": _sample_status_payload(state.solved),
             "imu": _sample_status_payload(state.imu),
             "mount": _sample_status_payload(state.mount),
+            "display": (
+                _sample_status_payload(state.display)
+                if getattr(state, "display", None) is not None
+                else None
+            ),
             "health": {
                 "warnings": list(state.health.warnings),
                 "mount_pre_alignment_only": bool(state.health.mount_pre_alignment_only),
@@ -696,11 +701,18 @@ def _current_pointing(_shared_state) -> Optional[Tuple[float, float]]:
     if state is None:
         logger.debug("No published pointing coordinate state yet")
         return None
-    pointing = state.radec()
+    display = getattr(state, "display", None)
+    pointing: Optional[Tuple[float, float]]
+    if display is not None and display.valid:
+        pointing = display.radec()
+        source = display.source
+    else:
+        pointing = state.radec()
+        source = state.current.source
     if (
         pointing is not None
         and not is_stellarium
-        and state.current.source in {"solve", "pifinder_imu_estimate"}
+        and source in {"solve", "pifinder_imu_estimate"}
     ):
         return catalog_to_equinox_of_date(*pointing, _current_datetime(_shared_state))
     return pointing

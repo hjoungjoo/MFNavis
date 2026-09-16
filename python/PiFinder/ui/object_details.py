@@ -9,6 +9,7 @@ This module contains all the UI code for the object details screen
 from pydeepskylog.exceptions import InvalidParameterError
 
 from PiFinder import cat_images
+from PiFinder.display_pointing import DisplayPointing
 from PiFinder.composite_object import MagnitudeObject
 from PiFinder.ui.marking_menus import MarkingMenuOption, MarkingMenu
 from PiFinder.obj_types import OBJ_TYPES
@@ -677,11 +678,13 @@ class UIObjectDetails(UIModule):
             return
 
         indicator_color = 255 if self._unmoved else 128
+        display_solution = self._push_display_solution()
         point_az, point_alt = calc_utils.aim_degrees(
             self.shared_state,
             self.mount_type,
             self.screen_direction,
             self.object,
+            solution=display_solution,
         )
 
         # Check if aim_degrees returned valid values
@@ -921,6 +924,18 @@ class UIObjectDetails(UIModule):
         if aligned is None:
             return None
         return aligned.RA, aligned.Dec
+
+    def _push_display_solution(self):
+        if not hasattr(self, "_display_pointing"):
+            self._display_pointing = DisplayPointing()
+        return self._display_pointing.solution(
+            self.shared_state.solution(),
+            self.shared_state.imu(),
+            self.screen_direction,
+            self._push_mount_status
+            if self.config_object.get_option("mount_control", False)
+            else {},
+        )
 
     def key_number(self, number):
         """Cardinal keys nudge the mount, 0/5/7 are discrete commands (GoTo uses

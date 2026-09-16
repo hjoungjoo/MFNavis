@@ -221,14 +221,15 @@ def pointing_axis_errors(ra, dec, target_ra, target_dec, mount_type, location, d
     return (target_ra - ra + 180) % 360 - 180, target_dec - dec
 
 
-def aim_degrees(shared_state, mount_type, screen_direction, target):
+def aim_degrees(shared_state, mount_type, screen_direction, target, *, solution=None):
     """
     Returns degrees in either
     az/alt or RA/DEC depending on mount type
     from current position
     to target
     """
-    solution = shared_state.solution()
+    if solution is None:
+        solution = shared_state.solution()
     location = shared_state.location()
     dt = shared_state.datetime()
     if location.lock and dt and solution and solution.has_pointing():

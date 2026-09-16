@@ -3,8 +3,8 @@
 """
 Full-frame RAW and star-only preprocessing runner.
 
-Both image paths call star_detect.detect_stars: MFDS is primary, and SEP is
-used when MFDS is unavailable or has insufficient candidates. The historical
+Both image paths use MFDS in the live solver. SEP is invoked explicitly only
+after the primary solve cascade has failed. The historical
 SepShadowRunner name, sep_* solve paths and CSV columns remain compatible
 with recorded comparison datasets. They do not identify the active detector;
 use detection.backend and detector_backend diagnostics for that purpose.
@@ -16,7 +16,9 @@ All entry points are defensive: any exception is logged and swallowed,
 so the experiment can never take down the production solver.
 
 Config keys (restart to apply): ``solver_shadow_detect``,
-``solver_sep_fallback``, ``solver_sep_sigma``.
+``solver_sep_fallback``, ``solver_sep_sigma``, ``solver_sep_emergency``.
+The legacy solver_sep_fallback switch enables the full-frame MFDS solve tier;
+it does not enable early SEP extraction in the live solver.
 
 CSV: ``solver_shadow_log.csv`` in the tmpfs log dir (one row per solve
 attempt -- steady small appends belong in RAM, not on the SD card, per
@@ -27,13 +29,14 @@ saved.
 
 import csv
 import logging
+import os
 import time
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, replace
+from typing import Any, Optional
 
 import numpy as np
 
-from PiFinder import star_detect
+from PiFinder import sep_detect, star_detect
 from PiFinder import utils
 from PiFinder import solver_frame_map as sfm
 from PiFinder.mf_cloud_gate import wide_cloud_gate_enabled
@@ -50,6 +53,35 @@ from PiFinder.solve_acceptance import solution_quality_decision
 from PiFinder.sqm.camera_profiles import get_camera_profile
 
 logger = logging.getLogger("Solver.SepShadow")
+
+
+def configure_runtime_detection():
+    """Disable detector-level SEP fallback in the live solver and its workers.
+
+    Explicit offline comparison tools can still select their own backend.
+    Set once before worker creation, never around individual threaded calls.
+    """
+    os.environ["PIFINDER_DETECTOR"] = "mf"
+    os.environ["MF_DETECT_SEP_FALLBACK"] = "0"
+
+
+def detect_primary_stars(frame, **kwargs):
+    """Keep native failure local so preprocessing and final recovery can run."""
+    try:
+        return star_detect.detect_stars(frame, **kwargs)
+    except (OSError, RuntimeError, AttributeError) as exc:
+        logger.warning("MFDS unavailable: %s", exc)
+        return SepDetection(
+            centroids=np.empty((0, 2)),
+            fluxes=np.empty(0),
+            background_median=0.0,
+            background_rms=0.0,
+            elapsed_ms=0.0,
+            backend="mf",
+            primary_candidates=0,
+            fallback_reason=f"native_error:{type(exc).__name__}",
+        )
+
 
 CSV_FIELDS = [
     "timestamp",
@@ -136,6 +168,8 @@ class SepShadowRunner:
         # optical-train integration will pass a night-validated crop FOV here.
         self.base_fov_degrees = base_fov_degrees
         self.min_fallback_stars = min_fallback_stars
+        self._emergency_failures = 0
+        self._emergency_skip = 0
         self.saturation_level = saturation_level
         self.csv_path = csv_path or (utils.log_dir / "solver_shadow_log.csv")
         self.warm_pixel_map = warm_pixel_map
@@ -295,7 +329,7 @@ class SepShadowRunner:
         self._last_failed_sep_count = None
 
     def detect(
-        self, shared_state, expected_frame_id=None, *, raw_entry=None
+        self, shared_state, expected_frame_id=None, *, raw_entry=None, emergency=False
     ) -> Optional[SepRun]:
         """Detect from the frozen RAW pair, or read RAW for legacy callers."""
         self._attempt_counter += 1
@@ -315,17 +349,23 @@ class SepShadowRunner:
                 return None
             frame = np.asarray(entry["frame"])
             lens_key = getattr(shared_state, "camera_lens", lambda: "")()
-            detection = star_detect.detect_stars(
-                frame,
-                sigma=self.sigma,
-                saturation_level=self.saturation_level,
-                warm_pixel_map=self.warm_pixel_map,
-                cloud_window_gate=wide_cloud_gate_enabled(
+            options: dict[str, Any] = {
+                "sigma": self.sigma,
+                "saturation_level": self.saturation_level,
+                "warm_pixel_map": self.warm_pixel_map,
+                "cloud_window_gate": wide_cloud_gate_enabled(
                     lens_key, manual_focal_from_state(shared_state)
                 ),
+            }
+            detection = (
+                sep_detect.detect_stars(frame, **options)
+                if emergency
+                else detect_primary_stars(frame, **options)
             )
             if detection is None:
                 return None
+            if emergency:
+                detection.fallback_reason = "all_mfds_solve_paths_failed"
             # LiveCam overlay entry: NOT published here -- solve() attaches
             # the tetra3-matched subset and publish_overlay() (called once
             # per attempt from the solver, after the outcome is known)
@@ -404,7 +444,7 @@ class SepShadowRunner:
             }
             if result.diagnostics.frame_count < 2:
                 return None
-            detection = star_detect.detect_stars(
+            detection = detect_primary_stars(
                 result.frame,
                 sigma=self.sigma,
                 # Keep tetra3's proven brightest-48 input unchanged while
@@ -442,6 +482,41 @@ class SepShadowRunner:
                 "error": f"{exc.__class__.__name__}: {exc}",
             }
             return None
+
+    def emergency_should_attempt(self, *, primary_solved, moving):
+        if primary_solved:
+            self._emergency_failures = 0
+            self._emergency_skip = 0
+            return False
+        if moving:
+            return False
+        if self._emergency_skip:
+            self._emergency_skip -= 1
+            return False
+        return True
+
+    def record_emergency_result(self, solved):
+        if solved:
+            self._emergency_failures = 0
+            self._emergency_skip = 0
+        else:
+            self._emergency_failures += 1
+            self._emergency_skip = min(2 ** min(self._emergency_failures, 3), 8)
+
+    def detect_emergency_preprocessed(self, run):
+        """Reuse the same synthesized frame; never preprocess it a second time."""
+        detection = sep_detect.detect_stars(
+            run.frame,
+            sigma=self.sigma,
+            overlay_max_stars=128,
+            saturation_level=None,
+            warm_pixel_map=self.warm_pixel_map,
+            cloud_window_gate=False,
+        )
+        if detection is None:
+            return None
+        detection.fallback_reason = "all_mfds_solve_paths_failed"
+        return replace(run, detection=detection)
 
     def use_preprocessed_overlay(self, run: PreprocessedRun) -> None:
         """Show the candidates from the frame that is actually being solved."""

@@ -25,7 +25,7 @@ from PiFinder import config as config_mod
 from PiFinder import state_utils
 from PiFinder import utils
 from PiFinder import timez
-from PiFinder import horizon_mask, star_detect
+from PiFinder import horizon_mask
 from PiFinder import solver_frame_map as sfm
 from PiFinder.auto_exposure_framewise import matched_star_exposure_quality
 from PiFinder.alignment_projection import make_projection, projection_context
@@ -53,7 +53,13 @@ from PiFinder.latest_frame_worker import LatestFrameWorker
 from PiFinder.preprocess_bias import PreprocessBiasTracker
 from PiFinder.solver_scheduling import SolverSchedulingPolicy
 from PiFinder.solver_capture import CaptureRecorder
-from PiFinder.sep_shadow import MAX_FRAME_AGE_S, WARM_MAP_PATH, SepShadowRunner
+from PiFinder.sep_shadow import (
+    MAX_FRAME_AGE_S,
+    WARM_MAP_PATH,
+    SepShadowRunner,
+    configure_runtime_detection,
+    detect_primary_stars,
+)
 from PiFinder.solve_acceptance import (
     SolveContinuityGate,
     angular_separation_deg,
@@ -1047,6 +1053,7 @@ def _solve_preprocessed_run(
     center_first,
     target_sky_coord=None,
     trace=None,
+    path_prefix="preprocessed_",
 ):
     """Solve the detected frame once per distinct candidate subset.
 
@@ -1072,17 +1079,110 @@ def _solve_preprocessed_run(
     if center_first and minimum <= len(center) < len(centroids):
         stages.append(
             (
-                "preprocessed_sep_center",
-                lambda: solve(center, "preprocessed_sep_center"),
+                f"{path_prefix}sep_center",
+                lambda: solve(center, f"{path_prefix}sep_center"),
             )
         )
     stages.append(
         (
-            "preprocessed_sep_full",
-            lambda: solve(centroids, "preprocessed_sep_full"),
+            f"{path_prefix}sep_full",
+            lambda: solve(centroids, f"{path_prefix}sep_full"),
         )
     )
     return _solve_center_first_remainder(stages, trace=trace)
+
+
+def _solve_sep_emergency(
+    t3,
+    runner,
+    shared_state,
+    *,
+    primary_solution,
+    raw_entry,
+    preprocessed_run,
+    expected_frame_id,
+    moving,
+    center_first,
+    primary_paths_complete=True,
+    target_sky_coord=None,
+    filter_centroids=None,
+    trace=None,
+):
+    """Last-resort SEP after MFDS paths fail, on this exposure only.
+
+    A valid MFDS candidate awaiting continuity confirmation is not a failure.
+    Recovery still passes the ordinary quality and downstream continuity gates.
+    """
+    if runner is None or not runner.emergency_should_attempt(
+        primary_solved=bool(
+            primary_solution and primary_solution.get("RA") is not None
+        ),
+        moving=moving or not primary_paths_complete,
+    ):
+        return {}, "", None
+    try:
+        age = time.time() - float((raw_entry or {}).get("timestamp") or 0)
+    except (TypeError, ValueError):
+        return {}, "", None
+    if (
+        expected_frame_id is None
+        or not raw_entry
+        or "frame" not in raw_entry
+        or raw_entry.get("frame_id") != expected_frame_id
+        or not 0 <= age <= MAX_FRAME_AGE_S
+    ):
+        return {}, "", None
+
+    # One extra search budget shared by preprocessed and RAW SEP retries.
+    # Repeated empty-sky failures back off before invoking SEP extraction.
+    logger.info("SEP emergency retry after MFDS failure, frame %s", expected_frame_id)
+    try:
+        with tetra3.search_budget(1000):
+            for preprocessed in (True, False):
+                if tetra3.search_budget_expired():
+                    break
+                if preprocessed:
+                    if (
+                        preprocessed_run is None
+                        or preprocessed_run.frame_id != expected_frame_id
+                    ):
+                        continue
+                    run = runner.detect_emergency_preprocessed(preprocessed_run)
+                else:
+                    run = runner.detect(
+                        shared_state,
+                        expected_frame_id=expected_frame_id,
+                        raw_entry=raw_entry,
+                        emergency=True,
+                    )
+                if run is None:
+                    continue
+                cents = run.detection.centroids
+                if filter_centroids is not None:
+                    cents = filter_centroids(cents, run.frame_hw)
+                if preprocessed:
+                    runner.use_preprocessed_overlay(run)
+                solution, path = _solve_preprocessed_run(
+                    t3,
+                    runner,
+                    run,
+                    shared_state,
+                    centroids=cents,
+                    center_first=center_first,
+                    target_sky_coord=target_sky_coord,
+                    trace=trace,
+                    path_prefix="preprocessed_" if preprocessed else "",
+                )
+                if path:
+                    runner.record_emergency_result(True)
+                    logger.info(
+                        "SEP emergency solved frame %s via %s", expected_frame_id, path
+                    )
+                    return solution, path, run
+    except Exception:
+        logger.exception("SEP emergency recovery failed")
+    runner.record_emergency_result(False)
+    return {}, "", None
 
 
 def _fullframe_geometry(
@@ -1321,10 +1421,15 @@ def solver(
     sqm_optical_train = OpticalTrainResolver()
     last_stellar_diagnostic = 0.0
 
-    # SEP shadow/fallback runner (full-frame detection experiment). Needs
+    # Full-frame MFDS runner (historical SepShadowRunner name). Needs
     # the camera type for crop geometry, which the camera process publishes
     # after startup -- so creation is retried in the loop until it works.
     _sep_cfg = config_mod.Config()
+    configure_runtime_detection()
+    sep_emergency_enabled = bool(_sep_cfg.get_option("solver_sep_emergency", True))
+    logger.info(
+        "Live detection: MFDS only; final SEP emergency=%s", sep_emergency_enabled
+    )
     field_capture = CaptureRecorder("solver", _sep_cfg, shared_state=shared_state)
     sep_shadow = None
     sep_shadow_wanted = True
@@ -1376,7 +1481,7 @@ def solver(
 
     while True:
         logger.info("Starting Solver Loop")
-        # RAW and preprocessed frames use MFDS, with SEP as detector fallback.
+        # Normal extraction is MFDS-only; SEP is the final recovery stage.
         try:
             while True:
                 # Drain any pending command queue messages.
@@ -1653,6 +1758,7 @@ def solver(
                         cedar_gated_count = None
                         cedar_center_count = None
                         sep_count = None
+                        emergency_preprocessed_run = None
                         ff_entry = None
                         prefer_preprocessed_fast = False
                         # Read the same fresh RAW exposure for SEP and preprocessing.
@@ -1891,7 +1997,7 @@ def solver(
                                     return ()
 
                                 def _wide_sep_detect(tile_frame):
-                                    detection = star_detect.detect_stars(
+                                    detection = detect_primary_stars(
                                         np.asarray(tile_frame),
                                         sigma=float(
                                             _sep_cfg.get_option("solver_sep_sigma")
@@ -2271,6 +2377,8 @@ def solver(
                             if not async_preprocess_active:
                                 t_extract += preprocess_ms
                             if preprocessed_run is not None:
+                                if not async_preprocess_active:
+                                    emergency_preprocessed_run = preprocessed_run
                                 preprocess_metadata = (
                                     preprocess_context["metadata"]
                                     if preprocess_context is not None
@@ -2564,6 +2672,61 @@ def solver(
                             frame_id=last_image_metadata.get("frame_id"),
                             clear_frame=True,
                         )
+
+                    if sep_emergency_enabled:
+
+                        def emergency_filter(cents, frame_hw):
+                            if not horizon_mask_wanted or not len(cents):
+                                return cents
+                            return horizon_mask.filter_ground_centroids(
+                                cents,
+                                frame_hw,
+                                fullframe_geometry["rotation_deg"],
+                                imu_sample,
+                                fullframe_geometry["screen_direction"],
+                                fullframe_geometry["crop_width_px"],
+                            )[0]
+
+                        emergency_solution, emergency_path, emergency_run = (
+                            _solve_sep_emergency(
+                                t3,
+                                sep_shadow,
+                                shared_state,
+                                primary_solution=solution,
+                                raw_entry=ff_entry,
+                                preprocessed_run=emergency_preprocessed_run,
+                                expected_frame_id=last_image_metadata.get("frame_id"),
+                                moving=frame_moving,
+                                center_first=center_first_wanted,
+                                # A trusted sync fast path may have skipped RAW
+                                # solves. Its failure clears trust; let the next
+                                # exposure run the full MFDS cascade before SEP.
+                                primary_paths_complete=not prefer_preprocessed_fast,
+                                target_sky_coord=(
+                                    [[align_ra, align_dec]]
+                                    if align_ra != 0 and align_dec != 0
+                                    else None
+                                ),
+                                filter_centroids=emergency_filter,
+                                trace=capture_stages,
+                            )
+                        )
+                        if emergency_path:
+                            solution, solve_path = emergency_solution, emergency_path
+                            sep_run = emergency_run
+                            sep_fallback_used = True
+                            wide_pointing_used = False
+                            used_fullframe = True
+                            centroids = emergency_run.detection.centroids
+                            ff_frame_hw = emergency_run.frame_hw
+                            sep_count = len(centroids)
+                            ff_in_crop_count = _count_in_crop(
+                                centroids,
+                                ff_frame_hw,
+                                fullframe_geometry["crop_width_px"],
+                            )
+                            if capture_token is not None:
+                                capture_counts["emergency_sep"] = sep_count
 
                     # A single native wide-field pattern must never become
                     # pointing truth by itself. Cold full-frame locks and

@@ -23,6 +23,7 @@ import numpy as np
 import quaternion
 
 from PiFinder.calc_utils import sf_utils
+from PiFinder.display_pointing import DisplayPointing
 from PiFinder.pointing_model.imu_dead_reckoning import ImuDeadReckoning
 
 
@@ -339,6 +340,9 @@ class CoordinateState:
     mode: str = MODE_UNAVAILABLE
     weights: dict[str, float] = field(default_factory=dict)
     updated_at: float = field(default_factory=time.time)
+    # Optional presentation-only prediction. Control consumers keep using
+    # current/solved/radec(), including the GoTo status-file contract.
+    display: Optional[CoordinateSample] = None
 
     def radec(self) -> Optional[Tuple[float, float]]:
         return self.current.radec()
@@ -355,6 +359,7 @@ class PointingCoordinateService:
         max_fusion_separation_degrees: float = 10.0,
     ):
         self.mount_weight = mount_weight
+        self._display_pointing = DisplayPointing()
         self.imu_weight_when_mount_aligned = imu_weight_when_mount_aligned
         self.max_fusion_separation_degrees = max_fusion_separation_degrees
         self._mount_imu_anchor: Optional[dict[str, Any]] = None
@@ -411,6 +416,7 @@ class PointingCoordinateService:
     def clear_state(self) -> None:
         with self._state_lock:
             self._state = None
+            self._display_pointing.reset()
             self._mount_imu_anchor = None
             self._imu_delta_tracker = None
             self._imu_filter_altaz = None
@@ -982,6 +988,7 @@ class PointingCoordinateService:
         mode, weights = self._mode_and_weights(solved, imu, mount, current)
         health.selected_source = current.source
         self._annotate_health(current, imu, mount, health)
+        display = self._display_sample(shared_state, config_get, mount_status)
         return CoordinateState(
             current=current,
             solved=solved,
@@ -990,7 +997,49 @@ class PointingCoordinateService:
             health=health,
             mode=mode,
             weights=weights,
+            display=display,
         )
+
+    def _display_sample(self, shared_state, config_get, mount_status):
+        """Return an optional IMU preview without changing control coordinates."""
+        try:
+            solution = shared_state.solution()
+            displayed = self._display_pointing.solution(
+                solution,
+                shared_state.imu(),
+                str(config_get("screen_direction", "right")),
+                mount_status,
+            )
+            if displayed is solution:
+                return None
+            pointing = displayed.pointing.aligned.estimate
+            radec = valid_radec(pointing.RA, pointing.Dec)
+            if radec is None:
+                return None
+            ctx = self._fusion_context or {}
+            location, dt = ctx.get("location"), ctx.get("dt")
+            alt = az = None
+            if (
+                location is not None
+                and getattr(location, "lock", False)
+                and dt is not None
+            ):
+                sf_utils.set_location(location.lat, location.lon, location.altitude)
+                alt, az = sf_utils.radec_to_altaz(*radec, dt)
+            return CoordinateSample(
+                ra_deg=radec[0],
+                dec_deg=radec[1],
+                alt_deg=alt,
+                az_deg=az,
+                source=SOURCE_PIFINDER_IMU_ESTIMATE,
+                quality=QUALITY_MEDIUM,
+                timestamp=displayed.estimate_time,
+                valid=True,
+                metadata={"display_prediction": True, "has_plate_anchor": True},
+            )
+        except Exception:
+            logger.debug("Display prediction unavailable", exc_info=True)
+            return None
 
     def _mode_and_weights(
         self,

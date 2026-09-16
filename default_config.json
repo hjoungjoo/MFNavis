@@ -62,6 +62,7 @@
     "solver_optics_fullframe_fov": true,
     "solver_shadow_detect": false,
     "solver_sep_fallback": true,
+    "solver_sep_emergency": true,
     "solver_sep_sigma": 4.0,
     "solver_horizon_mask": false,
     "solver_center_first": true,
