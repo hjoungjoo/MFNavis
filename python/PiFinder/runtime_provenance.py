@@ -3,6 +3,7 @@
 import hashlib
 import importlib.metadata
 import os
+import json
 from pathlib import Path
 import subprocess
 
@@ -31,16 +32,31 @@ def detector_provenance():
     from PiFinder import mf_detect_process, star_detect
 
     root = Path(star_detect.__file__).resolve().parents[3]
+    package = {}
     try:
-        revision = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"],
-            cwd=root,
-            text=True,
-            stderr=subprocess.DEVNULL,
-            timeout=3,
-        ).strip()
-    except (OSError, subprocess.SubprocessError):
-        revision = None
+        package = json.loads((root / "PACKAGE.json").read_text())
+        revision = package["source_commit"]
+    except (OSError, ValueError, KeyError):
+        # Development in the canonical MFDS checkout remains supported.
+        try:
+            revision = subprocess.check_output(
+                ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+                timeout=3,
+            ).strip()
+            revision = (
+                subprocess.check_output(
+                    ["git", "-C", str(root), "rev-parse", "HEAD"],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                    timeout=3,
+                ).strip()
+                if Path(revision).resolve() == root
+                else None
+            )
+        except (OSError, subprocess.SubprocessError):
+            revision = None
     try:
         source_version = (root / "VERSION").read_text().strip()
     except OSError:
@@ -71,6 +87,9 @@ def detector_provenance():
     library = getattr(star_detect, "_library", None)
     return {
         "mf_git_head": revision,
+        "mf_distribution": "binary_release" if package else "source_checkout",
+        "mf_package_manifest": file_identity(root / "PACKAGE.json"),
+        "mf_package_platform": package.get("platform"),
         "mf_source_version": source_version,
         "mf_version_file": file_identity(root / "VERSION"),
         "mf_source_root": str(root),

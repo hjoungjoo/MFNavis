@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare and activate code-only updates, preserving source/build rollback data.
+"""Prepare and activate code-only updates, preserving source/package rollback data.
 
 System package / OS migrations are intentionally a separate installer operation.
 A failed or interrupted transaction is kept under .git/update-transaction.
@@ -25,16 +25,17 @@ def git(repo, *args):
 def restore(repo, state, journal):
     run(repo, "git", "reset", "--hard", journal["before"])
     detector = repo / "python/MFDS"
-    if journal["detector_before"]:
-        run(detector, "git", "checkout", "--detach", journal["detector_before"])
-    build = detector / "build"
-    if build.exists():
-        shutil.rmtree(build)
-    if journal["had_build"]:
-        shutil.copytree(state / "previous-build", build)
-    replacement = detector / "build.update"
-    if replacement.exists():
-        shutil.rmtree(replacement)
+    previous = journal.get("detector_before_link")
+    if not previous:
+        raise RuntimeError(
+            "Legacy source update journal: use the saved pre-migration updater"
+        )
+    if detector.exists() and not detector.is_symlink():
+        raise RuntimeError("MFDS runtime link was replaced by a directory")
+    replacement = detector.with_name(".mfds-restore")
+    replacement.unlink(missing_ok=True)
+    replacement.symlink_to(previous)
+    os.replace(replacement, detector)
 
 
 def recover(repo):
@@ -51,12 +52,7 @@ def recover(repo):
         if git(repo, "diff", "--name-only") or git(
             repo, "diff", "--cached", "--name-only"
         ):
-            # A changed submodule HEAD alone is part of an interrupted activation.
-            changed = git(repo, "diff", "--name-only")
-            if changed != "python/MFDS" or git(
-                repo, "diff", "--cached", "--name-only"
-            ):
-                raise RuntimeError("Tracked edits after interruption; inspect manually")
+            raise RuntimeError("Tracked edits after interruption; inspect manually")
         restore(repo, state, journal)
         shutil.rmtree(state)
 
@@ -103,12 +99,11 @@ def update(repo):
                 + sensitive
             )
         detector = repo / "python/MFDS"
-        detector_before = (
-            git(detector, "rev-parse", "HEAD") if (detector / ".git").exists() else None
-        )
-        if detector_before is None:
-            raise RuntimeError("Initialize the pinned MF submodule before code updates")
-        build = detector / "build"
+        if not detector.is_symlink() or not (detector / "PACKAGE.json").is_file():
+            raise RuntimeError(
+                "Install the pinned MFDS binary package before code updates"
+            )
+        detector_before_link = os.readlink(detector)
         state.mkdir()
         activated = False
         try:
@@ -124,34 +119,32 @@ def update(repo):
             )
             run(candidate, "git", "checkout", "--detach", target)
             run(candidate, "bash", "scripts/prepare_code_update.sh")
-            # Preserve the existing build before changing either the source or native artifacts.
+            # Preserve the existing package link before changing application source or runtime artifacts.
             journal = {
                 "before": before,
                 "target": target,
                 "branch": branch,
-                "detector_before": detector_before,
-                "had_build": build.exists(),
+                "detector_before_link": detector_before_link,
             }
-            if build.exists():
-                shutil.copytree(build, state / "previous-build")
             (state / "journal.json").write_text(json.dumps(journal, indent=2))
             if git(repo, "rev-parse", "HEAD") != before or git(
                 repo, "status", "--porcelain", "--untracked-files=no"
             ):
                 raise RuntimeError("Checkout changed while preparing the update")
+            if (
+                not detector.is_symlink()
+                or os.readlink(detector) != detector_before_link
+            ):
+                raise RuntimeError("MFDS runtime changed while preparing update")
             activated = True
             run(repo, "git", "merge", "--ff-only", target)
-            run(repo, "git", "submodule", "update", "--init", "--recursive")
-            staged_build = candidate / "python/MFDS/build"
-            if not staged_build.is_dir():
-                raise RuntimeError("Prepared MF build is missing")
-            replacement = detector / "build.update"
-            if replacement.exists():
-                raise RuntimeError("Unfinished MF build replacement")
-            shutil.copytree(staged_build, replacement)
-            if build.exists():
-                shutil.rmtree(build)
-            replacement.rename(build)
+            staged_package = (candidate / "python/MFDS").resolve()
+            if not (staged_package / "PACKAGE.json").is_file():
+                raise RuntimeError("Prepared MFDS package is missing")
+            installed = repo / "python/.mfds" / staged_package.name
+            if not installed.exists():
+                shutil.copytree(staged_package, installed)
+            run(repo, sys.executable, "scripts/install_mfds.py", "--repo", str(repo))
             run(repo, "bash", "scripts/ensure_tetra3_link.sh", str(repo))
             run(
                 repo,

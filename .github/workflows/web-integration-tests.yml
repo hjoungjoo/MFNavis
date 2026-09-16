@@ -16,8 +16,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Checkout pinned public MFDS
-        uses: ./.github/actions/checkout-mf
+      - name: Install pinned MFDS release
+        uses: ./.github/actions/install-mfds
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v6
@@ -41,8 +41,6 @@ jobs:
       - name: Initialize tetra3
         working-directory: python
         run: |
-          git submodule sync
-          git submodule update --init --recursive
           bash ../scripts/ensure_tetra3_link.sh ..
           bash ../scripts/setup_mfds.sh
 

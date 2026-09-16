@@ -38,9 +38,29 @@ def check_repo(repo, ref="HEAD"):
             problems.append("invalid Cedar-free deployment marker")
     except (subprocess.CalledProcessError, ValueError, AttributeError):
         problems.append("missing/invalid Cedar-free deployment marker")
-    entry = git(repo, "ls-tree", commit, "--", "python/MFDS").decode()
-    if not entry.startswith("160000 commit "):
-        problems.append("MF detector is not pinned as a submodule")
+    try:
+        lock = json.loads(git(repo, "show", commit + ":deployment/mfds.lock.json"))
+        import re
+
+        assert lock.get("schema") == 1
+        assert re.fullmatch(r"[0-9a-f]{40}", lock.get("source_commit", ""))
+        assert re.fullmatch(r"\d+\.\d+\.\d+", lock.get("version", ""))
+        for arch in ("aarch64", "x86_64"):
+            asset = lock["assets"][f"linux-{arch}"]
+            assert re.fullmatch(r"[0-9a-f]{64}", asset["sha256"])
+            assert re.fullmatch(r"[0-9a-f]{64}", asset["manifest_sha256"])
+            assert asset["url"] == (
+                f"https://github.com/hjoungjoo/MFDS/releases/download/v{lock['version']}/"
+                f"MFDS-{lock['version']}-linux-{arch}.tar.gz"
+            )
+    except (
+        subprocess.CalledProcessError,
+        ValueError,
+        KeyError,
+        TypeError,
+        AssertionError,
+    ):
+        problems.append("missing/invalid pinned MFDS binary release lock")
     return problems
 
 
@@ -87,7 +107,9 @@ def main():
         parser.exit(1, f"Cannot validate Cedar-free contents: {exc}\n")
     if problems:
         parser.exit(1, "Cedar-free check failed:\n" + "\n".join(problems) + "\n")
-    print("Known Cedar artifacts absent; MF source pinned. Not license clearance.")
+    print(
+        "Known Cedar artifacts absent; MFDS binary release pinned. Not license clearance."
+    )
 
 
 if __name__ == "__main__":

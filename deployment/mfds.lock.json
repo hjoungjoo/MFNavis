@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "version": "0.3.0",
+  "source_commit": "bf3c035c7a60accace8b8afe4ca6cb6bc99e7de9",
+  "assets": {
+    "linux-x86_64": {
+      "url": "https://github.com/hjoungjoo/MFDS/releases/download/v0.3.0/MFDS-0.3.0-linux-x86_64.tar.gz",
+      "sha256": "28749f592b18673c4b2425a161919536601a4160d600093667caa6e448decc23",
+      "manifest_sha256": "af8187126f5a185f7441b4cbafeb0dbf480b24216da2f3676e7a83b91e551359"
+    },
+    "linux-aarch64": {
+      "url": "https://github.com/hjoungjoo/MFDS/releases/download/v0.3.0/MFDS-0.3.0-linux-aarch64.tar.gz",
+      "sha256": "0635ff1e7b4fcbd650bb25120694da42c3defc96853105ef9a781b92f5538498",
+      "manifest_sha256": "9447f69dfbfaf583b0b0529d5b49660e94a0a19b457b90fbf1e79f2542cc1319"
+    }
+  }
+}

@@ -1,18 +1,10 @@
 #!/usr/bin/env bash
-# Initialize the pinned detector source and build it; no service/config changes.
+# Install only MFDS release artifacts; never clone or compile detector sources.
 set -euo pipefail
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
-build_mode="${1:---with-tools}"
-if [[ $# -gt 1 || ( "$build_mode" != --runtime && "$build_mode" != --with-tools ) ]]; then
+# Retain old callers' mode arguments; the package contains all runtime tools.
+if [[ $# -gt 1 || ( $# -eq 1 && "$1" != --runtime && "$1" != --with-tools ) ]]; then
     echo "Usage: $0 [--runtime|--with-tools]" >&2
     exit 2
 fi
-python3 "$repo_dir/scripts/migrate_mfds_path.py" "$repo_dir"
-git -C "$repo_dir" submodule sync -- python/MFDS
-git -C "$repo_dir" submodule update --init -- python/MFDS
-if [[ "$build_mode" == --runtime ]]; then
-    make -C "$repo_dir/python/MFDS" -j2 runtime
-else
-    make -C "$repo_dir/python/MFDS" -j2 all
-    make -C "$repo_dir/python/MFDS" test
-fi
+exec python3 "$repo_dir/scripts/install_mfds.py" --repo "$repo_dir"

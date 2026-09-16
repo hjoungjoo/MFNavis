@@ -1,4 +1,8 @@
 import importlib.util
+import hashlib
+import io
+import platform
+import tarfile
 import json
 import os
 from pathlib import Path
@@ -24,51 +28,74 @@ def git(path, *args):
     )
 
 
+def write_package(repo, directory, version="0.3.0", artifact="original build"):
+    files = {
+        "VERSION": (version + "\n").encode(),
+        "build/mf_detect_star_server": f"#!/bin/sh\necho MFDS {version}\n".encode(),
+        "build/artifact": artifact.encode(),
+    }
+    manifest = {
+        "schema": 1,
+        "version": version,
+        "source_commit": "a" * 40,
+        "platform": f"linux-{platform.machine()}",
+        "abi": 1,
+        "files": {n: hashlib.sha256(v).hexdigest() for n, v in files.items()},
+    }
+    files["PACKAGE.json"] = json.dumps(manifest).encode()
+    archive = directory / f"package-{version}.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        for name, data in files.items():
+            info = tarfile.TarInfo("MFDS/" + name)
+            info.size = len(data)
+            info.mode = 0o755 if name.startswith("build/") else 0o644
+            tar.addfile(info, io.BytesIO(data))
+    lock = {
+        "schema": 1,
+        "version": version,
+        "source_commit": "a" * 40,
+        "assets": {
+            f"linux-{arch}": {
+                "url": f"https://github.com/hjoungjoo/MFDS/releases/download/v{version}/MFDS-{version}-linux-{arch}.tar.gz",
+                "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+                "manifest_sha256": hashlib.sha256(files["PACKAGE.json"]).hexdigest(),
+            }
+            for arch in ("aarch64", "x86_64")
+        },
+    }
+    (repo / "deployment/mfds.lock.json").write_text(json.dumps(lock))
+    (repo / "scripts/prepare_code_update.sh").write_text(
+        f'#!/bin/sh\nset -e\npython3 scripts/install_mfds.py --repo . --archive "{archive}"\n'
+    )
+    return archive
+
+
 @pytest.fixture
 def repository(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
-    git(repo, "init", "-b", "test/cedar-free")
+    git(repo, "init", "-b", "test/binary-release")
     git(repo, "config", "user.email", "test@example.invalid")
     git(repo, "config", "user.name", "Test")
     (repo / "seed").write_text("seed")
+    (repo / ".gitignore").write_text("python/MFDS\npython/.mfds/\n")
     git(repo, "add", ".")
     git(repo, "commit", "-m", "seed")
+    (repo / "python").mkdir()
     (repo / "deployment").mkdir()
     (repo / "deployment/cedar_free.json").write_text(
         json.dumps({"schema": 1, "detector": "mf"})
     )
     (repo / "scripts").mkdir()
-    shutil.copy(ROOT / "scripts/check_cedar_free.py", repo / "scripts")
+    for name in ("check_cedar_free.py", "transactional_update.py", "install_mfds.py"):
+        shutil.copy(ROOT / "scripts" / name, repo / "scripts")
     shutil.copy(ROOT / "pifinder_update.sh", repo)
-    shutil.copy(ROOT / "scripts/transactional_update.py", repo / "scripts")
-    (repo / "scripts/prepare_code_update.sh").write_text(
-        "set -e\ngit submodule update --init\nmkdir -p python/MFDS/build\n"
-        "cp seed python/MFDS/build/artifact\n"
-    )
     (repo / "scripts/ensure_tetra3_link.sh").write_text(":\n")
     (repo / "pifinder_paths.sh").write_text(":\n")
     (repo / "pifinder_post_update.sh").write_text("echo called > post-called\n")
-    native = tmp_path / "native"
-    native.mkdir()
-    git(native, "init", "-b", "main")
-    git(native, "config", "user.email", "test@example.invalid")
-    git(native, "config", "user.name", "Test")
-    (native / "source").write_text("native")
-    (native / ".gitignore").write_text("build/\n")
-    git(native, "add", ".")
-    git(native, "commit", "-m", "native source")
-    git(
-        repo,
-        "-c",
-        "protocol.file.allow=always",
-        "submodule",
-        "add",
-        str(native),
-        "python/MFDS",
-    )
+    write_package(repo, tmp_path)
     git(repo, "add", ".")
-    git(repo, "commit", "-m", "Cedar-free candidate")
+    git(repo, "commit", "-m", "Binary release candidate")
     return repo
 
 
@@ -77,7 +104,7 @@ def commit(repo):
     git(repo, "commit", "-m", "change")
 
 
-def test_candidate_requires_marker_and_pinned_detector(repository):
+def test_candidate_requires_marker_and_pinned_binary(repository):
     assert checker.check_repo(repository) == []
     (repository / "deployment/cedar_free.json").unlink()
     commit(repository)
@@ -131,9 +158,7 @@ def update_clone(repository, tmp_path):
     subprocess.run(
         ["git", "clone", str(repository), str(clone)], check=True, capture_output=True
     )
-    git(clone, "-c", "protocol.file.allow=always", "submodule", "update", "--init")
-    (clone / "python/MFDS/build").mkdir()
-    (clone / "python/MFDS/build/artifact").write_text("original build")
+    subprocess.run(["bash", "scripts/prepare_code_update.sh"], cwd=clone, check=True)
     return clone
 
 
@@ -151,7 +176,7 @@ def test_update_preserves_branch_and_fast_forwards(repository, update_clone):
     commit(repository)
     result = run_update(update_clone)
     assert result.returncode == 0, result.stderr
-    assert git(update_clone, "branch", "--show-current") == "test/cedar-free"
+    assert git(update_clone, "branch", "--show-current") == "test/binary-release"
     assert (update_clone / "new-version").read_text() == "reviewed"
     assert (update_clone / "post-called").exists()
 
@@ -180,13 +205,8 @@ def test_failed_update_restores_source_and_native_build(
     repository, update_clone, phase
 ):
     before = git(update_clone, "rev-parse", "HEAD")
-    native_before = git(update_clone / "python/MFDS", "rev-parse", "HEAD")
-    native = repository / "python/MFDS"
-    origin = Path(git(native, "remote", "get-url", "origin"))
-    (origin / "source").write_text("next native source")
-    commit(origin)
-    git(native, "fetch", "origin")
-    git(native, "checkout", "--detach", git(origin, "rev-parse", "HEAD"))
+    native_before = (update_clone / "python/MFDS").resolve()
+    write_package(repository, repository.parent, "0.3.1", "candidate")
     (repository / "seed").write_text("candidate")
     hook = (
         "scripts/prepare_code_update.sh"
@@ -199,7 +219,7 @@ def test_failed_update_restores_source_and_native_build(
     result = run_update(update_clone)
     assert result.returncode != 0
     assert git(update_clone, "rev-parse", "HEAD") == before
-    assert git(update_clone / "python/MFDS", "rev-parse", "HEAD") == native_before
+    assert (update_clone / "python/MFDS").resolve() == native_before
     assert (update_clone / "python/MFDS/build/artifact").read_text() == "original build"
     assert not (update_clone / ".git/update-transaction").exists()
 
@@ -242,38 +262,89 @@ def test_interrupted_activation_keeps_journal_and_can_be_recovered(
     assert not (update_clone / ".git/update-transaction").exists()
 
 
-def test_mfds_path_migration_preserves_submodule_and_build(repository):
+def installer_module():
     spec = importlib.util.spec_from_file_location(
-        "mfds_path", ROOT / "scripts/migrate_mfds_path.py"
+        "mfds_installer", ROOT / "scripts/install_mfds.py"
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def test_bad_archive_never_changes_active_package(repository):
+    installer = installer_module()
+    original = repository.parent / "package-0.3.0.tar.gz"
+    installer.install(repository, original)
+    before = (repository / "python/MFDS").resolve()
+    candidate = write_package(repository, repository.parent, "0.3.1", "candidate")
+    candidate.write_bytes(candidate.read_bytes() + b"corruption")
+    with pytest.raises(ValueError, match="SHA-256"):
+        installer.install(repository, candidate)
+    assert (repository / "python/MFDS").resolve() == before
+    assert (before / "build/artifact").read_text() == "original build"
+
+
+def test_download_failure_never_changes_active_package(repository, monkeypatch):
+    installer = installer_module()
+    installer.install(repository, repository.parent / "package-0.3.0.tar.gz")
+    before = (repository / "python/MFDS").resolve()
+    write_package(repository, repository.parent, "0.3.1", "candidate")
+
+    def fail(*args, **kwargs):
+        raise OSError("network unavailable")
+
+    monkeypatch.setattr(installer.urllib.request, "urlopen", fail)
+    with pytest.raises(OSError, match="network unavailable"):
+        installer.install(repository)
+    assert (repository / "python/MFDS").resolve() == before
+
+
+def test_cached_package_modification_is_detected(repository):
+    installer = installer_module()
+    installer.install(repository, repository.parent / "package-0.3.0.tar.gz")
+    (repository / "python/MFDS/build/artifact").write_text("modified locally")
+    with pytest.raises(ValueError, match="file mismatch"):
+        installer.install(repository)
+
+
+def test_wrong_architecture_rejected_before_execution(repository):
+    installer = installer_module()
+    target = installer.extract(
+        repository.parent / "package-0.3.0.tar.gz", repository.parent / "unpacked"
+    )
+    lock = installer.load_lock(repository / "deployment/mfds.lock.json")
+    platform_key = (
+        "linux-x86_64" if platform.machine() == "aarch64" else "linux-aarch64"
+    )
+    with pytest.raises(ValueError, match="platform differs"):
+        installer.verify_package(target, lock, platform_key)
+
+
+@pytest.mark.parametrize("attack", ["traversal", "symlink", "duplicate"])
+def test_unsafe_archive_is_rejected_without_writing(tmp_path, attack):
+    installer = installer_module()
+    archive = tmp_path / "unsafe.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        info = tarfile.TarInfo(
+            "MFDS/../../escape" if attack == "traversal" else "MFDS/file"
+        )
+        if attack == "symlink":
+            info.type = tarfile.SYMTYPE
+            info.linkname = "/tmp/escape"
+        tar.addfile(info)
+        if attack == "duplicate":
+            tar.addfile(info)
+    with pytest.raises(ValueError, match="Unsafe/duplicate"):
+        installer.extract(archive, tmp_path / "destination")
+    assert not (tmp_path / "destination").exists()
+
+
+def test_source_checkout_is_not_silently_overwritten(repository):
     detector = repository / "python/MFDS"
-    before = git(detector, "rev-parse", "HEAD")
-    git(
-        detector, "remote", "set-url", "origin", "https://github.com/hjoungjoo/MFDS.git"
-    )
-    (detector / "build").mkdir()
-    (detector / "build/artifact").write_text("preserved")
-    git(repository, "mv", "python/MFDS", "python/mf_detect_star")
-    module.migrate(repository)
-    module.migrate(repository)
-    assert not (repository / "python/mf_detect_star").exists()
-    assert git(detector, "rev-parse", "HEAD") == before
-    assert (detector / "build/artifact").read_text() == "preserved"
-
-
-def test_mfds_path_migration_rejects_conflicting_directories(tmp_path):
-    spec = importlib.util.spec_from_file_location(
-        "mfds_path", ROOT / "scripts/migrate_mfds_path.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    for name in ("MFDS", "mf_detect_star"):
-        path = tmp_path / "python" / name
-        path.mkdir(parents=True)
-        (path / "keep").write_text(name)
-    with pytest.raises(RuntimeError, match="Both detector directories"):
-        module.migrate(tmp_path)
-    for name in ("MFDS", "mf_detect_star"):
-        assert (tmp_path / "python" / name / "keep").read_text() == name
+    detector.mkdir(parents=True)
+    (detector / "local-edit").write_text("keep")
+    with pytest.raises(RuntimeError, match="source checkout remains"):
+        installer_module().install(
+            repository, repository.parent / "package-0.3.0.tar.gz"
+        )
+    assert (detector / "local-edit").read_text() == "keep"

@@ -169,3 +169,7 @@ wifi_status.txt
 # Runtime import alias; setup/post-update/CI create it after submodule init.
 /python/tetra3
 /python/tetra3.backup.*/
+
+# Downloaded, verified MFDS release artifacts (not source checkouts)
+/python/MFDS
+/python/.mfds/

@@ -5,7 +5,7 @@
 재부팅 후 추가 개선은
 [통합 최적화 결과](docs/test_cedar_free_20260915/INTEGRATED_OPTIMIZATION_RESULTS_ko.md)를 참조한다.
 
-검출기·전처리·비교 도구·실험 문서의 정본은 `python/MFDS` submodule이다.
+검출기·전처리·비교 도구·실험 문서의 정본은 공개 MFDS 저장소다. PiFinder의 `python/MFDS`는 고정 릴리즈 패키지이며 이곳에서 소스를 수정하거나 빌드하지 않는다.
 [통합 관리 안내](docs/DETECTOR_INTEGRATION_ko.md)와
 [라이선스 범위](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/LICENSING.md)를 따른다.
 

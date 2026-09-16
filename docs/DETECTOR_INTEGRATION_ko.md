@@ -1,10 +1,8 @@
 # 검출기 통합 관리
 
-MF native 검출기, Python 전처리/검출 연결/프로필/anchor 실험/SEP 보조,
-비교 스크립트와 관련 테스트·실험 문서의 정본은
-[`mf_detect_star`](../python/MFDS/README.md) 저장소다.
-PiFinder의 `python/MFDS` submodule은 사용할 정확한 커밋을 고정한다.
-기존 `PiFinder.*` import 및 scripts/tests 경로는 상대 심볼릭 링크로 유지한다.
+소스 수정과 빌드는 공개 [MFDS](https://github.com/hjoungjoo/MFDS)에서 수행한다.
+PiFinder의 `python/MFDS`는 `deployment/mfds.lock.json`에 고정된 MFDS 릴리즈 패키지다.
+Python 연동 모듈·지원 도구도 MFDS 패키지에서 공급하며 기존 `PiFinder.*` import와 scripts/tests 링크를 유지한다.
 
 ## 설치와 사용
 
@@ -14,33 +12,13 @@ PYTHONPATH=python python3 -m PiFinder.detector_profiles mf4p
 PYTHONPATH=python python3 python/scripts/field_compare.py --help
 ```
 
-setup은 고정 커밋 checkout과 빌드/검사만 한다. 서비스 전환이나 카메라·부팅 설정은
-변경하지 않는다. 기본은 submodule의 `build/mf_detect_star_server`를 별도
-프로세스로 실행하는 `MF_DETECT_TRANSPORT=process`다. 스레드별 worker와 memfd
-공유 메모리를 재사용하여 RAW/전처리 병렬성을 유지한다. `MF_DETECT_SERVER`는
-명시적 서버 경로 override다. `MF_DETECT_TRANSPORT=ctypes`와
-`MF_DETECT_LIBRARY`는 기존 직접 호출 비교용이다. 서버 실패 시 자동으로 ctypes를
-로드하지 않고 기존 SEP 보조 정책을 따른다. 임의의 형제 checkout을 암묵적으로
-읽지 않는다. submodule이 없으면 먼저 setup을 실행해야 한다.
+설치는 아키텍처·버전·해시를 검증하고 패키지 링크를 교체한다. MFDS 소스 clone·submodule·make는 사용하지 않는다.
+기본 서버는 패키지의 `build/mf_detect_star_server`이며 스레드별 worker와 memfd 공유 메모리로 RAW/전처리 병렬성을 유지한다.
+`MF_DETECT_SERVER`, `MF_DETECT_LIBRARY`, `MF_DETECT_TRANSPORT` 비교용 설정은 유지한다. 기본값은 별도 프로세스다.
+기존 native 라이선스 조건과 GPL Python 연동 코드 고지를 패키지에 포함한다.
 
-[프로토콜·종료·timeout 정책](../python/MFDS/docs/PROCESS_PROTOCOL.md)을
-참고한다. 별도 systemd 서비스 설치는 필요하지 않으며 호출 프로세스가 worker를
-관리한다. 기본 요청 timeout은 500ms, 최초 시작 대기는 최소 2초다.
-
-수정은 mf_detect_star 정본에서 수행하고 검사·커밋·푸시한다. 이후 PiFinder에서
-승인된 커밋을 checkout하고 `git add python/MFDS`로 참조 버전을 갱신한다.
-`git submodule update --remote`를 부팅/실행 시 호출하지 않는다.
-소스 배포는 submodule까지 포함한 recursive clone 또는 전체 source bundle로 제공한다.
-
-[실측 기본값·비교 절차](https://github.com/hjoungjoo/MFDS/blob/2be2336635384e350fb50f9fcc91f501c00a4dde/docs/test_cedar_free_20260915/FIELD_GUIDE_ko.md),
-[라이선스 적용 범위](https://github.com/hjoungjoo/MFDS/blob/2be2336635384e350fb50f9fcc91f501c00a4dde/LICENSING.md)를 참고한다.
-MFDS의 native 라이선스 정책(5년 MIT 전환)과 기존 PiFinder 통합 코드의 GPL을
-구분한다. PiFinder 카메라/solver 스케줄/서비스 orchestration은 본 저장소에서
-계속 관리한다. 프로세스 전환에서도 기존 MF 우선/SEP 보조, RAW/전처리 스케줄,
-정렬·보정 중 동기 대기 정책은 유지한다. 분리만으로 법적 적합성을 확정하지 않는다.
-
-[라이선스 적용·통합 검증 완료 기록](https://github.com/hjoungjoo/MFDS/blob/2be2336635384e350fb50f9fcc91f501c00a4dde/docs/CONSOLIDATION_RESULTS_ko.md)
-은 정본 저장소에서 관리한다.
+[설치·소스 버전 전환·롤백 안내](MFDS_BINARY_DISTRIBUTION_ko.md)와
+[MFDS 프로세스 프로토콜](https://github.com/hjoungjoo/MFDS/blob/v0.3.0/docs/PROCESS_PROTOCOL.md)을 참고한다.
 
 ## 검색 속도 비교
 
@@ -79,14 +57,12 @@ RAW 기록 출력은 복원했고 노출·gain·부팅·운영 경로는 유지�
 수집 도구 Ruff lint/format 검사를 통과했다.
 
 MFDS 공개 이관(m2.6.4): [공개 저장소](https://github.com/hjoungjoo/MFDS)에서
-고정된 소스를 인증 없이 받는다. [이관 기록](MFDS_MIGRATION_ko.md)을 참고한다.
+당시 고정 소스를 인증 없이 받도록 전환했다. 현재는 바이너리 릴리즈 패키지를 사용한다. [이관 기록](MFDS_MIGRATION_ko.md)을 참고한다.
 
-## 운영 빌드와 비교 도구
+## 운영 패키지와 비교 도구
 
-운영 설치·갱신은 `bash scripts/setup_mfds.sh --runtime`으로
-MFDS 프로세스 서버와 라이선스 고지만 빌드한다. 기본값인 `--with-tools`는
-CLI·ctypes 라이브러리·네이티브 테스트도 빌드하고 테스트를 실행하므로
-개발과 CI, 실측 비교에 사용한다. 기존 비교 도구나 기록을 삭제하지 않는다.
+`bash scripts/setup_mfds.sh`는 서버·CLI·공유 라이브러리와 GPL Python 지원 도구가 포함된 패키지를 설치한다.
+이전 `--runtime` 및 `--with-tools` 옵션은 호환용으로 받아들이지만 PiFinder에서 빌드하지 않는다.
 
 `solver_cedar_fullframe`과 `solver_cedar_ff_gates`는 더 이상 사용하지 않는다.
 MFDS의 전체 RAW 입력은 항상 게시하며 품질 필터는 `star_detect`가 적용한다.

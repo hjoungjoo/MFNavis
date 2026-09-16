@@ -26,13 +26,13 @@ jobs:
       - uses: actions/checkout@v5
         with:
           submodules: false
-      - name: Checkout pinned public MFDS
-        uses: ./.github/actions/checkout-mf
+      - name: Install pinned MFDS release
+        uses: ./.github/actions/install-mfds
       - name: Create tetra3 import alias
         run: bash ../scripts/ensure_tetra3_link.sh ..
       - name: Check Cedar-free merge candidate
         run: python3 ../scripts/check_cedar_free.py --repo ..
-      - name: Build pinned MF detector
+      - name: Verify installed MFDS package
         run: bash ../scripts/setup_mfds.sh
       - uses: actions/setup-python@v6
         with:

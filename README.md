@@ -144,7 +144,9 @@ Join the  [PiFinder™ Discord server](https://discord.gg/Nk5fHcAtWD) for suppor
 
 ## Public MF detector source (m2.6.6)
 
-The detector and its PiFinder integration are maintained at [MFDS](https://github.com/hjoungjoo/MFDS),
-a public, pinned submodule at `python/MFDS`. This release uses [MFDS v0.2.1](https://github.com/hjoungjoo/MFDS/releases/tag/v0.2.1); see [release notes](release_notes/m2.6.6.md). No private repository key
-is required. Native FSL five-year/MIT and the integration's GPL terms remain
-separate; see [migration and license scope](docs/MFDS_MIGRATION_ko.md).
+The detector and Python integration are maintained and built at [MFDS](https://github.com/hjoungjoo/MFDS).
+PiFinder installs the [MFDS v0.3.0 binary release](https://github.com/hjoungjoo/MFDS/releases/tag/v0.3.0)
+using `bash scripts/setup_mfds.sh`; it does not clone or compile MFDS sources.
+The version, source revision and platform-specific checksums are pinned in `deployment/mfds.lock.json`.
+See [binary installation and update guide](docs/MFDS_BINARY_DISTRIBUTION_ko.md).
+MFDS native licensing and the GPL Python integration remain separately documented in the package.

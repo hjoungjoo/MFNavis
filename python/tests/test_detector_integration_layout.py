@@ -10,7 +10,7 @@ from PiFinder import star_detect
 pytestmark = pytest.mark.unit
 
 
-def test_all_integration_paths_resolve_to_the_submodule():
+def test_all_integration_paths_resolve_to_the_release_package():
     root = Path(__file__).resolve().parents[2]
     submodule = root / "python/MFDS"
     manifest = json.loads((submodule / "integrations/pifinder/SOURCE.json").read_text())
@@ -28,19 +28,18 @@ def test_native_default_is_from_the_same_source_tree(monkeypatch):
     root = Path(__file__).resolve().parents[1]
     assert (
         star_detect.native_library_path()
-        == root / "MFDS/build/libmf_detect_star.so"
+        == (root / "MFDS/build/libmf_detect_star.so").resolve()
     )
     monkeypatch.setenv("MF_DETECT_LIBRARY", "/tmp/explicit-mfds.so")
     assert star_detect.native_library_path() == Path("/tmp/explicit-mfds.so")
 
 
-def test_submodule_uses_a_portable_remote():
-    import configparser
-
+def test_distribution_is_pinned_without_a_source_checkout():
     root = Path(__file__).resolve().parents[2]
-    config = configparser.ConfigParser()
-    config.read(root / ".gitmodules")
-    assert config['submodule "MFDS"']["url"] == (
-        "https://github.com/hjoungjoo/MFDS.git"
-    )
-    assert config['submodule "MFDS"']["path"] == "python/MFDS"
+    lock = json.loads((root / "deployment/mfds.lock.json").read_text())
+    manifest = json.loads((root / "python/MFDS/PACKAGE.json").read_text())
+    assert manifest["version"] == lock["version"]
+    assert manifest["source_commit"] == lock["source_commit"]
+    assert not (root / "python/MFDS/.git").exists()
+    assert not (root / "python/MFDS/src").exists()
+    assert not (root / "python/MFDS/Makefile").exists()
