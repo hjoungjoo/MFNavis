@@ -34,7 +34,7 @@ setup은 고정 커밋 checkout과 빌드/검사만 한다. 서비스 전환이�
 
 [실측 기본값·비교 절차](https://github.com/hjoungjoo/MFDS/blob/2be2336635384e350fb50f9fcc91f501c00a4dde/docs/test_cedar_free_20260915/FIELD_GUIDE_ko.md),
 [라이선스 적용 범위](https://github.com/hjoungjoo/MFDS/blob/2be2336635384e350fb50f9fcc91f501c00a4dde/LICENSING.md)를 참고한다.
-Cedar의 native 라이선스 조건(5년 MIT 전환)과 기존 PiFinder 통합 코드의 GPL을
+MFDS의 native 라이선스 정책(5년 MIT 전환)과 기존 PiFinder 통합 코드의 GPL을
 구분한다. PiFinder 카메라/solver 스케줄/서비스 orchestration은 본 저장소에서
 계속 관리한다. 프로세스 전환에서도 기존 MF 우선/SEP 보조, RAW/전처리 스케줄,
 정렬·보정 중 동기 대기 정책은 유지한다. 분리만으로 법적 적합성을 확정하지 않는다.
