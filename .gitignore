@@ -173,3 +173,6 @@ wifi_status.txt
 # Downloaded, verified MFDS release artifacts (not source checkouts)
 /python/MFDS
 /python/.mfds/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
