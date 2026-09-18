@@ -2543,7 +2543,9 @@ def test_disabling_goto_approach_cancels_pending_or_active_move(monkeypatch, whe
     assert not pulses
 
 
-def test_goto_approach_stops_after_three_moves_without_progress(monkeypatch):
+def test_goto_approach_requests_recovery_after_three_moves_without_progress(
+    monkeypatch,
+):
     mount, clock, observation, _errors, motions, _pulses = _manual_approach_mount(
         monkeypatch
     )
@@ -2556,7 +2558,11 @@ def test_goto_approach_stops_after_three_moves_without_progress(monkeypatch):
         mount._check_manual_motion_deadline()
         clock[0] += 0.6
     assert not mount._guide_correction_enabled
-    assert mount._guide_correction_mode == "failed"
+    assert not mount._guide_manual_approach
+    assert mount._guide_correction_mode == "reacquire"
+    observation[0] = clock[0]
+    mount._check_guide_correction()
+    assert not _pulses
     assert len(motions) == 6  # Three bounded moves, each followed by stop.
 
 
@@ -3187,3 +3193,27 @@ def test_initial_reset_failure_reports_error_without_retry(monkeypatch, raises):
     assert mount._initial_site_failed
     assert not mount._initial_site_recovering
     assert mount.statuses[-1][0] == "initialization_failed"
+
+
+def test_diverging_pulses_request_recovery_from_distinct_fresh_solves(monkeypatch):
+    mount, clock, observation, errors, _motions, pulses = _manual_approach_mount(
+        monkeypatch, axis_errors=(0.1, 0.0)
+    )
+    mount._guide_manual_approach = False
+    monkeypatch.setattr(mount, "_select_guide_rate_for_error", lambda *args: True)
+    mount._check_guide_correction()
+    assert len(pulses) == 1
+    for i in range(3):
+        clock[0] += 4
+        observation[0] = clock[0]
+        errors[0] = (10 + i) / 60
+        mount._check_guide_correction()
+        # Re-reading the same observation must not count as more evidence.
+        for _ in range(3):
+            mount._check_guide_correction()
+        if i < 2:
+            assert mount._guide_correction_enabled
+    assert mount._guide_correction_mode == "reacquire"
+    assert not mount._guide_correction_enabled
+    assert len(pulses) == 3  # No fourth worsening pulse.
+    assert mount._guide_correction_target == (10.0, 20.0)

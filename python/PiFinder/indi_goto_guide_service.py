@@ -78,17 +78,17 @@ PIFINDER_FINAL_GOTO_SETTLE_SECONDS = 1.0
 # Fallback cap on sync + GoTo iterations when indi_pifinder_goto_max_gotos is
 # missing from config.
 PIFINDER_DEFAULT_MAX_GOTOS = 10
-# A sync + GoTo step must cut the error by at least this much versus the previous
-# step, otherwise the loop stops rather than slewing without converging.
+# Log slow progress, but retain the target and continue with fresh solves.
 PIFINDER_MIN_ERROR_IMPROVEMENT_ARCMIN = 1.0
+PIFINDER_CORRECTION_RETRY_SECONDS = 10.0
 # A 1x sidereal, 2.5 s capped guide pulse moves at most about 0.625 arcmin per
 # axis.  With a 3 s fresh-solve cadence and the 90 s pulse-align timeout, an
 # initial error above 15 arcmin cannot reliably reach the 6 arcmin target.
 # Keep larger errors in the sync+GoTo loop instead of handing an impossible
 # correction to the fine pulse stage.
 PIFINDER_PULSE_ALIGN_MAX_ERROR_ARCMIN = 15.0
-# Give the pulse-guide fine-alignment stage this long to reach the final accuracy
-# before giving up (mount-control pulses every 3 s off a fresh solve).
+# Retry the GoTo stage after this long with usable solves but no correction
+# activity (mount-control pulses every 3 s off a fresh solve).
 PIFINDER_PULSE_ALIGN_TIMEOUT_SECONDS = 90.0
 # After a GoTo settles, wait up to this long for a high-quality plate-solve
 # coordinate before measuring the arrival error. IMU estimates right after a
@@ -157,6 +157,7 @@ class IndiGotoGuideService:
         self.final_sync_sent = False
         self.pulse_align_sent = False
         self.pulse_align_started_at = 0.0
+        self.pulse_alignment_unreliable = False
         self.tracking_target_ra: Optional[float] = None
         self.tracking_target_dec: Optional[float] = None
         self.tracking_guide_active_sent = False
@@ -179,6 +180,7 @@ class IndiGotoGuideService:
         self.tracking_recovery_goto_sent_at = 0.0
         self.tracking_recovery_goto_idle_since = 0.0
         self.tracking_recovery_attempts = 0
+        self.tracking_recovery_retry_at = 0.0
         # Manual re-target: a user mount manual-move during tracking, once ended
         # and settled, adopts the stopped position as the new target.
         self.manual_retarget_pending = False
@@ -401,6 +403,7 @@ class IndiGotoGuideService:
         self.manual_target_origin = None
         self.initial_goto_deadline = None
         self.alignment_target_pixel = None
+        self.pulse_alignment_unreliable = False
         try:
             target_ra = float(command["ra"])
             target_dec = float(command["dec"])
@@ -924,6 +927,10 @@ class IndiGotoGuideService:
         if self._mount_summary_reports_parked(mount_status):
             self._stop_with_error("mount parked during pulse align")
             return
+        if mount_status.get("guide_correction_mode") == "reacquire":
+            self.pulse_alignment_unreliable = True
+            self._wait_to_retry_goto("guide correction did not converge")
+            return
         if (
             str(mount_status.get("state", "")).strip().lower()
             == "guide_correction_failed"
@@ -934,33 +941,40 @@ class IndiGotoGuideService:
             )
             return
 
-        if (
-            time.monotonic() - self.pulse_align_started_at
-            > PIFINDER_PULSE_ALIGN_TIMEOUT_SECONDS
-        ):
-            self._stop_with_error("pulse align did not converge")
-            return
+        now = time.monotonic()
         if self._mount_summary_reports_motion(mount_status):
             if mount_status.get("manual_motion_origin") == "user":
                 self._begin_manual_retarget()
                 return
+            self.pulse_align_started_at = now
             self.last_action = "pifinder manual approach"
             return
 
         pointing = self._refresh_pointing_status()
-        if not pointing.get("usable_for_goto"):
-            if mount_status.get("guide_correction_mode") in {
-                "manual_approach",
-                "settling",
-            }:
-                self.last_action = "waiting for solve after manual approach"
-                return
-            self._stop_with_error(
-                str(pointing.get("reason") or "pointing unavailable during pulse align")
-            )
+        current = pointing.get("current") or {}
+        pulse_end = float(mount_status.get("guide_pulse_until_wall") or 0.0)
+        observation_after = max(
+            pulse_end, float(mount_status.get("guide_observation_after_wall") or 0.0)
+        )
+        if (
+            not pointing.get("usable_for_goto")
+            or not self._is_recent_solve(current)
+            or float(current.get("timestamp") or 0.0) < observation_after
+        ):
+            # Clouds and post-motion settling are recoverable waits. Never
+            # complete or correct against an old/estimated coordinate.
+            self.pulse_align_started_at = now
+            self.last_action = "waiting for solve after manual approach"
             return
 
-        current = pointing.get("current") or {}
+        # Only time out when usable solves are available but corrections have
+        # stopped. Include pulses that completed between service ticks.
+        if observation_after > time.time() - (now - self.pulse_align_started_at):
+            self.pulse_align_started_at = now
+        if now - self.pulse_align_started_at > PIFINDER_PULSE_ALIGN_TIMEOUT_SECONDS:
+            self._wait_to_retry_goto("pulse alignment stalled")
+            return
+
         self.current_ra = self._finite_float(current.get("ra"))
         self.current_dec = self._finite_float(current.get("dec"))
         self.last_error_arcmin = self._target_error_arcmin(
@@ -1043,27 +1057,13 @@ class IndiGotoGuideService:
             return
 
         pointing = self._refresh_pointing_status()
-        if not pointing.get("usable_for_goto"):
-            self._stop_with_error(
-                str(pointing.get("reason") or "pointing unavailable after GoTo")
-            )
-            return
-
         current = pointing.get("current") or {}
-        if not self._is_fresh_arrival_solve(current):
+        if not pointing.get("usable_for_goto") or not self._is_fresh_arrival_solve(
+            current
+        ):
             if self.solve_anchor_wait_since == 0.0:
                 self.solve_anchor_wait_since = now
-            if now - self.solve_anchor_wait_since < PIFINDER_SOLVE_ANCHOR_WAIT_SECONDS:
-                self.last_action = "waiting for solve anchor"
-                return
-            logger.warning(
-                "No post-idle solve anchor within %.0fs after GoTo; "
-                "refusing %s/%s coordinate",
-                PIFINDER_SOLVE_ANCHOR_WAIT_SECONDS,
-                current.get("source"),
-                current.get("quality"),
-            )
-            self._stop_with_error("No fresh plate solve after GoTo")
+            self.last_action = "waiting for solve anchor"
             return
         self.solve_anchor_wait_since = 0.0
         self.current_ra = self._finite_float(current.get("ra"))
@@ -1086,26 +1086,47 @@ class IndiGotoGuideService:
             # Already at final accuracy straight off the slew: skip pulse guide.
             self._send_final_sync_once()
             return
-        if self.last_error_arcmin <= near_threshold_arcmin:
+        if (
+            self.last_error_arcmin <= near_threshold_arcmin
+            and not self.pulse_alignment_unreliable
+        ):
             # Within the near threshold: hand off to pulse-guide fine alignment.
             self._begin_pulse_align()
             return
 
-        # Still outside the near threshold: sync + GoTo again, bounded by the
-        # attempt limit and the no-improvement guard.
+        # Still outside the near threshold: keep correcting in bounded batches.
+        # A noisy observation must not discard an otherwise working target.
         max_gotos = self._max_gotos()
         if self.correction_count >= max_gotos:
-            self._stop_with_error(f"GoTo limit reached ({max_gotos})")
+            self._wait_to_retry_goto(f"GoTo batch complete ({max_gotos})")
             return
         if (
             self.previous_goto_error_arcmin is not None
             and self.last_error_arcmin
             >= self.previous_goto_error_arcmin - PIFINDER_MIN_ERROR_IMPROVEMENT_ARCMIN
         ):
-            self._stop_with_error("GoTo error did not improve")
-            return
+            logger.info("GoTo error did not improve; continuing with fresh solve")
 
         self._send_sync_and_goto(first=False)
+
+    def _wait_to_retry_goto(self, reason: str) -> None:
+        """Retain the target and require a new observation after a quiet pause."""
+        self._disable_pulse_align()
+        self.correction_count = 0
+        self.previous_goto_error_arcmin = None
+        self.sync_goto_request_id = None
+        self.final_goto_sent_at = time.monotonic()
+        self.final_goto_idle_since = self.final_goto_sent_at
+        self.solve_anchor_required_after_wall = (
+            time.time() + PIFINDER_CORRECTION_RETRY_SECONDS
+        )
+        self.solve_anchor_wait_since = 0.0
+        self.service_state = "running"
+        self.phase = "pifinder_goto"
+        self.wait_reason = ""
+        self.last_action = "waiting for fresh solve before retry"
+        self._update_goto_plan()
+        logger.info("%s; retaining GoTo target for retry", reason)
 
     def _send_final_sync_once(self) -> None:
         if self.final_sync_sent:
@@ -1439,6 +1460,20 @@ class IndiGotoGuideService:
             self.config_values.get("indi_tracking_guide_goto_recovery_enabled", True)
         )
 
+        pulse_diverged = mount_status.get("guide_correction_mode") == "reacquire"
+        if pulse_diverged:
+            self.pulse_alignment_unreliable = True
+        recovery_for_fine_error = self.pulse_alignment_unreliable and (
+            self.tracking_guide_error_arcmin
+            > float(self.config_values.get("indi_tracking_guide_threshold_arcmin", 3.0))
+        )
+        if self.pulse_alignment_unreliable and not goto_recovery_enabled:
+            self.tracking_guide_state = "paused"
+            self.tracking_guide_last_action = (
+                "pulse correction diverged; recovery disabled"
+            )
+            return
+
         # Large error with recovery enabled: sync mount to current, GoTo target.
         # The recovery starts with a mount SYNC, so the anchor must be a fresh
         # plate solve: an IMU estimate here can be degrees off and sends the
@@ -1446,8 +1481,9 @@ class IndiGotoGuideService:
         # burning all 5 attempts). Same bounded wait as the pifinder GoTo loop.
         if (
             self.tracking_guide_error_arcmin > goto_threshold_arcmin
-            and goto_recovery_enabled
-        ):
+            or pulse_diverged
+            or recovery_for_fine_error
+        ) and goto_recovery_enabled:
             if not self._is_recent_solve(current):
                 if self.recovery_anchor_wait_since == 0.0:
                     self.recovery_anchor_wait_since = now
@@ -1469,15 +1505,16 @@ class IndiGotoGuideService:
                     )
                 self._disable_tracking_guide(wait_action)
                 self.tracking_guide_state = "waiting_coordinate"
-                self.error_notifier.emit(
-                    "recovery_waiting_solve",
-                    "Recovery is paused: no fresh camera solve is available.",
-                )
                 return
             self.recovery_anchor_wait_since = 0.0
             self._begin_tracking_recovery_goto(current_ra, current_dec)
             return
         self.recovery_anchor_wait_since = 0.0
+
+        if self.pulse_alignment_unreliable:
+            self._disable_tracking_guide("target within tracking accuracy")
+            self.tracking_guide_state = "enabled"
+            return
 
         # Otherwise pulse-guide fine correction. Within the envelope this closes
         # the error; with recovery Off it is the only tool and pulses slowly
@@ -1615,12 +1652,19 @@ class IndiGotoGuideService:
         self, current_ra: float, current_dec: float
     ) -> None:
         if self.tracking_recovery_attempts >= TRACKING_GUIDE_MAX_RECOVERY_GOTOS:
-            self._disable_tracking_guide("goto recovery limit reached")
+            self._disable_tracking_guide("waiting before next recovery batch")
             self.tracking_recovery_state = "idle"
             self.tracking_guide_recovery_mode = "goto"
-            self.tracking_guide_state = "failed"
-            self.tracking_guide_last_action = "goto recovery limit reached"
-            return
+            self.tracking_guide_state = "settling"
+            now = time.monotonic()
+            if not self.tracking_recovery_retry_at:
+                self.tracking_recovery_retry_at = (
+                    now + PIFINDER_CORRECTION_RETRY_SECONDS
+                )
+            if now < self.tracking_recovery_retry_at:
+                return
+            self.tracking_recovery_attempts = 0
+            self.tracking_recovery_retry_at = 0.0
 
         self._disable_tracking_guide("starting goto recovery")
         self.sync_goto_request_id = uuid.uuid4().hex
@@ -1736,6 +1780,7 @@ class IndiGotoGuideService:
         self.tracking_recovery_goto_sent_at = 0.0
         self.tracking_recovery_goto_idle_since = 0.0
         self.tracking_recovery_attempts = 0
+        self.tracking_recovery_retry_at = 0.0
         self.tracking_guide_recovery_mode = "none"
         self.tracking_guide_recovery_count = 0
         self.tracking_guide_settle_remaining = None

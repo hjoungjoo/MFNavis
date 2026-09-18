@@ -899,8 +899,8 @@ def test_arrival_timeout_does_not_sync_estimate_or_pre_idle_solve(
     service.solve_anchor_wait_since = 985.0
     service._pointing["current"].update(source=source, quality=quality, timestamp=994.0)
     service._tick_goto_wait()
-    assert service.phase == "error"
-    assert service.wait_reason == "No fresh plate solve after GoTo"
+    assert service.phase == "pifinder_goto"
+    assert service.last_action == "waiting for solve anchor"
     assert service.final_sync_sent is False
     assert not any(
         c["type"] in {"goto_target", "sync"}
@@ -964,3 +964,178 @@ def test_manual_target_wait_reports_missing_solve_without_resuming_old_target(
     assert alerts.get_nowait()["code"] == "manual_target_waiting_solve"
     assert service.phase == "manual_retarget"
     assert not service.tracking_guide_active_sent
+
+
+@pytest.mark.parametrize("phase", ["pifinder_goto", "pifinder_pulse_align"])
+def test_cloudy_goto_waits_without_alert_and_resumes(monkeypatch, phase):
+    import queue
+
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    alerts = queue.Queue()
+    service.error_notifier.queue = alerts
+    service.active_target_ra, service.active_target_dec = 100.0, 22.0
+    service.service_state = "running"
+    service.phase = phase
+    service.final_goto_sent_at = 990.0
+    service.final_goto_idle_since = 995.0
+    service.solve_anchor_required_after_wall = 995.0
+    service.pulse_align_started_at = 1000.0
+    service._pointing["usable_for_goto"] = False
+    service._pointing["current"]["timestamp"] = 994.0
+    tick = (
+        service._tick_goto_wait
+        if phase == "pifinder_goto"
+        else service._tick_pulse_align
+    )
+    for clock[0] in (1000.0, 1100.0, 1400.0):
+        tick()
+        assert service.phase == phase
+        assert service.service_state == "running"
+        assert service.mountcontrol_queue.commands == []
+        assert alerts.empty()
+    service._pointing["usable_for_goto"] = True
+    service._pointing["current"]["timestamp"] = clock[0]
+    tick()
+    assert service.phase == "complete"
+    assert service.final_sync_sent
+
+
+@pytest.mark.parametrize("motion", ["manual", "pulse"])
+def test_active_correction_survives_pulse_align_timeout(monkeypatch, motion):
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    service.active_target_ra, service.active_target_dec = 100.0, 20.0
+    service._begin_pulse_align()
+    clock[0] += iggs.PIFINDER_PULSE_ALIGN_TIMEOUT_SECONDS + 1
+    status = {"available": True}
+    if motion == "manual":
+        status.update(mount_motion_active=True, manual_motion_origin="guide_correction")
+    else:
+        status["guide_pulse_until_wall"] = clock[0] - 1
+    monkeypatch.setattr(service, "_mount_status_summary", lambda: status)
+    service._tick_pulse_align()
+    assert service.phase == "pifinder_pulse_align"
+    assert service.pulse_align_started_at == clock[0]
+
+
+def test_pulse_align_stalled_with_good_solves_retains_target_for_retry(monkeypatch):
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    service.active_target_ra, service.active_target_dec = 100.0, 20.0
+    service._begin_pulse_align()
+    clock[0] += iggs.PIFINDER_PULSE_ALIGN_TIMEOUT_SECONDS + 1
+    service._tick_pulse_align()
+    assert service.phase == "pifinder_goto"
+    assert service.service_state == "running"
+    assert service.active_target_dec == 20.0
+    assert service.solve_anchor_required_after_wall > clock[0]
+
+
+def _arrived_goto(monkeypatch, clock):
+    service = _make_service(monkeypatch, clock)
+    service.active_target_ra, service.active_target_dec = 100.0, 20.0
+    service.phase = "pifinder_goto"
+    service.final_goto_sent_at = clock[0] - 10
+    service.final_goto_idle_since = clock[0] - 5
+    service.solve_anchor_required_after_wall = clock[0] - 5
+    service.previous_goto_error_arcmin = 119.0
+    service.correction_count = 3
+    return service
+
+
+def test_goto_continues_when_single_correction_increases_error(monkeypatch):
+    service = _arrived_goto(monkeypatch, [1000.0])
+    service._tick_goto_wait()
+    assert service.phase == "pifinder_goto"
+    assert service.correction_count == 4
+    assert service.mountcontrol_queue.commands[-1]["type"] == "sync_and_goto"
+    assert not any(
+        c["type"] == "stop_movement" for c in service.mountcontrol_queue.commands
+    )
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+def test_goto_batch_waits_for_new_solve_then_retries_unless_cancelled(
+    monkeypatch, cancel
+):
+    clock = [1000.0]
+    service = _arrived_goto(monkeypatch, clock)
+    service.correction_count = service._max_gotos()
+    service._tick_goto_wait()
+    assert service.service_state == "running"
+    assert service.mountcontrol_queue.commands == []
+    assert service.active_target_dec == 20.0
+    clock[0] += iggs.PIFINDER_CORRECTION_RETRY_SECONDS + 1
+    service._pointing["current"]["timestamp"] = 1000.0
+    service._tick_state_machine()
+    assert service.mountcontrol_queue.commands == []
+    if cancel:
+        service.handle_command({"type": "stop_movement"})
+        service.mountcontrol_queue.commands.clear()
+    service._pointing["current"]["timestamp"] = clock[0]
+    service._tick_state_machine()
+    if cancel:
+        assert service.phase == "idle"
+        assert service.mountcontrol_queue.commands == []
+    else:
+        assert service.correction_count == 1
+        assert service.mountcontrol_queue.commands[-1]["type"] == "sync_and_goto"
+
+
+def test_tracking_recovery_retries_after_batch_without_losing_target(monkeypatch):
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    service.tracking_recovery_attempts = iggs.TRACKING_GUIDE_MAX_RECOVERY_GOTOS
+    service.tracking_motion_ra, service.tracking_motion_dec = 100.0, 22.0
+    service.tracking_last_motion_at = 990.0
+    service._tick_tracking_guide()
+    assert service.tracking_guide_state == "settling"
+    assert service.tracking_target_dec == 20.0
+    assert not service.mountcontrol_queue.commands
+    clock[0] += iggs.PIFINDER_CORRECTION_RETRY_SECONDS - 1
+    service._tick_tracking_guide()
+    assert not service.mountcontrol_queue.commands
+    clock[0] += 2
+    service._tick_tracking_guide()
+    assert service.tracking_guide_state == "recovering_goto"
+    assert service.tracking_recovery_attempts == 1
+    assert service.mountcontrol_queue.commands[-1]["type"] == "sync_and_goto"
+
+
+def test_divergent_pulse_alignment_recovers_without_reentering_pulse_stage(monkeypatch):
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    service.active_target_ra, service.active_target_dec = 100.0, 21.9
+    service._begin_pulse_align()
+    status = {"available": True, "guide_correction_mode": "reacquire"}
+    monkeypatch.setattr(service, "_mount_status_summary", lambda: status)
+    service._tick_pulse_align()
+    assert service.pulse_alignment_unreliable
+    assert service.phase == "pifinder_goto"
+    assert service.active_target_dec == 21.9
+    clock[0] += iggs.PIFINDER_CORRECTION_RETRY_SECONDS + 1
+    service._tick_goto_wait()
+    assert service.last_error_arcmin == pytest.approx(6.0)
+    assert service.mountcontrol_queue.commands[-1]["type"] == "sync_and_goto"
+    assert service.phase == "pifinder_goto"
+
+
+@pytest.mark.parametrize("error_arcmin", [1.0, 6.0])
+def test_tracking_uses_recovery_instead_of_known_unreliable_pulses(
+    monkeypatch, error_arcmin
+):
+    service = _make_service(monkeypatch, [1000.0])
+    service.pulse_alignment_unreliable = True
+    service.config_values["indi_tracking_guide_threshold_arcmin"] = 3.0
+    service._pointing["current"]["dec"] = 20.0 + error_arcmin / 60
+    service.tracking_motion_ra = 100.0
+    service.tracking_motion_dec = service._pointing["current"]["dec"]
+    service.tracking_last_motion_at = 990.0
+    service._tick_tracking_guide()
+    if error_arcmin > 3:
+        assert service.tracking_guide_state == "recovering_goto"
+        assert service.mountcontrol_queue.commands[-1]["type"] == "sync_and_goto"
+    else:
+        assert service.tracking_guide_state == "enabled"
+        assert not service.mountcontrol_queue.commands

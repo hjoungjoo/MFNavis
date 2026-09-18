@@ -610,6 +610,9 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._guide_correction_next_at = 0.0
         self._guide_correction_observation: dict[str, Any] = {}
         self._guide_correction_last_solve_time = 0.0
+        self._guide_pulse_best_error: Optional[float] = None
+        self._guide_pulse_worsening = 0
+        self._guide_progress_solve_time = 0.0
         self._guide_manual_approach = False
         self._guide_correction_mode = "off"
         self._guide_observation_after_wall = 0.0
@@ -3494,6 +3497,9 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._guide_mount_type = config.Config().get_option("mount_type", "Alt/Az")
         self._guide_correction_next_at = time.monotonic()
         self._guide_correction_last_solve_time = 0.0
+        self._guide_pulse_best_error = None
+        self._guide_pulse_worsening = 0
+        self._guide_progress_solve_time = 0.0
         self._guide_manual_approach = bool(
             manual_approach
             and self._guide_mount_type == "Alt/Az"
@@ -3561,6 +3567,33 @@ class MountControlIndi(BacklashCalibrationMixin):
         if axis_error is None:
             return
         error = max(separation, axis_error)
+        # Judge progress from distinct post-pulse camera observations, not
+        # command submission. A functioning transport can still guide away.
+        if self._guide_pulse_best_error is not None:
+            if solve_time > self._guide_progress_solve_time:
+                self._guide_progress_solve_time = solve_time
+                best_error = min(self._guide_pulse_best_error, float(error))
+                self._guide_pulse_best_error = best_error
+                tolerance = max(2.0, self._guide_correction_accuracy_arcmin)
+                if error > best_error + tolerance:
+                    self._guide_pulse_worsening += 1
+                else:
+                    self._guide_pulse_worsening = 0
+            if self._guide_pulse_worsening >= 3:
+                self._guide_correction_enabled = False
+                self._guide_correction_mode = "reacquire"
+                self._write_controller_status(
+                    "guide_correction",
+                    "Pulse correction diverged; waiting for GoTo recovery",
+                    guide_error_arcmin=error,
+                )
+                logger.warning(
+                    "Pulse correction diverged: best %.2f, now %.2f arcmin; "
+                    "requesting GoTo recovery",
+                    self._guide_pulse_best_error,
+                    error,
+                )
+                return
         # At high altitude/declination a small angular distance can still be
         # a large LCD longitude error. Lower the pulse deadband accordingly.
         self._guide_axis_scale = min(1.0, separation / error) if error > 0 else 1.0
@@ -3596,6 +3629,9 @@ class MountControlIndi(BacklashCalibrationMixin):
                 return
             self._guide_correction_last_solve_time = solve_time
             self._guide_correction_next_at = now + GUIDE_CORRECTION_INTERVAL_SECONDS
+            if self._guide_pulse_best_error is None:
+                self._guide_pulse_best_error = error
+                self._guide_progress_solve_time = solve_time
             self._apply_guide_pulse(
                 current_ra, current_dec, target_ra, target_dec, separation
             )
@@ -3721,7 +3757,18 @@ class MountControlIndi(BacklashCalibrationMixin):
             else:
                 self._approach_no_progress = 0
             if self._approach_no_progress >= 3:
-                self._fail_manual_approach("Manual approach did not converge")
+                # Do not hand an unconverged physical-axis correction to
+                # unverified pulses. Ask the service to reacquire this target.
+                self._guide_manual_approach = False
+                self._guide_correction_enabled = False
+                self._approach_rate_request = None
+                self._guide_correction_last_solve_time = solve_time
+                self._guide_correction_mode = "reacquire"
+                self._write_controller_status(
+                    "guide_correction",
+                    "Manual approach stalled; requesting GoTo recovery",
+                )
+                logger.info("Manual approach stalled; requesting GoTo recovery")
                 return
         duration = min(
             GOTO_APPROACH_MAX_SECONDS,
