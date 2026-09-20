@@ -135,6 +135,7 @@ sudo python3 -m pip install --break-system-packages -r python/requirements.txt
 # Setup GPSD
 sudo cp "${PIFINDER_REPO_DIR}/pi_config_files/gpsd.conf" /etc/default/gpsd
 sudo sed -i "s|^DEVICES=.*|DEVICES=\"$(pifinder_gps_device)\"|" /etc/default/gpsd
+bash "${PIFINDER_REPO_DIR}/scripts/install_gpsd_stable.sh"
 
 # data dirs
 sudo install -d -o "${PIFINDER_USER}" -g "${PIFINDER_USER}" -m 755 \
