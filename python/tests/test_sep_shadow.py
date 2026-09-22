@@ -13,11 +13,17 @@ window.
 
 import numpy as np
 import pytest
+from PIL import Image
 
 from PiFinder import solver_frame_map as sfm
 from PiFinder.mf_wide_distortion import undistort_global_centroids
 from PiFinder.sep_detect import SepDetection
 from PiFinder.sep_shadow import SepRun, SepShadowRunner
+from PiFinder.raw_live_stack import (
+    _draw_sep_overlay,
+    MATCHED_MARK_RGB,
+    CANDIDATE_MARK_RGB,
+)
 
 
 @pytest.mark.unit
@@ -92,6 +98,45 @@ class TestOverlayPublish:
     """The overlay ships once per attempt AFTER the solve outcome, so the
     confirmed/candidate split is never clobbered by the next detect."""
 
+    @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+    @pytest.mark.parametrize("k1", [None, -0.05, -0.11])
+    def test_corrected_matches_overlay_original_pixels_without_duplicates(
+        self, tmp_path, rotation, k1
+    ):
+        runner = _runner(tmp_path)
+        runner.rotation_deg = rotation
+        coefficients = None if k1 is None else {"k1": k1, "p1": 0.001}
+        runner.distortion_coefficients = coefficients
+        frame_hw = (1080, 1920)
+        raw = np.array([[80.0, 180.0], [999.0, 1739.0], [540.0, 1300.0]])
+        corrected = (
+            raw
+            if coefficients is None
+            else undistort_global_centroids(raw, frame_hw, coefficients)
+        )
+        solved, canvas = sfm.rotate_centroids(corrected, frame_hw, rotation)
+        runner._last_overlay = {"centroids": raw.tolist(), "frame_hw": list(frame_hw)}
+        runner.attach_canvas_matched(solved[:2])
+        shared = DummyShared()
+        runner.publish_overlay(shared)
+        overlay = shared.sep_overlay()
+        np.testing.assert_allclose(overlay["matched"], raw[:2], atol=0.05)
+
+        image = _draw_sep_overlay(
+            Image.new("RGB", (canvas[1] // 2, canvas[0] // 2)),
+            overlay,
+            {"shape": canvas, "display_rotation_degrees": rotation},
+        )
+        pixels = np.asarray(image)
+        displayed, _ = sfm.rotate_centroids(raw, frame_hw, rotation)
+        green = np.argwhere(np.all(pixels == MATCHED_MARK_RGB, axis=2))
+        orange = np.argwhere(np.all(pixels == CANDIDATE_MARK_RGB, axis=2))
+        assert len(green) > 0 and len(orange) > 0
+        for point in displayed[:2] / 2:
+            assert np.linalg.norm(green - point, axis=1).min() < 5
+            assert np.linalg.norm(orange - point, axis=1).min() > 20
+        assert np.linalg.norm(orange - displayed[2] / 2, axis=1).max() < 5
+
     def test_publish_carries_matched_in_frame_space(self, tmp_path):
         runner = _runner(tmp_path)  # rotation 90
         frame_hw = (64, 48)
@@ -152,6 +197,19 @@ class TestOverlayPublish:
         shared = DummyShared()
         runner.publish_overlay(shared)
         assert "matched" not in shared.sep_overlay()
+
+    def test_production_crop_matches_are_already_unrectified(self, tmp_path):
+        runner = _runner(tmp_path)
+        runner.distortion_coefficients = {"k1": -0.11}
+        frame_hw = (1080, 1920)
+        runner._last_overlay = {"frame_hw": list(frame_hw)}
+        # This path solves the actual cropped image without lens correction.
+        point = (40.0, 80.0)
+        _, canvas = sfm.rotate_centroids(np.empty((0, 2)), frame_hw, 90)
+        mapped = sfm.map_target_pixel_to_frame(point, canvas, 980)
+        expected, _ = sfm.rotate_centroids(np.array([mapped]), canvas, 270)
+        runner.attach_production_matched({"RA": 1.0, "matched_centroids": [point]})
+        np.testing.assert_allclose(runner._last_overlay["matched"], expected)
 
 
 @pytest.mark.unit
@@ -317,13 +375,25 @@ class TestSolveSafety:
             distortion_coefficients=coefficients,
         )
         source = np.asarray([(80.0, 120.0), (540.0, 960.0)])
+        expected = undistort_global_centroids(source, (1080, 1920), coefficients)
+        runner._last_overlay = {
+            "centroids": source.tolist(),
+            "frame_hw": [1080, 1920],
+        }
         fake = DummyT3(
-            {"RA": 10.0, "Dec": 20.0, "Matches": 7, "RMSE": 90.0, "Prob": 1e-6}
+            {
+                "RA": 10.0,
+                "Dec": 20.0,
+                "Matches": 7,
+                "RMSE": 90.0,
+                "Prob": 1e-6,
+                "matched_centroids": expected.tolist(),
+            }
         )
         solution = runner.solve(fake, self._run(source), DummySolveShared())
         assert solution is not None
-        expected = undistort_global_centroids(source, (1080, 1920), coefficients)
         assert fake.calls[0][0] == pytest.approx(expected)
+        np.testing.assert_allclose(runner._last_overlay["matched"], source, atol=0.01)
 
     def test_solve_rejects_observed_six_match_false_pattern(self, tmp_path):
         runner = _runner(tmp_path)

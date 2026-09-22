@@ -28,19 +28,8 @@ from PiFinder import config
 from PiFinder import camera_controls
 from PiFinder import solver_capture
 from PiFinder.observation import observation_snapshot
-from PiFinder.mf_livecam_tiles import (
-    EXCLUDED_TILES_CONFIG_KEY,
-    excluded_tile_ids,
-    overlay_payload as wide_tile_overlay_payload,
-)
 from PiFinder.mf_manual_lens import manual_focal_from_state
-from PiFinder.mf_wide_calibration import (
-    CalibrationProfileStore,
-    ManualTvDistortion,
-)
-from PiFinder.mf_wide_solver import tile_solver_eligible
 from PiFinder.optics import OpticalTrainResolver
-from PiFinder.sqm.camera_profiles import get_camera_profile
 from PiFinder.livecam_config import (
     SESSION_ONLY_KEYS,
     default_settings_for_config,
@@ -148,13 +137,6 @@ def _solution_to_dict(sol) -> dict:
         "CedarGatedCentroids": getattr(diag, "CedarGatedCentroids", None),
         "CedarCenterCentroids": getattr(diag, "CedarCenterCentroids", None),
         "SepCentroids": getattr(diag, "SepCentroids", None),
-        "tile_recovery": {
-            "attempted": list(getattr(diag, "TileAttempted", ()) or ()),
-            "candidates": list(getattr(diag, "TileCandidates", ()) or ()),
-            "accepted": list(getattr(diag, "TileAccepted", ()) or ()),
-            "reason": getattr(diag, "TileReason", ""),
-            "scores": list(getattr(diag, "TileScores", ()) or ()),
-        },
     }
 
 
@@ -988,139 +970,6 @@ def register_api_routes(app, server_instance, require_auth=False):
             logger.error("api/camera/raw-stack/status error: %s", e)
             return _json_response({"error": str(e)}, 500)
 
-    @app.route("/api/camera/wide-tiles", methods=["GET", "POST"])
-    def api_camera_wide_tiles():
-        """Expose editable solver-tile guides for every stated lens.
-
-        Exclusions are stored by optical train and are consumed by the
-        opt-in tile recovery solver.  Lenses below 10 mm use the wide grid;
-        10 mm and above use a central-crop-sized 3x3 recovery grid.
-        """
-
-        try:
-            cfg = config.Config()
-            lens_key = cfg.get_option("camera_lens", "")
-            manual_focal = cfg.get_option("camera_lens_focal_length_mm")
-            camera_type = _camera_type()
-            info = None
-            if hasattr(server_instance.shared_state, "raw_live_frame_info"):
-                info = server_instance.shared_state.raw_live_frame_info()
-            frame_shape = (info or {}).get("shape")
-            frame_hw = (
-                (int(frame_shape[0]), int(frame_shape[1]))
-                if isinstance(frame_shape, (list, tuple)) and len(frame_shape) == 2
-                else None
-            )
-            display_rotation_degrees = (info or {}).get("display_rotation_degrees", 0)
-            saved = cfg.get_option(EXCLUDED_TILES_CONFIG_KEY, {})
-            saved = saved if isinstance(saved, dict) else {}
-
-            def payload_for_current_optics():
-                probe = wide_tile_overlay_payload(
-                    camera_type=camera_type,
-                    lens_key=lens_key,
-                    manual_focal_length_mm=manual_focal,
-                    frame_hw=frame_hw,
-                    display_rotation_degrees=display_rotation_degrees,
-                )
-                return wide_tile_overlay_payload(
-                    camera_type=camera_type,
-                    lens_key=lens_key,
-                    manual_focal_length_mm=manual_focal,
-                    frame_hw=frame_hw,
-                    excluded_ids=saved.get(probe["optics_key"], []),
-                    display_rotation_degrees=display_rotation_degrees,
-                )
-
-            data = payload_for_current_optics()
-            if request.method == "POST":
-                if not data["enabled"]:
-                    return _json_response(
-                        {"error": "Tile controls require a selected lens"},
-                        400,
-                    )
-                requested = excluded_tile_ids(
-                    (request.get_json(silent=True) or {}).get("excluded_tile_ids")
-                )
-                valid_ids = {tile["id"] for tile in data["tiles"]}
-                saved = dict(saved)
-                saved[data["optics_key"]] = sorted(requested & valid_ids)
-                cfg.set_option(EXCLUDED_TILES_CONFIG_KEY, saved)
-                data = payload_for_current_optics()
-            return _json_response(data)
-        except Exception as e:
-            logger.error("api/camera/wide-tiles error: %s", e)
-            return _json_response({"error": str(e)}, 500)
-
-    @app.route("/api/camera/wide-solver", methods=["GET", "POST"])
-    def api_camera_wide_solver():
-        """Report/alter the explicit tile recovery flag and TV baseline.
-
-        A calibration write is intentionally separated from the enable flag:
-        entering a vendor value never starts experimental solves by itself.
-        The camera process reads the flag at start-up in order to publish the
-        full RAW frame, therefore enabling it reports that a restart is
-        required before the solver can use the new path.
-        """
-
-        try:
-            cfg = config.Config()
-            lens_key = str(cfg.get_option("camera_lens", "") or "")
-            manual_focal = cfg.get_option("camera_lens_focal_length_mm")
-            camera_type = _camera_type()
-            if request.method == "POST":
-                body = request.get_json(silent=True) or {}
-                if "enabled" in body:
-                    cfg.set_option("wide_solver_enabled", bool(body["enabled"]))
-                if "manual_tv" in body:
-                    if not lens_key and manual_focal is None:
-                        return _json_response(
-                            {
-                                "error": "Select a named lens before saving TV distortion"
-                            },
-                            400,
-                        )
-                    tv_input = body["manual_tv"]
-                    if not isinstance(tv_input, dict):
-                        return _json_response(
-                            {"error": "manual_tv must be an object"}, 400
-                        )
-                    tv = ManualTvDistortion(
-                        tv_distortion_percent=float(tv_input.get("distortion_percent")),
-                        direction=str(tv_input.get("direction", "")),
-                        reference_image_height_mm=float(
-                            tv_input.get("reference_image_height_mm")
-                        ),
-                        reference_kind=str(tv_input.get("reference_kind", "")),
-                        source_note=str(tv_input.get("source_note", "")),
-                    )
-                    CalibrationProfileStore(cfg).save_manual_tv(
-                        camera_type, lens_key, get_camera_profile(camera_type), tv
-                    )
-
-            profile = get_camera_profile(camera_type)
-            active = (
-                CalibrationProfileStore(cfg).load_active(camera_type, lens_key, profile)
-                if lens_key or manual_focal is not None
-                else None
-            )
-            enabled = bool(cfg.get_option("wide_solver_enabled"))
-            return _json_response(
-                {
-                    "enabled": enabled,
-                    "eligible": tile_solver_eligible(enabled, lens_key, manual_focal),
-                    "lens_key": lens_key,
-                    "manual_focal_length_mm": manual_focal,
-                    "active_calibration": active,
-                    "restart_required_after_enable": enabled,
-                }
-            )
-        except (TypeError, ValueError) as e:
-            return _json_response({"error": str(e)}, 400)
-        except Exception as e:
-            logger.error("api/camera/wide-solver error: %s", e)
-            return _json_response({"error": str(e)}, 500)
-
     @app.route("/api/camera/raw-stack/image")
     def api_camera_raw_stack_image():
         try:
@@ -1135,7 +984,8 @@ def register_api_routes(app, server_instance, require_auth=False):
                 # The web_image_format setting only governs downloads.
                 image_format="jpeg",
                 web_theme=request.args.get("theme", "grey"),
-                overlay_sep=request.args.get("overlay") == "sep",
+                overlay_sep="sep" in request.args.getlist("overlay"),
+                overlay_mark="mark" in request.args.getlist("overlay"),
             )
             if rendered is None:
                 return Response(status=204)
@@ -1181,6 +1031,7 @@ def register_api_routes(app, server_instance, require_auth=False):
                 color_mode=download_color_mode(server_instance.shared_state, settings),
                 web_theme=request.args.get("theme", "grey"),
                 accept_new_frame=False,
+                native_resolution=True,
             )
             if rendered is None:
                 return Response(status=204)

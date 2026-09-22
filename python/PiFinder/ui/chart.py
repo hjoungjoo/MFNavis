@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from PIL import ImageChops, Image
 
 from PiFinder.ui.marking_menus import MarkingMenuOption, MarkingMenu
+from PiFinder.ui.camera_guidance import draw_reticle
 from PiFinder.obj_types import OBJ_TYPE_MARKERS
 from PiFinder import plot
 from PiFinder.ui.base import UIModule
@@ -329,19 +330,12 @@ class UIChart(UIModule):
             # None....
             return
 
-        fov = self.fov
-        for circ_deg in [4, 2, 0.5]:
-            circ_rad = ((circ_deg / fov) * self.display_class.fov_res) / 2
-            bbox = [
-                self.display_class.centerX - circ_rad,
-                self.display_class.centerY - circ_rad,
-                self.display_class.centerX + circ_rad,
-                self.display_class.centerY + circ_rad,
-            ]
-            self.draw.arc(bbox, 20, 70, fill=self.colors.get(brightness))
-            self.draw.arc(bbox, 110, 160, fill=self.colors.get(brightness))
-            self.draw.arc(bbox, 200, 250, fill=self.colors.get(brightness))
-            self.draw.arc(bbox, 290, 340, fill=self.colors.get(brightness))
+        draw_reticle(
+            self.draw,
+            (self.display_class.centerX, self.display_class.centerY),
+            self.display_class.fov_res / self.fov,
+            self.colors.get(brightness),
+        )
 
     # --- Center object + readout ------------------------------------------
     #

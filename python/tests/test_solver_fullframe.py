@@ -2,8 +2,6 @@
 # -*- coding:utf-8 -*-
 """Full-frame crop counts, centre-first solve ordering and motion recovery."""
 
-from types import SimpleNamespace
-
 import pytest
 
 from PiFinder import solver
@@ -144,15 +142,6 @@ def test_center_first_remainder_uses_full_paths_only_after_center_failure():
     assert path == "cedar_full"
     assert solution["RA"] == 2.0
     assert calls == ["sep_center", "cedar_full"]
-
-
-@pytest.mark.unit
-def test_auto_star_peripheral_tile_result_cannot_bypass_disabled_wide_pointing():
-    candidate = {"RA": 120.0, "Dec": 30.0}
-    result = SimpleNamespace(solution=candidate)
-
-    assert solver._wide_result_pointing_solution(result, False) == {}
-    assert solver._wide_result_pointing_solution(result, True) is candidate
 
 
 @pytest.mark.unit

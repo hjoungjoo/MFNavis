@@ -6,14 +6,20 @@ This module contains all the UI code for the object details screen
 
 """
 
+from PIL import Image, ImageChops, ImageOps
+
 from pydeepskylog.exceptions import InvalidParameterError
+
+from PiFinder.ui.camera_guidance import draw_pointer, draw_reticle, target_direction
+from PiFinder.optics import OpticalTrainResolver
+from PiFinder.mf_manual_lens import manual_focal_from_state
 
 from PiFinder import cat_images
 from PiFinder.display_pointing import DisplayPointing
 from PiFinder.composite_object import MagnitudeObject
 from PiFinder.ui.marking_menus import MarkingMenuOption, MarkingMenu
 from PiFinder.obj_types import OBJ_TYPES
-from PiFinder.ui.align import align_on_radec
+from PiFinder.ui.align import CAMERA_NATIVE_RES, align_on_radec
 from PiFinder.ui.base import INDI_PROBLEM_STATES, UIModule
 from PiFinder.ui.log import UILog
 from PiFinder.ui.ui_utils import (
@@ -24,6 +30,7 @@ from PiFinder.ui.ui_utils import (
     SpaceCalculatorFixed,
     name_deduplicate,
     draw_pointing_instructions,
+    pointing_arrows,
 )
 from PiFinder import calc_utils, utils
 import functools
@@ -75,6 +82,7 @@ DM_LOCATE = 1  # Display mode for LOCATE
 DM_POSS = 2  # Display mode for POSS
 DM_SDSS = 3  # Display mode for SDSS
 DM_CONTRAST = 4  # Display mode for Contrast Reserve explanation
+DM_CAMERA = 5  # Live camera with compact push guidance and alignment ring
 
 
 class UIObjectDetails(UIModule):
@@ -616,22 +624,30 @@ class UIObjectDetails(UIModule):
         catalog = self.catalogs.get_catalog_by_code(code)
         return catalog and catalog.initialized
 
-    def _render_pointing_instructions(self):
+    def _render_pointing_instructions(self, compact=False):
         self._refresh_push_status()
+        font = self.fonts.base if compact else self.fonts.large
+        if compact:
+            bottom = self.display_class.resY - self.fonts.small.height - 4
+            anchor_1 = (2, bottom - 2 * (font.height + 2))
+            anchor_2 = (2, bottom - (font.height + 2))
+        else:
+            anchor_1 = self._pointing_msg_anchor_1
+            anchor_2 = self._pointing_msg_anchor_2
         # Pointing Instructions
         if not self.shared_state.solution().has_pointing():
             self.draw.text(
-                self._pointing_msg_anchor_1,
+                anchor_1,
                 _("No solve"),  # TRANSLATORS: No solve yet... (Part 1/2)
-                font=self.fonts.large.font,
+                font=font.font,
                 fill=self.colors.get(255),
             )
             self.draw.text(
-                self._pointing_msg_anchor_2,
+                anchor_2,
                 _("yet{elipsis}").format(
                     elipsis="." * int(self._elipsis_count / 10)
                 ),  # TRANSLATORS: No solve yet... (Part 2/2)
-                font=self.fonts.large.font,
+                font=font.font,
                 fill=self.colors.get(255),
             )
             self._elipsis_count += 1
@@ -641,17 +657,17 @@ class UIObjectDetails(UIModule):
 
         if not self.shared_state.altaz_ready():
             self.draw.text(
-                self._pointing_msg_anchor_1,
+                anchor_1,
                 _("Searching"),  # TRANSLATORS: Searching for GPS (Part 1/2)
-                font=self.fonts.large.font,
+                font=font.font,
                 fill=self.colors.get(255),
             )
             self.draw.text(
-                self._pointing_msg_anchor_2,
+                anchor_2,
                 _("for GPS{elipsis}").format(
                     elipsis="." * int(self._elipsis_count / 10)
                 ),  # TRANSLATORS: Searching for GPS (Part 2/2)
-                font=self.fonts.large.font,
+                font=font.font,
                 fill=self.colors.get(255),
             )
             self._elipsis_count += 1
@@ -661,15 +677,15 @@ class UIObjectDetails(UIModule):
 
         if not self._check_catalog_initialized():
             self.draw.text(
-                self._pointing_msg_anchor_1,
+                anchor_1,
                 _("Calculating"),
-                font=self.fonts.large.font,
+                font=font.font,
                 fill=self.colors.get(255),
             )
             self.draw.text(
-                self._pointing_msg_anchor_2,
+                anchor_2,
                 _("positions") + "." * int(self._elipsis_count / 10),
-                font=self.fonts.large.font,
+                font=font.font,
                 fill=self.colors.get(255),
             )
             self._elipsis_count += 1
@@ -691,20 +707,37 @@ class UIObjectDetails(UIModule):
         if point_az is None or point_alt is None:
             # No valid pointing data available
             self.draw.text(
-                self._pointing_msg_anchor_1,
+                anchor_1,
                 _("Calculating"),
-                font=self.fonts.large.font,
+                font=font.font,
                 fill=self.colors.get(255),
             )
             self.draw.text(
-                self._pointing_msg_anchor_2,
+                anchor_2,
                 _("position") + "." * int(self._elipsis_count / 10),
-                font=self.fonts.large.font,
+                font=font.font,
                 fill=self.colors.get(255),
             )
             self._elipsis_count += 1
             if self._elipsis_count > 39:
                 self._elipsis_count = 0
+            return
+
+        if compact:
+            az_arrow, az, alt_arrow, alt = pointing_arrows(
+                self, point_az, point_alt, self.mount_type
+            )
+            for anchor, arrow, value in (
+                (anchor_1, az_arrow, az),
+                (anchor_2, alt_arrow, alt),
+            ):
+                decimals = 3 if value < 0.2 else 2 if value < 1 else 1
+                self.draw.text(
+                    anchor,
+                    f"{arrow}{value: >5.{decimals}f}°",
+                    font=font.font,
+                    fill=self.colors.get(indicator_color),
+                )
             return
 
         draw_pointing_instructions(
@@ -716,9 +749,84 @@ class UIObjectDetails(UIModule):
             bottom_padding=self.fonts.small.height + 2,
         )
 
+    def _render_camera_push(self):
+        """Overlay guidance on the already rotated, 512-space camera preview."""
+        width, height = self.display_class.resolution
+        top = self.display_class.titlebar_height
+        # Preserve the square image geometry on rectangular LCDs too.
+        side = min(width, height - top)
+        left = (width - side) // 2
+        image_top = top + (height - top - side) // 2
+        frame = self.camera_image.copy().convert("L")
+        frame = ImageOps.autocontrast(frame.resize((side, side)))
+        frame = ImageChops.multiply(
+            frame.convert("RGB"), Image.new("RGB", (side, side), self.colors.get(255))
+        )
+        self.screen.paste(frame, (left, image_top))
+
+        # Dim the text bands enough for readability while retaining the image.
+        header_bottom = top + self.fonts.base.height + self.fonts.small.height + 5
+        footer_top = (
+            height - self.fonts.small.height - 4 - 2 * (self.fonts.base.height + 2)
+        )
+        for y0, y1 in ((top, header_bottom), (footer_top, height - 1)):
+            self.draw.rectangle((0, y0, width - 1, y1), fill=(0, 0, 0, 144))
+
+        def fitted_text(text, y, font):
+            while text and self.draw.textlength(text, font=font) > width - 4:
+                text = text[:-1]
+            self.draw.text(
+                (2, y), text, font=font, fill=self.colors.get(255), anchor="lt"
+            )
+
+        fitted_text(self.object.display_name, top + 2, self.fonts.base.font)
+        fitted_text(
+            f"{_(OBJ_TYPES.get(self.object.obj_type, 'Unknown'))}  {self.object.const}",
+            top + self.fonts.base.height + 3,
+            self.fonts.small.font,
+        )
+        self._render_pointing_instructions(compact=True)
+        self._render_push_status()
+
+        # target_pixel is (Y, X) in the SAME rotated 512x512 space as frame;
+        # no extra camera or telescope rotation should be applied here.
+        target = self.shared_state.target_pixel()
+        if target is not None and len(target) == 2:
+            y, x = target
+            if all(math.isfinite(v) and 0 <= v < CAMERA_NATIVE_RES for v in (y, x)):
+                cx = left + (x + 0.5) * side / CAMERA_NATIVE_RES - 0.5
+                cy = image_top + (y + 0.5) * side / CAMERA_NATIVE_RES - 0.5
+                if not hasattr(self, "_camera_optics"):
+                    self._camera_optics = OpticalTrainResolver()
+                fov = self._camera_optics.resolve(
+                    self.shared_state.camera_type(),
+                    self.shared_state.camera_lens(),
+                    manual_focal_from_state(self.shared_state),
+                ).fov_degrees
+                draw_reticle(self.draw, (cx, cy), side / fov, self.colors.get(192))
+                self._draw_camera_pointer((cx, cy), side, target, fov)
+
+    def _draw_camera_pointer(self, center, side, target_pixel, fov):
+        solution = self.shared_state.solution()
+        if not solution or not solution.has_pointing():
+            return
+        camera = solution.pointing.camera.estimate
+        if camera is None or self.object.ra is None or self.object.dec is None:
+            return
+        angle = target_direction(
+            camera, self.object.ra, self.object.dec, target_pixel, fov
+        )
+        if angle is None:
+            return
+        draw_pointer(self.screen, center, side, angle, self.colors.get(192))
+
     def update(self, force=True):
         # Clear Screen
         self.clear_screen()
+
+        if self.object_display_mode == DM_CAMERA:
+            self._render_camera_push()
+            return self.screen_update()
 
         # paste image
         if self.object_display_mode in [DM_POSS, DM_SDSS]:
@@ -853,8 +961,10 @@ class UIObjectDetails(UIModule):
         for a module.  Invoked when the square
         key is pressed
         """
-        # Cycle: LOCATE -> POSS -> DESC -> CONTRAST -> LOCATE
+        # Cycle: LOCATE -> CAMERA -> POSS -> DESC -> CONTRAST -> LOCATE
         if self.object_display_mode == DM_LOCATE:
+            self.object_display_mode = DM_CAMERA
+        elif self.object_display_mode == DM_CAMERA:
             self.object_display_mode = DM_POSS
         elif self.object_display_mode == DM_POSS:
             self.object_display_mode = DM_DESC
@@ -1025,6 +1135,8 @@ class UIObjectDetails(UIModule):
             display_modes = {
                 DM_DESC: "description",
                 DM_LOCATE: "locate",
+                DM_CAMERA: "camera",
+                DM_CONTRAST: "contrast",
                 DM_POSS: "poss_image",
                 DM_SDSS: "sdss_image",
             }

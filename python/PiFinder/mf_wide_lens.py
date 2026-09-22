@@ -35,18 +35,9 @@ MF_WIDE_LENS_SPECS: Final[tuple[MFWideLensSpec, ...]] = (
 MF_WIDE_LENS_KEYS: Final[frozenset[str]] = frozenset(
     spec.key for spec in MF_WIDE_LENS_SPECS
 )
-# The wide-grid solver uses this <10 mm subset.  Lenses at/above 10 mm use
-# the separate central-crop-sized 3x3 recovery geometry in ``mf_wide_tiles``.
-MF_WIDE_TILE_LENS_KEYS: Final[frozenset[str]] = frozenset({"4mm", "6mm", "8mm"})
 
 
 def is_mf_wide_lens(lens_key: str | None) -> bool:
-    """Whether ``lens_key`` needs the MF calibration/tile policy."""
+    """Whether ``lens_key`` needs the MF calibration policy."""
 
     return lens_key in MF_WIDE_LENS_KEYS
-
-
-def is_mf_wide_tile_lens(lens_key: str | None) -> bool:
-    """Whether ``lens_key`` belongs to the <10 mm tile-solver set."""
-
-    return lens_key in MF_WIDE_TILE_LENS_KEYS

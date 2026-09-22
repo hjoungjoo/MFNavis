@@ -55,6 +55,16 @@ class Config:
         with open(self.default_file_path, "r") as config_file:
             self._default_config_dict = json.load(config_file)
 
+        # Retired tile recovery settings must not survive upgrades. Keep the
+        # separately stored lens calibration used by ordinary full-frame solves.
+        retired_options = {"wide_solver_enabled", "mf_wide_excluded_tiles_by_optics"}
+        if retired_options.intersection(self._config_dict):
+            with self._write_lock():
+                self._refresh_from_disk()
+                for option in retired_options:
+                    self._config_dict.pop(option, None)
+                self.dump_config()
+
         # Load the equipment config
         eq_config = self.get_option("equipment")
         if eq_config is None:

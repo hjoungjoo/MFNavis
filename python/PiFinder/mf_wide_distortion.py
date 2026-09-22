@@ -1,10 +1,9 @@
-"""Centroid-space Brown--Conrady correction for MF native tile solves.
+"""Centroid-space Brown--Conrady correction for native sensor detections.
 
-The wide solver preserves native 512px crops.  Rather than resampling every
-RAW tile (which would move star energy before Cedar/SEP sees it), detectors
-work on the original crop and this module corrects their measured centroids
-in the full sensor coordinate system.  The common optical centre is fixed by
-the transform, so the existing target-pixel mapping remains valid.
+Detectors work on the original RAW data. This module corrects their measured
+centroids in the full sensor coordinate system without resampling the image.
+The common optical centre is fixed by the transform, so the existing
+target-pixel mapping remains valid.
 """
 
 from __future__ import annotations
@@ -29,6 +28,36 @@ def active_coefficients(profile: object) -> dict[str, float] | None:
     except (TypeError, ValueError):
         return None
     return result if all(np.isfinite(value) for value in result.values()) else None
+
+
+def distort_global_centroids(
+    centroids_yx: np.ndarray,
+    frame_hw: tuple[int, int],
+    coefficients: Mapping[str, float],
+) -> np.ndarray:
+    """Map corrected solver coordinates back onto the original sensor image.
+
+    Use the same centre and corner-radius normalisation as undistortion.
+    LiveCam displays unrectified pixels, so matched stars need this forward
+    Brown--Conrady mapping after undoing the solver canvas rotation.
+    """
+    points = np.asarray(centroids_yx, dtype=np.float64).reshape(-1, 2)
+    if len(points) == 0:
+        return points
+    h, w = float(frame_hw[0]), float(frame_hw[1])
+    scale = np.hypot(h / 2.0, w / 2.0)
+    if scale <= 0:
+        return points.copy()
+    cy, cx = (h - 1.0) / 2.0, (w - 1.0) / 2.0
+    y, x = (points[:, 0] - cy) / scale, (points[:, 1] - cx) / scale
+    k1, k2, k3 = (float(coefficients.get(key, 0.0)) for key in ("k1", "k2", "k3"))
+    p1, p2 = (float(coefficients.get(key, 0.0)) for key in ("p1", "p2"))
+    r2 = x * x + y * y
+    radial = 1.0 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2
+    xd = x * radial + 2.0 * p1 * x * y + p2 * (r2 + 2.0 * x * x)
+    yd = y * radial + p1 * (r2 + 2.0 * y * y) + 2.0 * p2 * x * y
+    distorted = np.column_stack((yd * scale + cy, xd * scale + cx))
+    return distorted if np.all(np.isfinite(distorted)) else points.copy()
 
 
 def undistort_global_centroids(

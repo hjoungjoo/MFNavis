@@ -52,66 +52,6 @@
     object-fit: contain;
     image-rendering: auto;
   }
-  .wide-tile-overlay {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-  }
-  .wide-tile-overlay.editing { pointer-events: auto; }
-  .wide-tile-overlay .tile {
-    fill: var(--pf-text-muted);
-    /* A near-transparent fill keeps the entire logical cell clickable. */
-    fill-opacity: 0.001;
-    /* Logical cells are click targets, not a second visible grid.  Showing
-       their borders on top of the real overlap guide is visually misleading. */
-    stroke: none;
-  }
-  .wide-tile-overlay .tile-central-outline {
-    fill: none;
-    stroke: var(--pf-text);
-    stroke-width: 5;
-    stroke-dasharray: 12 6;
-    vector-effect: non-scaling-stroke;
-    pointer-events: none;
-  }
-  .wide-tile-overlay .tile-recovery-footprint {
-    fill: none;
-    stroke: var(--pf-text-muted);
-    stroke-width: 2;
-    stroke-dasharray: 8 5;
-    vector-effect: non-scaling-stroke;
-    pointer-events: none;
-  }
-  .wide-tile-overlay .tile-excluded-footprint {
-    fill: var(--pf-text);
-    fill-opacity: 0.28;
-    stroke: var(--pf-text);
-    stroke-width: 2;
-    stroke-dasharray: 6 3;
-    vector-effect: non-scaling-stroke;
-    pointer-events: none;
-  }
-  .wide-tile-overlay .tile-overlap {
-    fill: var(--pf-text-muted);
-    fill-opacity: 0.05;
-    stroke: var(--pf-text-muted);
-    stroke-width: 2;
-    stroke-dasharray: 6 4;
-    vector-effect: non-scaling-stroke;
-    pointer-events: none;
-  }
-  .wide-tile-overlay .tile-label {
-    fill: var(--pf-text);
-    font-size: 24px;
-    font-weight: bold;
-    paint-order: stroke;
-    stroke: var(--pf-bg);
-    stroke-width: 4px;
-    /* Labels must never intercept a click intended for their tile. */
-    pointer-events: none;
-  }
   .livecam-preview-header {
     display: flex;
     align-items: flex-start;
@@ -388,16 +328,11 @@
           <input type="checkbox" id="sepOverlay" class="filled-in" />
           <span>{{ _('SEP overlay') }}</span>
         </label>
-        <span id="wideTileTools" hidden>
-          <label class="livecam-overlay-toggle" for="wideTileOverlay">
-            <input type="checkbox" id="wideTileOverlay" class="filled-in" />
-            <span>{{ _('Wide tiles') }}</span>
-          </label>
-          <label class="livecam-overlay-toggle" for="wideTileEdit">
-            <input type="checkbox" id="wideTileEdit" class="filled-in" />
-            <span>{{ _('Edit exclusions') }}</span>
-          </label>
-        </span>
+        <label class="livecam-overlay-toggle" for="markOverlay"
+               title="{{ _('Show alignment reticle and target direction') }}">
+          <input type="checkbox" id="markOverlay" class="filled-in" />
+          <span>{{ _('Mark') }}</span>
+        </label>
         <button type="button" class="btn" id="downloadImage">
           <i class="material-icons">download</i>{{ _('Download') }}
         </button>
@@ -410,7 +345,6 @@
     <div class="livecam-preview-shell">
       <div class="livecam-image-stage" id="livecamImageStage" hidden>
         <img id="livecamImage" alt="{{ _('LiveCam preview') }}" />
-        <svg id="wideTileSvg" class="wide-tile-overlay" viewBox="0 0 1000 1000" preserveAspectRatio="none"></svg>
       </div>
       <span id="livecamPlaceholder" class="grey-text">{{ _('Processing is off or no RAW frame is available.') }}</span>
     </div>
@@ -505,148 +439,12 @@ const message = document.getElementById('livecamMessage');
 const zoomValue = document.getElementById('zoomValue');
 const shell = document.querySelector('.livecam-preview-shell');
 const imageStage = document.getElementById('livecamImageStage');
-const wideTileTools = document.getElementById('wideTileTools');
-const wideTileOverlayToggle = document.getElementById('wideTileOverlay');
-const wideTileEditToggle = document.getElementById('wideTileEdit');
-const wideTileSvg = document.getElementById('wideTileSvg');
 let pollTimer = null;
 let waitingSince = null;
 let lastFrameKey = null;
 let controlsHydrated = false;
 let imageZoom = 1.0;
 let fitMode = true;
-let wideTileData = null;
-
-function renderWideTiles(data) {
-  wideTileData = data;
-  const enabled = !!(data && data.enabled);
-  wideTileTools.hidden = !enabled;
-  wideTileSvg.replaceChildren();
-  wideTileSvg.classList.toggle('editing', enabled && wideTileEditToggle.checked);
-  if (!enabled || !wideTileOverlayToggle.checked) {
-    return;
-  }
-  // Keep overlap guides behind selectable cells.  In edit mode a click in an
-  // overlap must select the cell under it, and an excluded cell must retain
-  // its solid highlight instead of being washed out by this guide layer.
-  (data.overlaps || []).forEach((overlap) => {
-    const region = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    region.setAttribute('class', 'tile-overlap');
-    region.setAttribute('x', String(overlap.x * 1000));
-    region.setAttribute('y', String(overlap.y * 1000));
-    region.setAttribute('width', String(overlap.width * 1000));
-    region.setAttribute('height', String(overlap.height * 1000));
-    wideTileSvg.appendChild(region);
-  });
-  // Exclusion is a solver decision, so show the actual native 512px crop --
-  // not the non-overlapping logical cell used only to make clicking easy.
-  (data.tiles || []).filter((tile) => tile.excluded).forEach((tile) => {
-    const footprint = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    footprint.setAttribute('class', 'tile-excluded-footprint');
-    footprint.setAttribute('x', String(tile.crop_x * 1000));
-    footprint.setAttribute('y', String(tile.crop_y * 1000));
-    footprint.setAttribute('width', String(tile.crop_width * 1000));
-    footprint.setAttribute('height', String(tile.crop_height * 1000));
-    wideTileSvg.appendChild(footprint);
-  });
-  // Wide grids can contain many crops, so their centre footprint is the
-  // only persistent outline. The normal-lens recovery grid has nine fixed
-  // squares; show its peripheral footprints so their corner coverage and
-  // equal native size are unambiguous.
-  if (data.strategy === 'recovery_grid') {
-    (data.tiles || []).filter((tile) => !tile.central).forEach((tile) => {
-      const footprint = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      footprint.setAttribute('class', 'tile-recovery-footprint');
-      footprint.setAttribute('x', String(tile.crop_x * 1000));
-      footprint.setAttribute('y', String(tile.crop_y * 1000));
-      footprint.setAttribute('width', String(tile.crop_width * 1000));
-      footprint.setAttribute('height', String(tile.crop_height * 1000));
-      wideTileSvg.appendChild(footprint);
-    });
-  }
-  let centralTile = null;
-  (data.tiles || []).forEach((tile) => {
-    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    rect.setAttribute('class', 'tile');
-    rect.setAttribute('x', String(tile.x * 1000));
-    rect.setAttribute('y', String(tile.y * 1000));
-    rect.setAttribute('width', String(tile.width * 1000));
-    rect.setAttribute('height', String(tile.height * 1000));
-    rect.dataset.tileId = tile.id;
-    if (wideTileEditToggle.checked) {
-      rect.style.cursor = 'pointer';
-      rect.addEventListener('click', () => toggleWideTile(tile.id));
-    }
-    wideTileSvg.appendChild(rect);
-    if (tile.central) {
-      centralTile = tile;
-    }
-    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    label.setAttribute('class', 'tile-label');
-    label.setAttribute('x', String((tile.x + tile.width / 2) * 1000));
-    label.setAttribute('y', String((tile.y + tile.height / 2) * 1000));
-    label.setAttribute('text-anchor', 'middle');
-    label.setAttribute('dominant-baseline', 'middle');
-    label.textContent = tile.id;
-    wideTileSvg.appendChild(label);
-  });
-  // Draw the true 512px central crop last.  It is intentionally distinct
-  // from the surrounding logical-cell grid and remains visible over every
-  // overlap guide and exclusion footprint.
-  if (centralTile) {
-    const outline = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    outline.setAttribute('class', 'tile-central-outline');
-    outline.setAttribute('x', String(centralTile.crop_x * 1000));
-    outline.setAttribute('y', String(centralTile.crop_y * 1000));
-    outline.setAttribute('width', String(centralTile.crop_width * 1000));
-    outline.setAttribute('height', String(centralTile.crop_height * 1000));
-    wideTileSvg.appendChild(outline);
-  }
-}
-
-async function loadWideTiles() {
-  try {
-    const response = await fetch('/api/camera/wide-tiles');
-    const data = await response.json();
-    if (!response.ok || data.error) {
-      throw new Error(data.error || 'Wide tile status failed');
-    }
-    renderWideTiles(data);
-  } catch (error) {
-    // LiveCam remains fully usable if the optional wide-angle extension is
-    // unavailable during a rolling update.
-    wideTileTools.hidden = true;
-    wideTileSvg.replaceChildren();
-  }
-}
-
-async function toggleWideTile(tileId) {
-  if (!wideTileData || !wideTileData.enabled) {
-    return;
-  }
-  const excluded = new Set(
-    (wideTileData.tiles || []).filter((tile) => tile.excluded).map((tile) => tile.id)
-  );
-  if (excluded.has(tileId)) {
-    excluded.delete(tileId);
-  } else {
-    excluded.add(tileId);
-  }
-  try {
-    const response = await fetch('/api/camera/wide-tiles', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({excluded_tile_ids: Array.from(excluded)})
-    });
-    const data = await response.json();
-    if (!response.ok || data.error) {
-      throw new Error(data.error || 'Wide tile update failed');
-    }
-    renderWideTiles(data);
-  } catch (error) {
-    message.textContent = error.toString();
-  }
-}
 
 function currentTheme() {
   const theme = document.documentElement.getAttribute('data-theme') || 'grey';
@@ -764,7 +562,6 @@ function renderStatus(data, syncControls = false) {
     if (frameKey !== lastFrameKey || !image.src) {
       lastFrameKey = frameKey;
       image.src = imageUrl();
-      loadWideTiles();
     }
   } else {
     image.hidden = true;
@@ -1016,9 +813,11 @@ async function fetchCameraControls(hydrate) {
 }
 
 const sepOverlayToggle = document.getElementById('sepOverlay');
+const markOverlayToggle = document.getElementById('markOverlay');
 
 function imageUrl() {
-  const overlay = sepOverlayToggle && sepOverlayToggle.checked ? '&overlay=sep' : '';
+  let overlay = sepOverlayToggle.checked ? '&overlay=sep' : '';
+  if (markOverlayToggle.checked) overlay += '&overlay=mark';
   return `/api/camera/raw-stack/image?t=${Date.now()}&theme=${encodeURIComponent(currentTheme())}${overlay}`;
 }
 
@@ -1219,8 +1018,6 @@ document.getElementById('zoomFit').addEventListener('click', setFitMode);
 
 image.addEventListener('load', applyImageZoom);
 
-wideTileOverlayToggle.addEventListener('change', () => renderWideTiles(wideTileData));
-wideTileEditToggle.addEventListener('change', () => renderWideTiles(wideTileData));
 
 // Page scripts are re-run on every SPA visit, so replace the previous
 // listener instead of stacking one up per visit.
@@ -1240,20 +1037,19 @@ window.addEventListener('resize', window.__livecamResize);
 document.getElementById('downloadTiff').addEventListener('click', () => {
   window.location.href = '/api/camera/raw-stack/download?format=tiff';
 });
-sepOverlayToggle.addEventListener('change', () => {
+[sepOverlayToggle, markOverlayToggle].forEach(toggle => toggle.addEventListener('change', () => {
   // Refresh right away so the toggle feels immediate; the frame_id gate
   // would otherwise delay it until the next new frame.
   if (!imageStage.hidden) {
     image.src = imageUrl();
   }
-});
+}));
 document.getElementById('downloadImage').addEventListener('click', () => {
   window.location.href = `/api/camera/raw-stack/download?theme=${encodeURIComponent(currentTheme())}`;
 });
 
 document.addEventListener('DOMContentLoaded', () => {
   fetchStatus();
-  loadWideTiles();
 });
 </script>
 {% endblock %}

@@ -278,13 +278,6 @@ class SolveDiagnostics:
     CedarGatedCentroids: Optional[int] = None
     CedarCenterCentroids: Optional[int] = None
     SepCentroids: Optional[int] = None
-    # Optional-tile recovery trace. It remains populated even when a later
-    # centre/full-frame fallback supplies the published position.
-    TileAttempted: tuple[str, ...] = ()
-    TileCandidates: tuple[str, ...] = ()
-    TileAccepted: tuple[str, ...] = ()
-    TileReason: str = ""
-    TileScores: tuple[dict[str, object], ...] = ()
     # Camera frame identity and compact Auto(Star) v2 quality.  The quality
     # dict intentionally contains only scalar/short tuple diagnostics; full
     # RAW and matched arrays stay inside the solver process.

@@ -33,6 +33,35 @@ def _on_disk(config_dir: Path) -> dict:
 
 
 @pytest.mark.unit
+def test_retired_tile_settings_removed_without_losing_lens_calibration(config_dir):
+    calibration = {"profiles": {"imx462:6mm": {"coefficients": {"k1": -0.11}}}}
+    retained = {
+        "wide_solver_calibration_store_v1": calibration,
+        "camera_exp": 123000,
+        "target_pixel": [220, 240],
+    }
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                **retained,
+                "wide_solver_enabled": True,
+                "mf_wide_excluded_tiles_by_optics": {"imx462:6mm": ["C"]},
+            }
+        )
+    )
+
+    cfg = config.Config()
+    assert _on_disk(config_dir) == retained
+    assert cfg.get_option("wide_solver_enabled") is None
+    assert cfg.get_option("mf_wide_excluded_tiles_by_optics") is None
+    assert cfg.get_option("wide_solver_calibration_store_v1") == calibration
+    # Loading again must not rewrite an already migrated configuration.
+    stamp = (config_dir / "config.json").stat().st_mtime_ns
+    config.Config()
+    assert (config_dir / "config.json").stat().st_mtime_ns == stamp
+
+
+@pytest.mark.unit
 def test_set_option_persists(config_dir):
     cfg = config.Config()
     cfg.set_option("camera_exp", 400000)

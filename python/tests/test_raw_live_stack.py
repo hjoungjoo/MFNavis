@@ -2,6 +2,7 @@ import io
 import json
 from types import SimpleNamespace
 
+import pytest
 import numpy as np
 from PIL import Image
 
@@ -743,10 +744,11 @@ def test_colour_variant_download_keeps_real_chroma():
         image_format="png",
         color_mode=download_color_mode(shared),
         accept_new_frame=False,
+        native_resolution=True,
     )
     image = Image.open(io.BytesIO(download_bytes))
     assert image.mode == "RGB"
-    assert image.size == (5, 5)  # a real CFA debayers to half resolution
+    assert image.size == (10, 10)
 
 
 def test_real_bayer_sensor_still_debayers_to_half_res():
@@ -1018,3 +1020,63 @@ def test_live_view_endpoint_always_streams_jpeg():
     end = src.index('@app.route("/api/camera/raw-stack/download")')
     endpoint_src = src[start:end]
     assert 'image_format="jpeg"' in endpoint_src
+
+
+@pytest.mark.parametrize("pattern", ["RGGB", "BGGR", "GRBG", "GBRG"])
+def test_native_debayer_preserves_color_values_and_odd_dimensions(pattern):
+    from PiFinder.raw_live_stack import _bayer_native_rgb
+
+    frame = np.zeros((13, 17), dtype=np.float32)
+    levels = {"R": 900.5, "G": 400.25, "B": 100.75}
+    for index, color in enumerate(pattern):
+        frame[index // 2 :: 2, index % 2 :: 2] = levels[color]
+    rgb = _bayer_native_rgb(frame, "S" + pattern + "12")
+    assert rgb.shape == (13, 17, 3)
+    for channel, color in enumerate("RGB"):
+        np.testing.assert_allclose(rgb[..., channel], levels[color])
+
+
+@pytest.mark.parametrize("mono", [True, False])
+@pytest.mark.parametrize("image_format", ["png", "jpeg", "webp"])
+def test_download_endpoint_ignores_preview_downsampling(
+    monkeypatch, mono, image_format
+):
+    from flask import Flask
+    from PiFinder import api_extensions
+
+    shared = DummySharedState()
+    frame = np.arange(80 * 120, dtype=np.uint16).reshape(80, 120)
+    settings = normalize_settings(
+        {
+            "processing_enabled": True,
+            "display_size": 32,
+            "preview_mode": "bayer_2x2_average",
+            "web_image_format": image_format,
+        }
+    )
+    publish_selected_frame(
+        shared,
+        settings,
+        _mono_bayer_profile() if mono else _bayer_profile(),
+        "test",
+        frame,
+        frame,
+    )
+    monkeypatch.setattr(api_extensions, "settings_from_config", lambda cfg: settings)
+    monkeypatch.setattr(api_extensions.config, "Config", lambda: object())
+    server = SimpleNamespace(shared_state=shared)
+    app = Flask(__name__)
+    api_extensions.register_api_routes(app, server)
+    client = app.test_client()
+    preview = client.get("/api/camera/raw-stack/image")
+    assert preview.status_code == 200
+    assert max(Image.open(io.BytesIO(preview.data)).size) == 32
+    previous_shape = server.raw_live_stack_processor._last_display_shape
+    response = client.get("/api/camera/raw-stack/download")
+    assert response.status_code == 200
+    assert "attachment" in response.headers["Content-Disposition"]
+    image = Image.open(io.BytesIO(response.data))
+    assert image.size == (120, 80)
+    assert image.format.lower() == image_format
+    assert server.raw_live_stack_processor._last_display_shape == previous_shape
+    assert settings["display_size"] == 32

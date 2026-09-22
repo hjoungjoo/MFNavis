@@ -200,8 +200,9 @@ def _environment(cfg, source_directory=None):
     selected = {
         key: cfg.get_option(key)
         for key in keys
-        if key.startswith(("camera_", "solver_", "livecam_", "wide_solver_"))
-        or key in {"target_pixel", "screen_direction"}
+        if key.startswith(("camera_", "solver_", "livecam_"))
+        or key
+        in {"target_pixel", "screen_direction", "wide_solver_calibration_store_v1"}
     }
     hashes = {}
     for name in (

@@ -261,6 +261,7 @@ class DisplayFrameBuilder:
         web_theme: str = "grey",
         raw_format: str | None = None,
         mono: bool = False,
+        native_resolution: bool = False,
     ) -> None:
         self.low_percentile = low_percentile
         self.high_percentile = high_percentile
@@ -270,10 +271,15 @@ class DisplayFrameBuilder:
         self.web_theme = web_theme
         self.raw_format = raw_format
         self.mono = mono
+        self.native_resolution = native_resolution
 
     def build(self, frame: np.ndarray) -> Image.Image:
         arr = _prepare_display_frame(
-            np.asarray(frame), self.preview_mode, self.raw_format, self.mono
+            np.asarray(frame),
+            self.preview_mode,
+            self.raw_format,
+            self.mono,
+            native_resolution=self.native_resolution,
         )
 
         if self.preview_mode == PREVIEW_MODE_RAW:
@@ -299,7 +305,7 @@ class DisplayFrameBuilder:
             image = Image.fromarray(scaled, mode="RGB")
         else:
             image = Image.fromarray(scaled, mode="L")
-        if self.display_size > 0:
+        if self.display_size > 0 and not self.native_resolution:
             image.thumbnail((self.display_size, self.display_size), RESAMPLE_BILINEAR)
         return image
 
@@ -380,6 +386,8 @@ class RawLiveStackProcessor:
         color_mode: str | None = None,
         accept_new_frame: bool = True,
         overlay_sep: bool = False,
+        overlay_mark: bool = False,
+        native_resolution: bool = False,
     ) -> tuple[bytes, str] | None:
         normalized = normalize_settings(settings)
         if not normalized["processing_enabled"]:
@@ -407,6 +415,7 @@ class RawLiveStackProcessor:
             web_theme=web_theme,
             raw_format=info.get("raw_format"),
             mono=bool(info.get("mono")),
+            native_resolution=native_resolution,
         )
         image = builder.build(display_source)
         if overlay_sep and info.get("source") == SOURCE_ORIGINAL:
@@ -425,7 +434,12 @@ class RawLiveStackProcessor:
                 < 10.0
             ):
                 image = _draw_sep_overlay(image, overlay, info)
-        self._last_display_shape = (int(image.size[1]), int(image.size[0]))
+        if overlay_mark:
+            from PiFinder.livecam_mark import draw_mark_overlay
+
+            image = draw_mark_overlay(image, info, shared_state, web_theme)
+        if not native_resolution:
+            self._last_display_shape = (int(image.size[1]), int(image.size[0]))
         return encode_image(image, image_format or normalized["web_image_format"])
 
     def _resolve_display_source(
@@ -678,7 +692,12 @@ def _theme_tint(luminance: np.ndarray, web_theme: str) -> np.ndarray:
 
 
 def _prepare_display_frame(
-    frame: np.ndarray, preview_mode: str, raw_format: str | None, mono: bool = False
+    frame: np.ndarray,
+    preview_mode: str,
+    raw_format: str | None,
+    mono: bool = False,
+    *,
+    native_resolution: bool = False,
 ) -> np.ndarray:
     arr = np.asarray(frame)
     if arr.ndim == 3:
@@ -688,8 +707,10 @@ def _prepare_display_frame(
     # noise, so keep the full-resolution 2D frame. The explicit
     # bayer_2x2_average preview (plain 2x2 binning on mono) stays available.
     if _is_bayer_format(raw_format) and not mono:
+        if native_resolution:
+            return _bayer_native_rgb(arr, raw_format)
         return _bayer_2x2_rgb(arr, raw_format)
-    if preview_mode == "bayer_2x2_average":
+    if preview_mode == "bayer_2x2_average" and not native_resolution:
         return _bayer_2x2_average(arr)
     return arr
 
@@ -706,6 +727,32 @@ def _bayer_pattern(raw_format: str | None) -> str | None:
         if pattern in normalized:
             return pattern
     return None
+
+
+def _bayer_native_rgb(frame: np.ndarray, raw_format: str | None) -> np.ndarray:
+    """Bilinear demosaic at sensor resolution, including odd-sized edges.
+
+    Keep floating-point stack values until the existing display scaling step.
+    Normalized interpolation preserves measured samples and handles edges
+    without introducing black borders or changing channel brightness.
+    """
+    from scipy.ndimage import convolve
+
+    arr = np.asarray(frame, dtype=np.float32)
+    pattern = _bayer_pattern(raw_format) or "RGGB"
+    kernel = np.array([[1, 2, 1], [2, 4, 2], [1, 2, 1]], dtype=np.float32)
+    rgb = np.empty((*arr.shape, 3), dtype=np.float32)
+    for channel, color in enumerate("RGB"):
+        mask = np.zeros(arr.shape, dtype=np.float32)
+        for index, sample in enumerate(pattern):
+            if sample == color:
+                mask[index // 2 :: 2, index % 2 :: 2] = 1
+        weights = convolve(mask, kernel, mode="mirror")
+        values = convolve(arr * mask, kernel, mode="mirror")
+        rgb[..., channel] = np.divide(
+            values, weights, out=arr.copy(), where=weights > 0
+        )
+    return rgb
 
 
 def _bayer_2x2_rgb(frame: np.ndarray, raw_format: str | None) -> np.ndarray:

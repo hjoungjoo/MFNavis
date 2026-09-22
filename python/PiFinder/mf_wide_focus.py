@@ -14,7 +14,7 @@ from typing import Final, Iterable, Sequence
 import numpy as np
 from PIL import Image
 
-from PiFinder.mf_livecam_tiles import active_focal_length_mm
+from PiFinder.optics import active_focal_length_mm
 
 
 WIDE_FOCUS_MAX_FOCAL_LENGTH_MM: Final[float] = 10.0

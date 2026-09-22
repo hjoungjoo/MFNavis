@@ -1,5 +1,9 @@
 # 광각 렌즈 솔빙 — 단계별 구현 및 병합 계획
 
+> **2026-09-22 기능 제거:** Wide tiles·Edit exclusions UI, 관련 API·설정 및 타일
+> 복구 솔빙을 제거했다. 아래 내용은 이전 설계·운영 기록이다. 일반 중앙/전체 프레임
+> 솔빙, 렌즈 왜곡 보정과 저장된 검증 데이터는 유지한다.
+
 > 상태: **P6 야간 실측 진행 중**. P1(렌즈/수동 초점거리), P2의 TV 기본
 > profile 영속 저장과 centroid-space Brown--Conrady 보정, P3의 순수 512² tile
 > planner, P4의 LiveCam tile 표시·타일 단위 제외 저장, P5의 중앙→주변 타일

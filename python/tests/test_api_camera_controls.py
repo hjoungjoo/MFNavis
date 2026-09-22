@@ -76,6 +76,20 @@ def _saved_config() -> dict:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("path", ["wide-tiles", "wide-solver"])
+@pytest.mark.parametrize("method", ["GET", "POST"])
+def test_retired_tile_endpoints_are_unavailable(client, path, method):
+    test_client, server = client
+    before = _saved_config()
+    response = test_client.open(
+        f"/api/camera/{path}", method=method, json={"enabled": True}
+    )
+    assert response.status_code == 404
+    assert _saved_config() == before
+    assert server.queued() == []
+
+
+@pytest.mark.unit
 def test_exposure_is_queued_and_recorded(client):
     test_client, server = client
     response = _post(test_client, {"exposure": 400000})

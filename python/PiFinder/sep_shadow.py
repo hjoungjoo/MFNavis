@@ -47,7 +47,11 @@ from PiFinder.mf_star_only_preprocess import (
     MFStarOnlyDiagnostics,
 )
 from PiFinder.mf_wide_calibration import CalibrationProfileStore
-from PiFinder.mf_wide_distortion import active_coefficients, undistort_global_centroids
+from PiFinder.mf_wide_distortion import (
+    active_coefficients,
+    distort_global_centroids,
+    undistort_global_centroids,
+)
 from PiFinder.sep_detect import SepDetection
 from PiFinder.solve_acceptance import solution_quality_decision
 from PiFinder.sqm.camera_profiles import get_camera_profile
@@ -660,11 +664,11 @@ class SepShadowRunner:
     def _attach_matched_overlay(self, solution) -> None:
         """Attach the tetra3-matched subset to the pending overlay entry.
 
-        Matched centroids come back in the ROTATED canvas; un-rotating
-        them (rotate by the complementary angle on the rotated canvas)
-        puts them in the same frame space as the overlay's candidate
-        list. publish_overlay() ships the combined entry once per
-        attempt. Best-effort like every overlay path.
+        Matched centroids come back in the rotated, distortion-corrected
+        solver canvas. Undo rotation first, then map them back through the
+        lens distortion to the original sensor pixels used by both LiveCam
+        and the candidate list. publish_overlay() ships the combined entry
+        once per attempt. Best-effort like every overlay path.
         """
         try:
             overlay = getattr(self, "_last_overlay", None)
@@ -684,6 +688,10 @@ class SepShadowRunner:
             unrot, _ = sfm.rotate_centroids(
                 matched, canvas, (360.0 - self.rotation_deg) % 360.0
             )
+            if self.distortion_coefficients is not None:
+                unrot = distort_global_centroids(
+                    unrot, tuple(overlay["frame_hw"]), self.distortion_coefficients
+                )
             overlay["matched"] = unrot.tolist()
         except Exception:
             logger.exception("SEP matched-overlay attach failed")
@@ -692,7 +700,8 @@ class SepShadowRunner:
         """Overlay hook for the full-frame cedar primary path.
 
         Its matched centroids live in the same rotated canvas as a SEP
-        solve's, so the un-rotation is identical; the solver hands the
+        solve's, so rotation and lens distortion are restored identically;
+        the solver hands the
         array separately because the solution message itself is stripped
         of full-frame arrays before SQM sees it."""
         self._attach_matched_overlay(

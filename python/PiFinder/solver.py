@@ -36,18 +36,9 @@ from PiFinder.mf_distortion_calibration import (
 )
 from PiFinder.mf_manual_lens import manual_focal_from_state, calibration_lens_key
 from PiFinder.lens_measurement import LensMeasurement, measure_lens_frame
-from PiFinder.mf_livecam_tiles import active_focal_length_mm
 from PiFinder.mf_star_only_preprocess import preprocess_geometry_fingerprint
 from PiFinder.mf_wide_calibration import CalibrationProfileStore
-from PiFinder.mf_wide_distortion import active_coefficients, undistort_global_centroids
-from PiFinder.mf_wide_solver import (
-    TILE_SOLVE_TIMEOUT_MS,
-    build_plan_for_optics,
-    configured_excluded_tiles,
-    solve_wide_tiles,
-    tile_solver_eligible,
-)
-from PiFinder.mf_wide_tiles import migrate_legacy_tile_ids
+from PiFinder.mf_wide_distortion import active_coefficients
 from PiFinder.optics import OpticalTrainResolver, build_optical_train
 from PiFinder.latest_frame_worker import LatestFrameWorker
 from PiFinder.preprocess_bias import PreprocessBiasTracker
@@ -58,7 +49,6 @@ from PiFinder.sep_shadow import (
     WARM_MAP_PATH,
     SepShadowRunner,
     configure_runtime_detection,
-    detect_primary_stars,
 )
 from PiFinder.solve_acceptance import (
     SolveContinuityGate,
@@ -879,11 +869,6 @@ def _build_successful_solve(
     cedar_gated_centroids: Optional[int] = None,
     cedar_center_centroids: Optional[int] = None,
     sep_centroids: Optional[int] = None,
-    tile_attempted: tuple[str, ...] = (),
-    tile_candidates: tuple[str, ...] = (),
-    tile_accepted: tuple[str, ...] = (),
-    tile_reason: str = "",
-    tile_scores: tuple[dict[str, object], ...] = (),
     frame_id: Optional[int] = None,
     exposure_quality: Optional[dict[str, object]] = None,
     alignment_context: Optional[tuple] = None,
@@ -931,11 +916,6 @@ def _build_successful_solve(
             CedarGatedCentroids=cedar_gated_centroids,
             CedarCenterCentroids=cedar_center_centroids,
             SepCentroids=sep_centroids,
-            TileAttempted=tile_attempted,
-            TileCandidates=tile_candidates,
-            TileAccepted=tile_accepted,
-            TileReason=tile_reason,
-            TileScores=tile_scores,
             FrameId=frame_id,
             ExposureQuality=exposure_quality,
             AlignmentProjection=make_projection(
@@ -962,11 +942,6 @@ def _build_failed_solve(
     cedar_gated_centroids: Optional[int] = None,
     cedar_center_centroids: Optional[int] = None,
     sep_centroids: Optional[int] = None,
-    tile_attempted: tuple[str, ...] = (),
-    tile_candidates: tuple[str, ...] = (),
-    tile_accepted: tuple[str, ...] = (),
-    tile_reason: str = "",
-    tile_scores: tuple[dict[str, object], ...] = (),
     frame_id: Optional[int] = None,
     exposure_quality: Optional[dict[str, object]] = None,
 ) -> FailedSolve:
@@ -988,11 +963,6 @@ def _build_failed_solve(
             CedarGatedCentroids=cedar_gated_centroids,
             CedarCenterCentroids=cedar_center_centroids,
             SepCentroids=sep_centroids,
-            TileAttempted=tile_attempted,
-            TileCandidates=tile_candidates,
-            TileAccepted=tile_accepted,
-            TileReason=tile_reason,
-            TileScores=tile_scores,
             FrameId=frame_id,
             ExposureQuality=exposure_quality,
         ),
@@ -1303,21 +1273,6 @@ def _solve_center_first_remainder(stages, trace=None, budget_ms=2600):
         return last_solution, ""
 
 
-def _wide_result_pointing_solution(wide_result, publish_enabled: bool) -> dict:
-    """Return a tile solve only when the experimental pointing tier is on.
-
-    Auto(Star) may run peripheral tiles while the centre is contaminated so
-    it can measure matched-star SNR away from a Moon or bright obstruction.
-    That diagnostic need must not silently override ``wide_solver_enabled``
-    and turn the same experimental result into a published pointing.
-    """
-
-    if not publish_enabled or wide_result is None:
-        return {}
-    solution = getattr(wide_result, "solution", None)
-    return solution if isinstance(solution, dict) else {}
-
-
 def _count_in_crop(centroids, frame_hw, crop_width_px: int) -> int:
     """Detections inside the (centred) production crop window.
 
@@ -1462,8 +1417,6 @@ def solver(
     if optics_fullframe_fov_wanted:
         logger.info("Optical-train FOV enabled for MFDS/SEP full-frame paths")
     # Native RAW geometry is required by MFDS detection and preprocessing.
-    # Tile recovery remains an opt-in rescue tier.
-    wide_solver_wanted = bool(_sep_cfg.get_option("wide_solver_enabled"))
     auto_star_framewise_wanted = bool(_sep_cfg.get_option("camera_auto_star_framewise"))
     fullframe_geometry = None  # context dict, resolved lazily
     cached_fullframe_geometry_key = None
@@ -1855,8 +1808,6 @@ def solver(
                             )
                         sep_run = None
                         sep_fallback_used = False
-                        wide_result = None
-                        wide_pointing_used = False
                         exposure_quality = None
                         distortion_calibration_input = None
                         sep_can_solve = False
@@ -1914,12 +1865,7 @@ def solver(
                             else 0.0
                         )
 
-                        # Tile recovery is intentionally placed after the
-                        # existing centre-first attempt but before MFDS/SEP are
-                        # allowed to use a distortion-prone whole frame.  It is
-                        # disabled during an alignment command because an
-                        # off-centre tile cannot reliably return the alignment
-                        # target's pixel inside its own crop.
+                        # Preserve centre saturation feedback for Auto(Star).
                         center_contaminated_for_ae = False
                         if (
                             auto_star_framewise_wanted
@@ -1940,173 +1886,6 @@ def solver(
                                 and np.percentile(center_sparse, 99.9)
                                 >= 0.85 * (2**profile.bit_depth - 1)
                             )
-
-                        if (
-                            (wide_solver_wanted or center_contaminated_for_ae)
-                            and used_fullframe
-                            and (not solution or solution.get("RA") is None)
-                            and align_ra == 0
-                            and align_dec == 0
-                            and tile_solver_eligible(
-                                True,
-                                getattr(shared_state, "camera_lens", lambda: "")(),
-                                manual_focal_from_state(shared_state),
-                            )
-                        ):
-                            try:
-                                lens_key = getattr(
-                                    shared_state, "camera_lens", lambda: ""
-                                )()
-                                manual_focal = manual_focal_from_state(shared_state)
-                                focal_length = active_focal_length_mm(
-                                    lens_key, manual_focal
-                                )
-                                if focal_length is None:
-                                    raise ValueError(
-                                        "tile solver requires a focal length"
-                                    )
-                                wide_base_fov = _optical_crop_fov(shared_state)
-                                sixteen_fov = build_optical_train(
-                                    shared_state.camera_type(), "16mm"
-                                ).fov_degrees
-                                wide_plan = build_plan_for_optics(
-                                    ff_frame_hw,
-                                    wide_base_fov,
-                                    sixteen_fov,
-                                    focal_length,
-                                    fullframe_geometry["crop_width_px"],
-                                    display_rotation_degrees=fullframe_geometry[
-                                        "rotation_deg"
-                                    ],
-                                )
-                                wide_excluded = configured_excluded_tiles(
-                                    _sep_cfg.get_option(
-                                        "mf_wide_excluded_tiles_by_optics", {}
-                                    ),
-                                    shared_state.camera_type(),
-                                    lens_key,
-                                    manual_focal,
-                                )
-                                wide_excluded = migrate_legacy_tile_ids(
-                                    wide_excluded, wide_plan
-                                )
-                                calibration = CalibrationProfileStore(
-                                    _sep_cfg
-                                ).load_active(
-                                    shared_state.camera_type(),
-                                    lens_key,
-                                    get_camera_profile(shared_state.camera_type()),
-                                )
-                                wide_coefficients = active_coefficients(calibration)
-
-                                def _wide_rectify_centroids(tile, local_centroids):
-                                    if wide_coefficients is None:
-                                        return local_centroids
-                                    global_centroids = np.asarray(
-                                        local_centroids, dtype=np.float64
-                                    )
-                                    global_centroids = global_centroids + np.asarray(
-                                        [tile.rect.y, tile.rect.x], dtype=np.float64
-                                    )
-                                    corrected = undistort_global_centroids(
-                                        global_centroids, ff_frame_hw, wide_coefficients
-                                    )
-                                    return corrected - np.asarray(
-                                        [tile.rect.y, tile.rect.x], dtype=np.float64
-                                    )
-
-                                def _wide_primary_detect(tile_frame):
-                                    # Historical primary tier is absent in this branch.
-                                    return ()
-
-                                def _wide_sep_detect(tile_frame):
-                                    detection = detect_primary_stars(
-                                        np.asarray(tile_frame),
-                                        sigma=float(
-                                            _sep_cfg.get_option("solver_sep_sigma")
-                                            or 4.0
-                                        ),
-                                        saturation_level=fullframe_geometry[
-                                            "saturation_level"
-                                        ],
-                                        warm_pixel_map=fullframe_geometry["warm_map"],
-                                        cloud_window_gate=focal_length < 10.0,
-                                    )
-                                    return (
-                                        () if detection is None else detection.centroids
-                                    )
-
-                                def _wide_tetra_solve(cents, size, target, fov):
-                                    return t3.solve_from_centroids(
-                                        cents,
-                                        size,
-                                        fov_estimate=fov,
-                                        fov_max_error=fov / 3.0,
-                                        match_max_error=0.005,
-                                        return_matches=True,
-                                        target_pixel=target,
-                                        solve_timeout=TILE_SOLVE_TIMEOUT_MS,
-                                    )
-
-                                tile_fov = sfm.fov_estimate_deg(
-                                    wide_plan.central_tile.rect.width,
-                                    fullframe_geometry["crop_width_px"],
-                                    wide_base_fov,
-                                )
-                                wide_result = solve_wide_tiles(
-                                    frame=ff_frame,
-                                    plan=wide_plan,
-                                    excluded_tile_ids=wide_excluded,
-                                    saturation_level=fullframe_geometry[
-                                        "saturation_level"
-                                    ],
-                                    rotation_deg=fullframe_geometry["rotation_deg"],
-                                    crop_width_px=fullframe_geometry["crop_width_px"],
-                                    production_target_yx=shared_state.target_pixel(),
-                                    tile_fov_degrees=tile_fov,
-                                    detect_primary=_wide_primary_detect,
-                                    detect_fallback=_wide_sep_detect,
-                                    solve=_wide_tetra_solve,
-                                    rectify_centroids=_wide_rectify_centroids,
-                                )
-                                wide_pointing = _wide_result_pointing_solution(
-                                    wide_result,
-                                    wide_solver_wanted,
-                                )
-                                if wide_pointing:
-                                    solution = wide_pointing
-                                    solve_path = wide_result.solve_path
-                                    wide_pointing_used = True
-                                    logger.info(
-                                        "Tile recovery solve success via %s (%s)",
-                                        wide_result.solve_path,
-                                        ",".join(wide_result.consensus_tile_ids),
-                                    )
-                                elif wide_result.solution is not None:
-                                    logger.info(
-                                        "Peripheral tile solve retained for "
-                                        "Auto(Star) quality only; wide pointing disabled "
-                                        "(%s)",
-                                        ",".join(wide_result.consensus_tile_ids),
-                                    )
-                                else:
-                                    tile_log = (
-                                        logger.info
-                                        if wide_result.candidate_tile_ids
-                                        else logger.debug
-                                    )
-                                    tile_log(
-                                        "Tile recovery held: %s (candidates=%s)",
-                                        wide_result.reason,
-                                        ",".join(wide_result.candidate_tile_ids),
-                                    )
-                            except Exception:
-                                # A malformed lens/profile/exclusion must be no
-                                # worse than a disabled experimental tier.
-                                logger.exception(
-                                    "Tile recovery unavailable; continuing legacy cascade"
-                                )
-                                wide_result = None
 
                         if (
                             center_first_wanted
@@ -2736,7 +2515,6 @@ def solver(
                             solution, solve_path = emergency_solution, emergency_path
                             sep_run = emergency_run
                             sep_fallback_used = True
-                            wide_pointing_used = False
                             used_fullframe = True
                             centroids = emergency_run.detection.centroids
                             ff_frame_hw = emergency_run.frame_hw
@@ -2874,62 +2652,6 @@ def solver(
                             )
                         except Exception:
                             logger.exception("Auto(Star) matched-star quality failed")
-                    elif wide_result is not None:
-                        accepted_scores = [
-                            score
-                            for score in wide_result.tile_scores
-                            if score.solved and score.tile_id != "C"
-                        ]
-                        if accepted_scores:
-                            tile_candidates = sum(
-                                score.centroid_count for score in accepted_scores
-                            )
-                            tile_rmse = max(
-                                (
-                                    score.rmse
-                                    for score in accepted_scores
-                                    if score.rmse is not None
-                                ),
-                                default=None,
-                            )
-                            tile_matched = tuple(
-                                point
-                                for score in accepted_scores
-                                for point in score.matched_centroids_raw
-                            )
-                            if tile_matched:
-                                exposure_quality = matched_star_exposure_quality(
-                                    ff_frame,
-                                    tile_matched,
-                                    frame_id=last_image_metadata.get("frame_id"),
-                                    candidate_stars=tile_candidates,
-                                    bit_depth=get_camera_profile(
-                                        shared_state.camera_type()
-                                    ).bit_depth,
-                                    source="peripheral_tile",
-                                    rmse=tile_rmse,
-                                )
-                            else:
-                                exposure_quality = {
-                                    "frame_id": last_image_metadata.get("frame_id"),
-                                    "source": "peripheral_tile",
-                                    "region_ids": tuple(
-                                        score.tile_id for score in accepted_scores
-                                    ),
-                                    "matched_stars": sum(
-                                        score.matches for score in accepted_scores
-                                    ),
-                                    "candidate_stars": tile_candidates,
-                                    "snr_p25": None,
-                                    "snr_median": None,
-                                    "rmse": tile_rmse,
-                                    "solve_success": True,
-                                    "center_contaminated": bool(
-                                        wide_result.central_saturated
-                                        or center_contaminated_for_ae
-                                    ),
-                                }
-
                     if exposure_quality is None and used_fullframe:
                         exposure_quality = {
                             "frame_id": last_image_metadata.get("frame_id"),
@@ -2948,10 +2670,7 @@ def solver(
                             "snr_median": None,
                             "rmse": solution.get("RMSE") if solution else None,
                             "solve_success": False,
-                            "center_contaminated": bool(
-                                center_contaminated_for_ae
-                                or (wide_result and wide_result.central_saturated)
-                            ),
+                            "center_contaminated": bool(center_contaminated_for_ae),
                         }
 
                     if sep_fallback_used:
@@ -2966,13 +2685,6 @@ def solver(
                             len(sep_run.detection.centroids),
                             solution.get("RMSE") or -1.0,
                         )
-                    elif wide_pointing_used:
-                        # Tile-local matches are not in the 512 production
-                        # coordinate system, so never leak them into SQM or
-                        # the regular matched-star overlay path.
-                        solution.pop("matched_centroids", None)
-                        solution.pop("matched_stars", None)
-                        solution.pop("matched_catID", None)
                     elif used_fullframe and solution and solution.get("RA") is not None:
                         # Native full-frame coordinates share the SEP canvas;
                         # retain matches only for the overlay, then strip them
@@ -3068,13 +2780,9 @@ def solver(
                                 len(sep_run.detection.centroids)
                                 if sep_fallback_used and sep_run is not None
                                 else (
-                                    wide_result.centroid_count
-                                    if wide_pointing_used
-                                    else (
-                                        ff_in_crop_count
-                                        if used_fullframe
-                                        else len(centroids)
-                                    )
+                                    ff_in_crop_count
+                                    if used_fullframe
+                                    else len(centroids)
                                 )
                             ),
                             solve_path=solve_path,
@@ -3082,32 +2790,6 @@ def solver(
                             cedar_gated_centroids=cedar_gated_count,
                             cedar_center_centroids=cedar_center_count,
                             sep_centroids=sep_count,
-                            tile_attempted=(
-                                wide_result.attempted_tile_ids
-                                if wide_result is not None
-                                else ()
-                            ),
-                            tile_candidates=(
-                                wide_result.candidate_tile_ids
-                                if wide_result is not None
-                                else ()
-                            ),
-                            tile_accepted=(
-                                wide_result.consensus_tile_ids
-                                if wide_result is not None
-                                else ()
-                            ),
-                            tile_reason=(
-                                wide_result.reason if wide_result is not None else ""
-                            ),
-                            tile_scores=(
-                                tuple(
-                                    score.as_diagnostic()
-                                    for score in wide_result.tile_scores
-                                )
-                                if wide_result is not None
-                                else ()
-                            ),
                             frame_id=last_image_metadata.get("frame_id"),
                             exposure_quality=exposure_quality,
                             alignment_context=alignment_context,
@@ -3173,34 +2855,6 @@ def solver(
                                 cedar_gated_centroids=cedar_gated_count,
                                 cedar_center_centroids=cedar_center_count,
                                 sep_centroids=sep_count,
-                                tile_attempted=(
-                                    wide_result.attempted_tile_ids
-                                    if wide_result is not None
-                                    else ()
-                                ),
-                                tile_candidates=(
-                                    wide_result.candidate_tile_ids
-                                    if wide_result is not None
-                                    else ()
-                                ),
-                                tile_accepted=(
-                                    wide_result.consensus_tile_ids
-                                    if wide_result is not None
-                                    else ()
-                                ),
-                                tile_reason=(
-                                    wide_result.reason
-                                    if wide_result is not None
-                                    else ""
-                                ),
-                                tile_scores=(
-                                    tuple(
-                                        score.as_diagnostic()
-                                        for score in wide_result.tile_scores
-                                    )
-                                    if wide_result is not None
-                                    else ()
-                                ),
                                 frame_id=last_image_metadata.get("frame_id"),
                                 exposure_quality=exposure_quality,
                             )

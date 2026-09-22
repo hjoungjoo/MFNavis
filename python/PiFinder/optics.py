@@ -76,6 +76,22 @@ def lens_is_stated(lens_key: Optional[str]) -> bool:
     return bool(lens_key) and lens_key in LENSES
 
 
+def active_focal_length_mm(
+    lens_key: str | None, manual_focal_length_mm: object = None
+) -> float | None:
+    """Return the selected focal length, preferring a valid manual override."""
+
+    try:
+        manual = normalise_manual_focal_length(manual_focal_length_mm, measured=True)
+    except ValueError:
+        manual = None
+    if manual is not None:
+        return manual
+    if lens_is_stated(lens_key):
+        return get_lens(str(lens_key)).nominal_focal_length_mm
+    return None
+
+
 def resolve_lens(
     profile: CameraProfile,
     lens_key: Optional[str] = None,
