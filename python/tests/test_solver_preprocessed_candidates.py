@@ -35,8 +35,9 @@ def test_retiring_preprocess_worker_releases_temporal_history():
                 frame, saturation_level=4095, fingerprint=fingerprint
             )
 
-        def reset_preprocessor(self, reason):
+        def close_preprocessor(self, reason):
             accumulator.reset()
+            accumulator.close()
 
     worker = _make_async_preprocess_worker(Runner())
     try:

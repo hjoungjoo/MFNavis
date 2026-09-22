@@ -10,9 +10,9 @@ from PIL import ImageChops
 
 from PiFinder import utils
 from PiFinder.indi_align import (
-    ALIGN_STAR_MIN_ALTITUDE_DEG,
     BRIGHT_ALIGN_STARS,
     align_star_altaz,
+    alignment_altitude_limits,
     clamp_align_points,
     visible_align_stars,
 )
@@ -673,18 +673,26 @@ class UIIndiMultiPointAlign(UIIndiGuide):
         completed = self._align_status().get("completed", [])
         return completed if isinstance(completed, list) else []
 
+    def _alignment_altitude_limits(self):
+        status = self._status()
+        return alignment_altitude_limits(
+            status.get("alignment_min_altitude"), status.get("alignment_max_altitude")
+        )
+
     def _manual_star_pool(self):
         context = self._location_time_context()
         if context is None:
             return BRIGHT_ALIGN_STARS
         try:
+            min_altitude, max_altitude = self._alignment_altitude_limits()
             visible = visible_align_stars(
                 context[0],
                 context[1],
                 context[2],
                 context[3],
                 completed=self._completed_stars(),
-                min_altitude=ALIGN_STAR_MIN_ALTITUDE_DEG,
+                min_altitude=min_altitude,
+                max_altitude=max_altitude,
             )
         except Exception:
             return BRIGHT_ALIGN_STARS
@@ -1087,8 +1095,13 @@ class UIIndiMultiPointAlign(UIIndiGuide):
     def _select_star_and_goto(self):
         star = self._selected_star()
         altitude = self._star_altitude(star)
-        if altitude is not None and altitude < ALIGN_STAR_MIN_ALTITUDE_DEG:
+        min_altitude, max_altitude = self._alignment_altitude_limits()
+        if altitude is not None and altitude < min_altitude:
             self.message(_("Below horizon"), 2)
+            self.update()
+            return
+        if altitude is not None and altitude > max_altitude:
+            self.message(_("Near zenith"), 2)
             self.update()
             return
         if self._send_mount(

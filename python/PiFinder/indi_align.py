@@ -16,6 +16,20 @@ DEFAULT_ALIGN_POINTS = 3
 ALIGN_STAR_MIN_ALTITUDE_DEG = 20.0
 ALIGN_STAR_MAX_ALTITUDE_DEG = 78.0
 
+
+def alignment_altitude_limits(
+    minimum: Any = None, maximum: Any = None
+) -> tuple[float, float]:
+    """Validate INDI limits, using the legacy range when unavailable/invalid."""
+    try:
+        low, high = float(minimum), float(maximum)
+        if math.isfinite(low) and math.isfinite(high) and -90 <= low <= high <= 90:
+            return low, high
+    except (TypeError, ValueError, OverflowError):
+        pass
+    return ALIGN_STAR_MIN_ALTITUDE_DEG, ALIGN_STAR_MAX_ALTITUDE_DEG
+
+
 _FALLBACK_BRIGHT_ALIGN_STARS: list[dict[str, Any]] = [
     {"name": "Sirius", "ra": 101.287155, "dec": -16.716116, "mag": -1.46},
     {"name": "Canopus", "ra": 95.987958, "dec": -52.695661, "mag": -0.74},

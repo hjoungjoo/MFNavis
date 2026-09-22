@@ -3217,3 +3217,215 @@ def test_diverging_pulses_request_recovery_from_distinct_fresh_solves(monkeypatc
     assert not mount._guide_correction_enabled
     assert len(pulses) == 3  # No fourth worsening pulse.
     assert mount._guide_correction_target == (10.0, 20.0)
+
+
+class ElevationLimitDevice(DummyIndiDevice):
+    def __init__(self, low=5.0, high=88.0):
+        self.connected = True
+        self.limits = [
+            SimpleNamespace(name="maxAlt", value=high),
+            SimpleNamespace(name="minAlt", value=low),
+        ]
+
+    def isConnected(self):
+        return self.connected
+
+    def getNumber(self, name):
+        assert name == "Slew elevation Limit"
+        return self.limits
+
+
+def test_alignment_limits_follow_driver_updates_and_clear_on_disconnect():
+    mount = DummyMountControl()
+    mount.device = ElevationLimitDevice()
+    assert mount._alignment_altitude_limits() == (5.0, 88.0)
+    status = mount._status_fields()
+    assert status["alignment_min_altitude"] == 5.0
+    assert status["alignment_max_altitude"] == 88.0
+    mount.device.limits[1].value = -10.0
+    assert mount._alignment_altitude_limits() == (-10.0, 88.0)
+    mount.device.connected = False
+    assert mount._alignment_altitude_limits() == (20.0, 78.0)
+    mount.device = None
+    assert mount._alignment_altitude_limits() == (20.0, 78.0)
+
+
+@pytest.mark.parametrize(
+    "low,high",
+    [(None, 88), (5, float("nan")), (float("inf"), 88), (80, 10), (-91, 90), (0, 91)],
+)
+def test_invalid_driver_alignment_limits_use_legacy_range(low, high):
+    mount = DummyMountControl()
+    mount.device = ElevationLimitDevice(low, high)
+    assert mount._alignment_altitude_limits() == (20.0, 78.0)
+
+
+@pytest.mark.parametrize("limits", [[], [SimpleNamespace(name="minAlt", value=0)]])
+def test_missing_driver_alignment_limits_use_legacy_range(limits):
+    mount = DummyMountControl()
+    mount.device = ElevationLimitDevice()
+    mount.device.limits = limits
+    assert mount._alignment_altitude_limits() == (20.0, 78.0)
+
+
+@pytest.mark.parametrize(
+    "altitude,allowed",
+    [(4.9, False), (5, True), (10, True), (85, True), (88, True), (88.1, False)],
+)
+def test_alignment_goto_uses_driver_limits(altitude, allowed):
+    mount = DummyMountControl()
+    mount.device = ElevationLimitDevice()
+    mount._radec_to_altaz = lambda ra, dec: (altitude, 180.0)
+    assert mount.start_multipoint_align("manual", 2)
+    assert mount.select_multipoint_align_star("Vega", goto=True) is allowed
+    assert bool(mount.goto_calls) is allowed
+
+
+def test_auto_alignment_selects_star_within_driver_limits(monkeypatch):
+    mount = DummyMountControl()
+    mount.device = ElevationLimitDevice(5, 15)
+    mount._shared_location_time_values = lambda **kw: (
+        37.0,
+        127.0,
+        0.0,
+        datetime(2026, 9, 20, tzinfo=timezone.utc),
+    )
+    stars = [
+        {"name": "Low", "ra": 1.0, "dec": 0.0},
+        {"name": "Allowed", "ra": 2.0, "dec": 0.0},
+        {"name": "High", "ra": 3.0, "dec": 0.0},
+    ]
+    monkeypatch.setattr(mci, "BRIGHT_ALIGN_STARS", stars)
+    monkeypatch.setattr(mci.calc_utils.sf_utils, "set_location", lambda *args: None)
+    monkeypatch.setattr(
+        mci.calc_utils.sf_utils,
+        "radec_to_altaz",
+        lambda ra, dec, dt: ({1: 4, 2: 10, 3: 30}[ra], 180),
+    )
+    assert mount._align_auto_star({})["name"] == "Allowed"
+
+
+def test_late_alignment_limits_publish_without_heartbeat_and_preserve_motion():
+    mount = DummyMountControl()
+    mount.device = ElevationLimitDevice()
+    mount.device.limits = []
+    mount._write_controller_status("slewing", "Moving to Vega", target_ra=279.0)
+    assert json.loads(mci.STATUS_FILE.read_text())["alignment_min_altitude"] == 20
+
+    mount.device.limits = ElevationLimitDevice(0, 89).limits
+    mount.refresh_alignment_limits(
+        mount._client_generation, {"minAlt": 0, "maxAlt": 89}
+    )
+    status = json.loads(mci.STATUS_FILE.read_text())
+    assert (status["alignment_min_altitude"], status["alignment_max_altitude"]) == (
+        0,
+        89,
+    )
+    assert status["state"] == "slewing"
+    assert status["message"] == "Moving to Vega"
+    assert status["target_ra"] == 279.0
+    assert status["mount_motion_active"]
+    assert mount._alignment_altitude_limits() == (0, 89)
+
+
+def test_late_mount_connection_and_disconnect_refresh_alignment_limits():
+    mount = DummyMountControl()
+    mount.device = ElevationLimitDevice(-5, 87)
+    mount.device.connected = False
+    mount._write_controller_status("connecting", "Waiting for mount")
+    mount.device.connected = True
+    mount.refresh_alignment_limits(mount._client_generation)
+    status = json.loads(mci.STATUS_FILE.read_text())
+    assert (status["alignment_min_altitude"], status["alignment_max_altitude"]) == (
+        -5,
+        87,
+    )
+    mount.device.connected = False
+    mount.refresh_alignment_limits(mount._client_generation)
+    status = json.loads(mci.STATUS_FILE.read_text())
+    assert (status["alignment_min_altitude"], status["alignment_max_altitude"]) == (
+        20,
+        78,
+    )
+
+
+def test_alignment_limit_event_rejects_stale_client_and_suppresses_unchanged_write():
+    mount = DummyMountControl()
+    mount.device = ElevationLimitDevice()
+    mount._write_controller_status("connected", "Ready")
+    original = mci.STATUS_FILE.read_text()
+    mount.refresh_alignment_limits(
+        mount._client_generation - 1, {"minAlt": 0, "maxAlt": 90}
+    )
+    assert mci.STATUS_FILE.read_text() == original
+    mount.refresh_alignment_limits(
+        mount._client_generation, {"minAlt": 5, "maxAlt": 88}
+    )
+    assert mci.STATUS_FILE.read_text() == original
+
+
+@pytest.mark.skipif(mci.PyIndi is None, reason="requires installed INDI bindings")
+def test_indi_alignment_limit_definition_update_removal_and_connection_callbacks():
+    indi = mci.PyIndi
+    mount = DummyMountControl()
+    mount.device = ElevationLimitDevice()
+    mount._write_controller_status("connected", "Ready")
+    client = mci.PiFinderIndiClient(mount, generation=mount._client_generation)
+    prop = indi.PropertyNumber(2)
+    prop.setDeviceName(mount._indi_device_name())
+    prop.setName("Slew elevation Limit")
+    prop[0].setName("minAlt")
+    prop[0].setValue(-10)
+    prop[1].setName("maxAlt")
+    prop[1].setValue(89)
+    client.newProperty(prop)
+    status = json.loads(mci.STATUS_FILE.read_text())
+    assert (status["alignment_min_altitude"], status["alignment_max_altitude"]) == (
+        -10,
+        89,
+    )
+    prop[0].setValue(0)
+    client.updateProperty(prop)
+    assert json.loads(mci.STATUS_FILE.read_text())["alignment_min_altitude"] == 0
+    prop.setDeviceName("Other mount")
+    prop[0].setValue(15)
+    client.updateProperty(prop)
+    assert json.loads(mci.STATUS_FILE.read_text())["alignment_min_altitude"] == 0
+    prop.setDeviceName(mount._indi_device_name())
+    client.removeProperty(prop)
+    assert json.loads(mci.STATUS_FILE.read_text())["alignment_min_altitude"] == 20
+
+    connection = indi.PropertySwitch(1)
+    connection.setName("CONNECTION")
+    connection.setDeviceName(mount._indi_device_name())
+    client.updateProperty(connection)
+    assert json.loads(mci.STATUS_FILE.read_text())["alignment_min_altitude"] == 5
+    mount.device.connected = False
+    client.updateProperty(connection)
+    assert json.loads(mci.STATUS_FILE.read_text())["alignment_min_altitude"] == 20
+
+
+@pytest.mark.skipif(mci.PyIndi is None, reason="requires installed INDI bindings")
+def test_legacy_indi_alignment_number_and_connection_callbacks():
+    class Vector(list):
+        pass
+
+    mount = DummyMountControl()
+    mount.device = ElevationLimitDevice()
+    mount._write_controller_status("connected", "Ready")
+    client = mci.PiFinderIndiClient(mount, generation=mount._client_generation)
+    vector = Vector(
+        [
+            SimpleNamespace(name="minAlt", value=0),
+            SimpleNamespace(name="maxAlt", value=90),
+        ]
+    )
+    vector.name = "Slew elevation Limit"
+    vector.device = mount._indi_device_name()
+    client.newNumber(vector)
+    assert json.loads(mci.STATUS_FILE.read_text())["alignment_min_altitude"] == 0
+    mount.device.connected = False
+    client.newSwitch(
+        SimpleNamespace(name="CONNECTION", device=mount._indi_device_name())
+    )
+    assert json.loads(mci.STATUS_FILE.read_text())["alignment_min_altitude"] == 20

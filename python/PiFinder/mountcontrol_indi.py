@@ -28,9 +28,8 @@ from PiFinder import nonsidereal
 from PiFinder import sys_utils, utils
 from PiFinder.operation_errors import ErrorNotifier, mount_failure
 from PiFinder.indi_align import (
-    ALIGN_STAR_MAX_ALTITUDE_DEG,
-    ALIGN_STAR_MIN_ALTITUDE_DEG,
     BRIGHT_ALIGN_STARS,
+    alignment_altitude_limits,
     clamp_align_points,
     get_align_star,
     nearest_align_star,
@@ -383,7 +382,30 @@ if PyIndi is not None:
                 )
                 self.telescope_device = None
 
+        def _notify_alignment_limits(self, name, device_name, values=None):
+            if (
+                name in {"Slew elevation Limit", "CONNECTION"}
+                and self.mount_control is not None
+                and device_name == self.mount_control._indi_device_name()
+            ):
+                self.mount_control.refresh_alignment_limits(self.generation, values)
+
+        def newProperty(self, prop):
+            # Definitions can arrive long after connection, without an update.
+            if prop.getName() in {"Slew elevation Limit", "CONNECTION"}:
+                self.updateProperty(prop)
+
+        def removeProperty(self, prop):
+            self._notify_alignment_limits(prop.getName(), prop.getDeviceName(), {})
+
         def newNumber(self, nvp):
+            if nvp.name == "Slew elevation Limit":
+                self._notify_alignment_limits(
+                    nvp.name,
+                    getattr(nvp, "device", None),
+                    {w.name: w.value for w in nvp},
+                )
+                return
             if nvp.name not in {
                 "EQUATORIAL_EOD_COORD",
                 "GUIDE_RATE",
@@ -430,6 +452,8 @@ if PyIndi is not None:
             )
 
         def newSwitch(self, svp):
+            if svp.name == "CONNECTION":
+                self._notify_alignment_limits(svp.name, getattr(svp, "device", None))
             if svp.name in {"ON_COORD_SET", "TELESCOPE_SLEW_RATE"}:
                 self._record_sync_property(
                     svp.name,
@@ -459,6 +483,17 @@ if PyIndi is not None:
             # advances on the 5 s status heartbeat — far too slow for the
             # pointing fusion to attribute slew motion to the mount.
             try:
+                if prop.getName() == "CONNECTION":
+                    self._notify_alignment_limits(prop.getName(), prop.getDeviceName())
+                    return
+                if prop.getName() == "Slew elevation Limit":
+                    nvp = PyIndi.PropertyNumber(prop)
+                    self._notify_alignment_limits(
+                        prop.getName(),
+                        prop.getDeviceName(),
+                        {w.getName(): w.getValue() for w in nvp},
+                    )
+                    return
                 # Snapshot only server callbacks. set_number/set_switch mutate
                 # the local property cache before sending and cannot be ACKs.
                 if prop.getName() in {"ON_COORD_SET", "TELESCOPE_SLEW_RATE"}:
@@ -638,6 +673,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._multipoint_align_controller = MultiPointAlignController()
         self._multipoint_align: Optional[dict[str, Any]] = None
         self._coordinate_sync: Optional[dict[str, Any]] = None
+        self._controller_status_lock = threading.Lock()
+        self._last_controller_status: Optional[dict[str, Any]] = None
         self._sync_property_lock = threading.Lock()
         self._sync_property_sequence = 0
         self._sync_property_receipts: dict[str, dict[str, Any]] = {}
@@ -811,6 +848,9 @@ class MountControlIndi(BacklashCalibrationMixin):
             "ra": self.current_ra,
             "dec": self.current_dec,
         }
+        low, high = self._alignment_altitude_limits()
+        payload["alignment_min_altitude"] = low
+        payload["alignment_max_altitude"] = high
         payload.update(self._home_park_status_fields())
         if self._manual_motion_direction is not None:
             payload["manual_motion_direction"] = self._manual_motion_direction
@@ -876,6 +916,24 @@ class MountControlIndi(BacklashCalibrationMixin):
         payload.update(extra)
         payload.update(self._mount_common_status_fields(state, payload))
         return payload
+
+    def _alignment_altitude_limits(self) -> tuple[float, float]:
+        """Read the connected OnStep driver's current elevation limits.
+
+        Read PyIndi's property cache each time so edits made by other INDI
+        clients apply without reconnecting. Never reuse a disconnected device.
+        """
+        if self.device is not None and self._device_is_connected():
+            try:
+                prop = self.device.getNumber("Slew elevation Limit")
+                if prop:
+                    values = {item.name: item.value for item in prop}
+                    return alignment_altitude_limits(
+                        values.get("minAlt"), values.get("maxAlt")
+                    )
+            except Exception:
+                logger.debug("Could not read INDI elevation limits", exc_info=True)
+        return alignment_altitude_limits()
 
     def _device_switch_on(
         self, property_name: str, element_name: str
@@ -945,7 +1003,35 @@ class MountControlIndi(BacklashCalibrationMixin):
         )
         if mount_failure(state) and not recovering_error:
             self.error_notifier.emit(state, message or state)
-        _write_status(state, message, **self._status_fields(state, **extra))
+        with self._controller_status_lock:
+            payload = self._status_fields(state, **extra)
+            self._last_controller_status = dict(state=state, message=message, **payload)
+            _write_status(**self._last_controller_status)
+
+    def refresh_alignment_limits(
+        self, client_generation: int, values: Optional[dict[str, Any]] = None
+    ) -> None:
+        """Publish arriving limits immediately, preserving the current mount state."""
+        with self._controller_status_lock:
+            if client_generation != self._client_generation:
+                return
+            if values is not None and self._device_is_connected():
+                low, high = alignment_altitude_limits(
+                    values.get("minAlt"), values.get("maxAlt")
+                )
+            else:
+                low, high = self._alignment_altitude_limits()
+            # Before the first status, connect() will publish the property cache.
+            if self._last_controller_status is None:
+                return
+            payload = self._last_controller_status
+            if (
+                payload.get("alignment_min_altitude"),
+                payload.get("alignment_max_altitude"),
+            ) == (low, high):
+                return
+            payload.update(alignment_min_altitude=low, alignment_max_altitude=high)
+            _write_status(**payload)
 
     def _indi_device_name(self) -> str:
         if self.device is not None:
@@ -5203,6 +5289,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         return self._multipoint_align_controller.set_current_target(star)
 
     def _align_auto_star(self, session: dict[str, Any]) -> dict[str, Any]:
+        min_altitude, max_altitude = self._alignment_altitude_limits()
         completed = session.get("completed", [])
         used_names = {str(star.get("name", "")).casefold() for star in completed}
         reference = session.get("auto_reference")
@@ -5224,7 +5311,7 @@ class MountControlIndi(BacklashCalibrationMixin):
                 alt, _az = calc_utils.sf_utils.radec_to_altaz(
                     float(star["ra"]), float(star["dec"]), dt
                 )
-                if ALIGN_STAR_MIN_ALTITUDE_DEG <= alt <= ALIGN_STAR_MAX_ALTITUDE_DEG:
+                if min_altitude <= alt <= max_altitude:
                     visible_candidates.append((alt, star))
             if visible_candidates:
                 visible_stars = [star for _alt, star in visible_candidates]
@@ -5258,25 +5345,26 @@ class MountControlIndi(BacklashCalibrationMixin):
             float(current_star["ra"]),
             float(current_star["dec"]),
         )
-        if altaz is not None and altaz[0] < ALIGN_STAR_MIN_ALTITUDE_DEG:
+        min_altitude, max_altitude = self._alignment_altitude_limits()
+        if altaz is not None and altaz[0] < min_altitude:
             self._multipoint_align_controller.clear_current_target()
             self._align_session_status(
                 STATE_WAITING,
                 (
                     f"{current_star['name']} is below the "
-                    f"{ALIGN_STAR_MIN_ALTITUDE_DEG:.0f} deg alignment limit; "
+                    f"{min_altitude:g} deg alignment limit; "
                     "select another star"
                 ),
             )
             self._console("Align star\nbelow horizon")
             return False
-        if altaz is not None and altaz[0] > ALIGN_STAR_MAX_ALTITUDE_DEG:
+        if altaz is not None and altaz[0] > max_altitude:
             self._multipoint_align_controller.clear_current_target()
             self._align_session_status(
                 STATE_WAITING,
                 (
                     f"{current_star['name']} is above the "
-                    f"{ALIGN_STAR_MAX_ALTITUDE_DEG:.0f} deg alignment limit; "
+                    f"{max_altitude:g} deg alignment limit; "
                     "select another star"
                 ),
             )

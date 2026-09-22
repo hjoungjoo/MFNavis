@@ -66,6 +66,8 @@
     "solver_horizon_mask": false,
     "solver_center_first": true,
     "solver_preprocess_scale_workers": 3,
+    "solver_preprocess_accelerator": "cpu",
+    "solver_preprocess_reduction": "auto",
     "solver_preprocess_skip_slow_raw_fallbacks": true,
     "solver_preprocess_mode": "auto",
     "camera_auto_dump": false,

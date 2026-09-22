@@ -86,7 +86,8 @@ A centroid that tetra3 was able to identify against a known star. `solution["mat
 _Avoid_: identified star, recognized centroid.
 
 **MFDS**:
-The native star detector in the pinned public `python/mf_detect_star` submodule.
+The native star detector in the hash-pinned release package at `python/MFDS`.
+Its version and per-platform checksums are fixed in `deployment/mfds.lock.json`.
 PiFinder uses a persistent child process and private memfd image memory by
 default. RAW and preprocessed images use the same detector; `ctypes` is an
 explicit comparison mode. No separate detector systemd service is required.

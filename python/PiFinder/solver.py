@@ -1026,7 +1026,7 @@ def _make_async_preprocess_worker(runner):
     return LatestFrameWorker(
         process,
         thread_name="solver-preprocess",
-        on_close=lambda: runner.reset_preprocessor("inactive"),
+        on_close=lambda: runner.close_preprocessor("inactive"),
     )
 
 
@@ -1715,6 +1715,8 @@ def solver(
                             async_preprocess_runner = None
                         # The runner has cached the old base FOV too.  It is
                         # cheap and safe to recreate on the following use.
+                        if sep_shadow is not None:
+                            sep_shadow.close_preprocessor("optics_changed")
                         sep_shadow = None
 
                     if fullframe_geometry is None:

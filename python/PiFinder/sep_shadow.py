@@ -16,7 +16,8 @@ All entry points are defensive: any exception is logged and swallowed,
 so the experiment can never take down the production solver.
 
 Config keys (restart to apply): ``solver_shadow_detect``,
-``solver_sep_fallback``, ``solver_sep_sigma``, ``solver_sep_emergency``.
+``solver_sep_fallback``, ``solver_sep_sigma``, ``solver_sep_emergency``,
+``solver_preprocess_accelerator``, ``solver_preprocess_reduction``.
 The legacy solver_sep_fallback switch enables the full-frame MFDS solve tier;
 it does not enable early SEP extraction in the live solver.
 
@@ -143,6 +144,26 @@ class PreprocessedRun:
     frame_id: Optional[int]
 
 
+def _preprocess_backend_options(cfg) -> dict[str, str]:
+    """Persisted defaults with explicit MFDS environment overrides for experiments."""
+    options = {}
+    for name, env, default, choices in (
+        ("accelerator", "MF_PREPROCESS_ACCELERATOR", "cpu", {"cpu", "auto", "gpu"}),
+        ("reduction", "MF_PREPROCESS_REDUCTION", "auto", {"auto", "numpy", "neon"}),
+    ):
+        value = os.environ.get(env) or cfg.get_option(
+            f"solver_preprocess_{name}", default
+        )
+        value = str(value if value is not None else default).strip().lower()
+        if value not in choices:
+            logger.warning(
+                "Invalid preprocessing %s %r; using %s", name, value, default
+            )
+            value = default
+        options[f"preprocess_{name}"] = value
+    return options
+
+
 class SepShadowRunner:
     def __init__(
         self,
@@ -162,6 +183,8 @@ class SepShadowRunner:
         base_fov_degrees: float = sfm.SOLVER_FOV_DEG,
         distortion_coefficients: Optional[dict[str, float]] = None,
         preprocess_scale_workers: int = 3,
+        preprocess_accelerator: Optional[str] = None,
+        preprocess_reduction: Optional[str] = None,
     ):
         self.shadow_enabled = shadow_enabled
         self.fallback_enabled = fallback_enabled
@@ -191,8 +214,16 @@ class SepShadowRunner:
         # RAW failure/alignment requires waiting for this frame's result.
         self.preprocess_scale_workers = max(2, min(4, int(preprocess_scale_workers)))
         self._star_only = MFStarOnlyAccumulator(
-            MFStarOnlyConfig(parallel_scale_workers=self.preprocess_scale_workers)
+            MFStarOnlyConfig(
+                parallel_scale_workers=self.preprocess_scale_workers,
+                accelerator=preprocess_accelerator,
+                reduction_backend=preprocess_reduction,
+            )
         )
+        # Freeze the resolved options so a background clone uses the same modes.
+        self.preprocess_accelerator = self._star_only.point_backend.mode
+        self.preprocess_reduction = self._star_only.reduction_backend.mode
+        self._last_preprocess_backends: Optional[tuple[Any, ...]] = None
         self._preprocess_status: dict = {
             "state": "idle",
             "frame_count": 0,
@@ -202,7 +233,7 @@ class SepShadowRunner:
         logger.info(
             "SEP shadow runner: shadow=%s fallback=%s sigma=%.1f "
             "rotation=%.0f° crop_width=%dpx warm_pixels=%d distortion=%s "
-            "preprocess_workers=%d log=%s",
+            "preprocess_workers=%d accelerator=%s reduction=%s log=%s",
             shadow_enabled,
             fallback_enabled,
             sigma,
@@ -211,6 +242,8 @@ class SepShadowRunner:
             0 if warm_pixel_map is None else len(warm_pixel_map),
             "active" if distortion_coefficients is not None else "off",
             self.preprocess_scale_workers,
+            self.preprocess_accelerator,
+            self.preprocess_reduction,
             self.csv_path,
         )
 
@@ -256,6 +289,7 @@ class SepShadowRunner:
                 str(lens_key or ""),
                 profile,
             )
+            backends = _preprocess_backend_options(cfg)
             return cls(
                 shadow_enabled=shadow,
                 fallback_enabled=fallback,
@@ -269,6 +303,8 @@ class SepShadowRunner:
                 preprocess_scale_workers=int(
                     cfg.get_option("solver_preprocess_scale_workers", 3) or 3
                 ),
+                preprocess_accelerator=backends["preprocess_accelerator"],
+                preprocess_reduction=backends["preprocess_reduction"],
             )
         except Exception:
             logger.exception("SEP shadow runner init failed; disabled")
@@ -312,6 +348,8 @@ class SepShadowRunner:
             base_fov_degrees=self.base_fov_degrees,
             distortion_coefficients=self.distortion_coefficients,
             preprocess_scale_workers=self.preprocess_scale_workers,
+            preprocess_accelerator=self.preprocess_accelerator,
+            preprocess_reduction=self.preprocess_reduction,
         )
 
     def record_fallback_result(self, solved: bool, sep_count: int) -> None:
@@ -414,8 +452,38 @@ class SepShadowRunner:
             "error": None,
         }
 
+    def close_preprocessor(self, reason: str = "inactive") -> None:
+        """Release retired runner history, scale threads and optional GPU resources."""
+        self.reset_preprocessor(reason)
+        self._star_only.close()
+
     def preprocess_status(self) -> dict:
-        return dict(self._preprocess_status)
+        return {
+            **self._preprocess_status,
+            "accelerator": self._star_only.point_backend.active_backend,
+            "reduction": self._star_only.reduction_backend.active_backend,
+            "accelerator_fallback": self._star_only.point_backend.fallback_reason,
+            "reduction_fallback": self._star_only.reduction_backend.fallback_reason,
+        }
+
+    def _log_preprocess_backends(self) -> None:
+        status = self.preprocess_status()
+        backends = tuple(
+            status[key]
+            for key in (
+                "accelerator",
+                "reduction",
+                "accelerator_fallback",
+                "reduction_fallback",
+            )
+        )
+        if backends != self._last_preprocess_backends:
+            logger.info(
+                "MFDS preprocessing backends: filter=%s reduction=%s "
+                "filter_fallback=%s reduction_fallback=%s",
+                *backends,
+            )
+            self._last_preprocess_backends = backends
 
     def preprocess_frame(
         self,
@@ -486,6 +554,8 @@ class SepShadowRunner:
                 "error": f"{exc.__class__.__name__}: {exc}",
             }
             return None
+        finally:
+            self._log_preprocess_backends()
 
     def emergency_should_attempt(self, *, primary_solved, moving):
         if primary_solved:

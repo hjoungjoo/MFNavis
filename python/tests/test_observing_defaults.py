@@ -20,6 +20,8 @@ def test_fresh_install_activates_observing_pipeline(tmp_path, monkeypatch):
     assert cfg.get_option("solver_optics_fov_gate") is True
     assert cfg.get_option("solver_optics_fullframe_fov") is True
     assert cfg.get_option("solver_preprocess_mode") == "auto"
+    assert cfg.get_option("solver_preprocess_accelerator") == "cpu"
+    assert cfg.get_option("solver_preprocess_reduction") == "auto"
     policy = SolverSchedulingPolicy(mode=cfg.get_option("solver_preprocess_mode"))
     assert [policy.choose(raw_solved=True) for _ in range(3)] == [
         "sync",
@@ -39,6 +41,8 @@ def test_saved_observing_choices_survive_new_defaults(tmp_path, monkeypatch):
         "camera_auto_star_framewise": False,
         "livecam_solver_preprocess_enabled": False,
         "solver_preprocess_mode": "sync",
+        "solver_preprocess_accelerator": "auto",
+        "solver_preprocess_reduction": "numpy",
         "solver_optics_fov_gate": False,
         "solver_optics_fullframe_fov": False,
         "target_pixel": [250, 260],
