@@ -191,7 +191,7 @@ def test_pwa_manifest_and_assets_are_present():
     manifest = json.loads((VIEWS_DIR / "manifest.webmanifest").read_text())
     server_py = SERVER_PATH.read_text()
 
-    assert manifest["name"] == "PiFinder"
+    assert manifest["name"] == "MFNavis"
     assert manifest["start_url"] == "/"
     assert manifest["display"] == "fullscreen"
     assert "standalone" in manifest["display_override"]
@@ -199,10 +199,8 @@ def test_pwa_manifest_and_assets_are_present():
     assert "/service-worker.js" in server_py
 
     icon_sources = {icon["src"] for icon in manifest["icons"]}
-    assert "/images/pwa-icon-192.png" in icon_sources
-    assert "/images/pwa-icon-512.png" in icon_sources
-    assert (VIEWS_DIR / "images" / "pwa-icon-192.png").exists()
-    assert (VIEWS_DIR / "images" / "pwa-icon-512.png").exists()
+    assert "/images/mfnavis-logo.png" in icon_sources
+    assert (VIEWS_DIR / "images" / "mfnavis-logo.png").is_file()
 
 
 def test_fullscreen_script_is_present():
@@ -453,4 +451,4 @@ def test_style_css_cache_buster_is_bumped_when_the_file_changes():
     # base.html pins ?v=N; browsers keep serving the old sheet until it moves.
     base_html = (VIEWS_DIR / "base.html").read_text()
 
-    assert "/css/style.css?v=7" in base_html
+    assert "/css/style.css?v=8" in base_html

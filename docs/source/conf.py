@@ -6,9 +6,9 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "PiFinder"
-copyright = "2023, Richard Wolff-Jacobson"
-author = "Richard Wolff-Jacobson"
+project = "MFNavis"
+copyright = "2023, Richard Wolff-Jacobson (upstream); 2026, MagicFly (MFNavis additions)"
+author = "MagicFly; original PiFinder documentation by Richard Wolff-Jacobson"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -41,7 +41,7 @@ rst_epilog = """
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = "sphinx_rtd_theme"
-html_logo = "images/WebLogo_RED.png"
+html_logo = "images/mfnavis-logo.png"
 # html_logo = "images/square_logo.png"
 html_theme_options = {
     "style_nav_header_background": "#343131",

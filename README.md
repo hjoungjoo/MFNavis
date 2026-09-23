@@ -1,14 +1,23 @@
-# MF PiFinder
+# MFNavis
+
+Canonical repository: **https://github.com/hjoungjoo/MFNavis**. The previous MF_PiFinder repository is historical. Existing source/data paths remain compatible.
+
+Product by **MagicFly**, sold and distributed by **FNPD 한국**.
+Derived from PiFinder; historical upstream documentation is retained separately.
+See [third-party notices](THIRD_PARTY_NOTICES.md) and [release policy](docs/MFNAVIS_RELEASE_ko.md).
 
 [English](./README.md) | [한국어](./README_ko.md)
 
-MF PiFinder is based on the original [PiFinder™](https://github.com/brickbots/PiFinder)
+MFNavis is based on the original [PiFinder™](https://github.com/brickbots/PiFinder)
 and supports Raspberry Pi OS Bookworm 64-bit on Pi 4, Pi 5, and CM5. It adds
 practical features including web catalogs, optional INDI mount control, and
 operational documentation. The original creator's project description and
-basic references remain below under **Original PiFinder Project**.
+basic references remain in [the upstream archive](README.upstream.md).
 
-## Quick start
+## Development quick start
+
+Sales images must follow the [commercial release policy](docs/MFNAVIS_RELEASE_ko.md).
+The default developer MFDS lock is not a commercial package.
 
 ### 1. Prepare Raspberry Pi OS
 
@@ -21,12 +30,12 @@ See the [Raspberry Pi OS installation instructions](https://www.raspberrypi.com/
 for imaging and first boot, and the [board compatibility guide](./docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_ko.md)
 for Pi 4/Pi 5/CM5 wiring differences.
 
-### 2. Install MF PiFinder: release or main
+### 2. Install MFNavis: release or main
 
-Check the [MF PiFinder releases page](https://github.com/hjoungjoo/MF_PiFinder/releases)
+Check the [MFNavis releases page](https://github.com/hjoungjoo/MFNavis/releases)
 for the latest published version, its exact tag, and release-specific instructions.
 Use the tagged release for a fixed version, or `main` for the latest development
-changes. These instructions install MF PiFinder onto the prepared OS.
+changes. These instructions install MFNavis onto the prepared OS.
 
 Run **one** of the following on a new installation, as the target OS user
 without `sudo`; the script requests sudo where needed. It installs dependencies,
@@ -48,16 +57,16 @@ installs that tag. No version entry is needed. If the lookup fails, installation
 stops. These commands are for a new installation with no existing `~/PiFinder`.
 
 ```bash
-PF_RELEASE_TAG="$(python3 -c 'import json, urllib.request; print(json.load(urllib.request.urlopen("https://api.github.com/repos/hjoungjoo/MF_PiFinder/releases/latest"))["tag_name"])')" &&
+PF_RELEASE_TAG="$(python3 -c 'import json, urllib.request; print(json.load(urllib.request.urlopen("https://api.github.com/repos/hjoungjoo/MFNavis/releases/latest"))["tag_name"])')" &&
 [ -n "$PF_RELEASE_TAG" ] &&
-wget -O /tmp/mf-pifinder-setup.sh "https://raw.githubusercontent.com/hjoungjoo/MF_PiFinder/${PF_RELEASE_TAG}/pifinder_setup.sh" &&
+wget -O /tmp/mf-pifinder-setup.sh "https://raw.githubusercontent.com/hjoungjoo/MFNavis/${PF_RELEASE_TAG}/pifinder_setup.sh" &&
 PIFINDER_INSTALL_BRANCH="$PF_RELEASE_TAG" bash /tmp/mf-pifinder-setup.sh
 ```
 
 **Development version (main):**
 
 ```bash
-wget -O /tmp/mf-pifinder-setup.sh https://raw.githubusercontent.com/hjoungjoo/MF_PiFinder/main/pifinder_setup.sh &&
+wget -O /tmp/mf-pifinder-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavis/main/pifinder_setup.sh &&
 PIFINDER_INSTALL_BRANCH=main bash /tmp/mf-pifinder-setup.sh
 ```
 
@@ -177,80 +186,6 @@ status, see the [feature review checklist](./docs/mf_dev/mf_feature_review_check
 
 ---
 
-# Original PiFinder™ Project
+## Upstream reference / 원본 프로젝트 자료
 
-This section describes upstream history. This fork's main uses MF Detect Star
-and no longer includes Cedar Detect binaries. See the
-[current integration](docs/DETECTOR_INTEGRATION_ko.md) and
-[merge/deployment record](docs/MAIN_FINALIZATION_ko.md).
-
-A plate solving telescope finder based around a Raspberry PI, imx296 camera, and custom UI 'hat'
-
-For an overview of what the PiFinder™ is and how it came to be visit the official project website at [PiFinder.io](https://www.pifinder.io/build-yours) 
-
-The PiFinder™ uses the [Cedar Detect](https://github.com/smroid/cedar-detect) and
-[Cedar Solve](https://github.com/smroid/cedar-solve) libraries by
-[smroid](https://github.com/smroid). Cedar Solve is licensed under Apache-2.0.
-
-**Cedar Detect** is published under the Functional Source License (`FSL-1.1-MIT`),
-which permits broad non-commercial use but excludes commercial uses that compete
-with Cedar Detect. Because the PiFinder™ is also offered commercially, it bundles
-and distributes the Cedar Detect binaries under a **separate license granted
-expressly by the copyright holder** — not under the public FSL terms. The prebuilt
-binaries were part of the upstream distribution; this fork has removed them.
-See [`bin/README.md`](./bin/README.md) for the current binary policy. Note this is
-distinct from the PiFinder project's own GPL-3.0 [`LICENSE`](./LICENSE).
-
-Thank you to [smroid](https://github.com/smroid) for all your support of the PiFinder project!
-
-![Banner](./docs/source/images/PiFinder_v3_banner.png)
-The PiFinder™ is my attempt to improve my time at my telescope.  I don't get nearly enough of it and I want to enjoy it as much as possible.  So after years of observing with paper charts and, later, a Nexus DSC here is what I felt I was missing:
-* **Reliable telescope positioning:**  The Nexus DSC is great, but my scope just isn't built for solid encoder integration.  The slop in the way I have to couple the encoders means poor pointing accuracy.
-* **Easy setup:**  The Nexus DSC needs multi-star alignment to understand how the encoders map to the sky.  The process is not terrible, but I'd like to avoid it.
-* **Good push-to functionality**:  This is one place the Nexus DSC shines... if it's well aligned.  The catalog system is okay, and once you select and object the screen is clear and helpful to get the telescope pointed correctly.
-* **Observation logging**:  I like to keep track of what I see each night.  I don't often sketch, just record what I saw when, with what eyepiece and some basic info about the experience.  If I could do this right at the eyepiece, that'd save time.
-
-My hope is that other people will find this combination of functionality useful, will build their own PiFinder™ and help the whole project improve by making suggestions and potentially contributing to the software.  It's a pretty easy build with off the shelf parts and beginner friendly soldering.  
-
-## Features
-* Zero setup: Just turn it on and point it at the sky!  
-* Accurate pointing: Onboard GPS determines location and time while the camera determines where the scope is pointing.  Inertial Measurement Unit tracks scope motion and updates sky position between camera solves
-* Self-contained:  Includes catalog search/filtering, sky/object charting, push-to guidance and logging all via the screen and keypad on the unit.
-* Dark site friendly:  Red OLED screen and soft backlit keys have wide brightness adjustment, right down to 'off'. No need for bright cell phones or tablets
-* Easy access: Can be mounted by the eyepiece just like a finder.
-- Wifi Access Point / SkySafari Integration:  The PiFinder™ can act as a WIFI access point to connect your tablet or phone to sync SkySafari or other planetarium software with your scope.
-
-## Build Your Own
-The PiFinder™ is fully open-source hardware and software.  You can order PCB's and 3d print the case with the files in this repo and order all the parts from the [parts List](https://pifinder.readthedocs.io/en/release/BOM.html).
-
-If you would like pre-assembled units, kits or other items to jump start your PiFinder™ journey, visit [PiFinder.io](https://www.pifinder.io/build-pifinder) to see what's available and place an order.
-
-## Docs
-
-* [Quick Start](https://pifinder.readthedocs.io/en/release/quick_start.html)
-* [User Manual](https://pifinder.readthedocs.io/en/release/user_guide.html)
-* [Parts List](https://pifinder.readthedocs.io/en/release/BOM.html)
-* [Build Guide](https://pifinder.readthedocs.io/en/release/build_guide.html)
-* [Software Setup](https://pifinder.readthedocs.io/en/release/software.html)
-* [Developer Guide](https://pifinder.readthedocs.io/en/release/dev_guide.html)
-
-## Releases and Updates
-
-If you are using a PiFinder, I recommend you watch releases in this repo.  Click the 'Watch' button up at the top right of the page, choose 'Custom' and then 'Releases' to make sure you don't miss any new features!
-
-![PiFinder™ on my Dob](./images/PiFinder_on_scope.jpg)
-
-If you'd like to learn more about how it works, and potentially build your own, everything you need should be here.  I recommend starting with the [User Manual](https://pifinder.readthedocs.io/en/release/user_guide.html) and then checking out the build process using the links below.
-
-## Discord
-Join the  [PiFinder™ Discord server](https://discord.gg/Nk5fHcAtWD) for support with your build, usage questions, and suggestions for improvement.
-
-## MF detector distribution
-
-The detector and Python integration are maintained and built at [MFDS](https://github.com/hjoungjoo/MFDS).
-For a tagged PiFinder release, consult its release notes for the detector installation method.
-The current `main` branch installs a pinned [MFDS binary release](https://github.com/hjoungjoo/MFDS/releases)
-using `bash scripts/setup_mfds.sh`; it does not clone or compile MFDS sources.
-The version, source revision and platform-specific checksums are pinned in `deployment/mfds.lock.json`.
-See [binary installation and update guide](docs/MFDS_BINARY_DISTRIBUTION_ko.md).
-MFDS native licensing and the GPL Python integration remain separately documented in the package.
+[Historical upstream documentation](README.upstream.md) is preserved for provenance.

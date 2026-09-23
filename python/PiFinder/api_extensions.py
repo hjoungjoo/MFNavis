@@ -1344,7 +1344,7 @@ def register_api_routes(app, server_instance, require_auth=False):
 
         threading.Timer(delay, _shutdown).start()
         return _json_response(
-            {"success": True, "note": "Shutting down PiFinder", "delay": delay}
+            {"success": True, "note": "Shutting down MFNavis", "delay": delay}
         )
 
     @app.route("/api/mount/track_freq", methods=["GET", "POST"])
@@ -1433,13 +1433,13 @@ def register_api_routes(app, server_instance, require_auth=False):
         )
 
     logger.info(
-        "PiFinder API extensions registered (%s auth)",
+        "MFNavis API extensions registered (%s auth)",
         "with" if require_auth else "without",
     )
 
 
 def _get_version(server_instance) -> str:
-    """Try to read the PiFinder software version"""
+    """Try to read the MFNavis software version"""
     try:
         version_txt = getattr(server_instance, "version_txt", None)
         if version_txt:

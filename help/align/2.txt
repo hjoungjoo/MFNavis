@@ -1,0 +1,1 @@
+Use Align to tell MFNavis where in the sky your telescope

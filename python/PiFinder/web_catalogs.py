@@ -1040,7 +1040,7 @@ def register_catalog_routes(app, server_instance):
             shared_state.ui_state().set_new_pushto(True)
             server_instance.ui_queue.put("push_object")
         except Exception as exc:
-            logger.exception("Push to PiFinder failed")
+            logger.exception("Push to MFNavis failed")
             return _json_response({"error": f"Push failed: {exc}"}, 500)
 
         goto = _queue_mount_goto(
@@ -1498,7 +1498,7 @@ def register_catalog_routes(app, server_instance):
             "az": round(az, 1) if az is not None else None,
         }
 
-    logger.info("PiFinder web catalog routes registered")
+    logger.info("MFNavis web catalog routes registered")
 
 
 def _apply_push_track_freq(

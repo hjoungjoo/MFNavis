@@ -484,8 +484,8 @@ class IndiGotoGuideService:
             self.service_state = "waiting"
             self.phase = "pifinder_goto_blocked"
             self.wait_reason = block_reason
-            self.last_action = "pifinder goto blocked"
-            if block_reason == "PiFinder GoTo requires a recent plate solve":
+            self.last_action = "MFNavis goto blocked"
+            if block_reason == "MFNavis GoTo requires a recent plate solve":
                 self._disable_tracking_guide("waiting for new GoTo solve anchor")
                 self._reset_tracking_recovery()
                 self.tracking_target_ra = self.tracking_target_dec = None
@@ -493,7 +493,7 @@ class IndiGotoGuideService:
                     time.monotonic() + PIFINDER_SOLVE_ANCHOR_WAIT_SECONDS
                 )
                 self.last_action = "waiting for initial solve anchor"
-            logger.info("PiFinder GoTo blocked: %s", self.wait_reason)
+            logger.info("MFNavis GoTo blocked: %s", self.wait_reason)
             return
 
         self._begin_pifinder_goto(target_ra, target_dec)
@@ -704,7 +704,7 @@ class IndiGotoGuideService:
         self.service_state = "error"
         self.wait_reason = reason
         self.last_action = "pending GoTo canceled"
-        logger.info("PiFinder pending GoTo canceled: %s", reason)
+        logger.info("MFNavis pending GoTo canceled: %s", reason)
 
     def _tick_initial_goto_wait(self) -> None:
         # A rejected click must not become an indefinitely armed future slew.
@@ -733,7 +733,7 @@ class IndiGotoGuideService:
         self.initial_goto_deadline = None
         if self.active_target_ra is None or self.active_target_dec is None:
             return
-        logger.info("PiFinder initial GoTo resumed with a recent plate solve")
+        logger.info("MFNavis initial GoTo resumed with a recent plate solve")
         self._begin_pifinder_goto(self.active_target_ra, self.active_target_dec)
 
     def _stop_with_error(self, reason: str) -> None:
@@ -742,9 +742,9 @@ class IndiGotoGuideService:
         self.service_state = "error"
         self.phase = "error"
         self.wait_reason = reason
-        self.last_action = "pifinder goto stopped"
+        self.last_action = "MFNavis goto stopped"
         self._update_goto_plan()
-        logger.warning("PiFinder GoTo stopped: %s", reason)
+        logger.warning("MFNavis GoTo stopped: %s", reason)
 
     def _max_gotos(self) -> int:
         try:
@@ -816,7 +816,7 @@ class IndiGotoGuideService:
             or self.active_target_ra is None
             or self.active_target_dec is None
         ):
-            self._stop_with_error("pifinder GoTo coordinates unavailable")
+            self._stop_with_error("MFNavis GoTo coordinates unavailable")
             return
 
         self.sync_goto_request_id = uuid.uuid4().hex
@@ -841,9 +841,9 @@ class IndiGotoGuideService:
         self.phase = "pifinder_goto"
         self.wait_reason = ""
         self.last_action = (
-            "pifinder sync + goto sent"
+            "MFNavis sync + goto sent"
             if first
-            else f"pifinder sync + goto {self.correction_count}/{self._max_gotos()}"
+            else f"MFNavis sync + goto {self.correction_count}/{self._max_gotos()}"
         )
         self._update_goto_plan()
         if self.goto_plan is not None:
@@ -858,7 +858,7 @@ class IndiGotoGuideService:
                 }
             )
         logger.info(
-            "PiFinder sync + GoTo %s/%s: sync RA %.4f Dec %.4f -> target "
+            "MFNavis sync + GoTo %s/%s: sync RA %.4f Dec %.4f -> target "
             "RA %.4f Dec %.4f (error %.2f arcmin)",
             self.correction_count,
             self._max_gotos(),
@@ -897,7 +897,7 @@ class IndiGotoGuideService:
         self.service_state = "running"
         self.phase = "pifinder_pulse_align"
         self.wait_reason = ""
-        self.last_action = "pifinder pulse align started"
+        self.last_action = "MFNavis pulse align started"
         self._update_goto_plan()
         if self.goto_plan is not None:
             self.goto_plan.update(
@@ -907,7 +907,7 @@ class IndiGotoGuideService:
                 }
             )
         logger.info(
-            "PiFinder pulse align: target RA %.4f Dec %.4f accuracy %.2f arcmin "
+            "MFNavis pulse align: target RA %.4f Dec %.4f accuracy %.2f arcmin "
             "(error %.2f arcmin)",
             self.active_target_ra,
             self.active_target_dec,
@@ -947,7 +947,7 @@ class IndiGotoGuideService:
                 self._begin_manual_retarget()
                 return
             self.pulse_align_started_at = now
-            self.last_action = "pifinder manual approach"
+            self.last_action = "MFNavis manual approach"
             return
 
         pointing = self._refresh_pointing_status()
@@ -1002,9 +1002,9 @@ class IndiGotoGuideService:
             return
 
         self.last_action = (
-            f"pifinder pulse align {self.last_error_arcmin:.1f} arcmin"
+            f"MFNavis pulse align {self.last_error_arcmin:.1f} arcmin"
             if self.last_error_arcmin is not None
-            else "pifinder pulse align"
+            else "MFNavis pulse align"
         )
 
     def _disable_pulse_align(self) -> None:
@@ -1027,7 +1027,7 @@ class IndiGotoGuideService:
         pulse-guide fine alignment; otherwise -> another sync + GoTo (bounded).
         """
         if self.active_target_ra is None or self.active_target_dec is None:
-            self._stop_with_error("pifinder GoTo target unavailable")
+            self._stop_with_error("MFNavis GoTo target unavailable")
             return
 
         mount_status = self._mount_status_summary()
@@ -1147,7 +1147,7 @@ class IndiGotoGuideService:
         self.service_state = "idle"
         self.phase = "complete"
         self.wait_reason = ""
-        self.last_action = "pifinder final sync complete"
+        self.last_action = "MFNavis final sync complete"
         self._update_goto_plan()
         if self.goto_plan is not None:
             self.goto_plan.update(
@@ -1161,7 +1161,7 @@ class IndiGotoGuideService:
                 }
             )
         logger.info(
-            "PiFinder GoTo complete; final sync target RA %.4f Dec %.4f "
+            "MFNavis GoTo complete; final sync target RA %.4f Dec %.4f "
             "error %.2f arcmin",
             self.active_target_ra,
             self.active_target_dec,
@@ -1827,7 +1827,7 @@ class IndiGotoGuideService:
 
         current = pointing.get("current") or {}
         if not self._is_recent_solve(current):
-            return "PiFinder GoTo requires a recent plate solve"
+            return "MFNavis GoTo requires a recent plate solve"
         if self._finite_float(current.get("ra")) is None:
             return "current RA unavailable"
         if self._finite_float(current.get("dec")) is None:

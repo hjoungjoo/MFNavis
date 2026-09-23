@@ -140,10 +140,12 @@ def test_beforestart():
         # Log to the initial queque before starting MultiprocLogging ...
         q = Mpl.get_queue()
         mpl.MultiprocLogging.configurer(q)
+        logging.getLogger().setLevel(logging.DEBUG)
         logging.getLogger("before").info("A log message")
 
         # ... then start the logging process and log something.
-        Mpl.start()
+        Mpl.start(initial_queue=q)
+        logging.getLogger().setLevel(logging.DEBUG)
         logging.getLogger("after").info("Another msg")
 
         # Both messages should now be in the log file.

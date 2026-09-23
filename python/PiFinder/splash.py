@@ -11,11 +11,12 @@ This module is the main entry point for PiFinder it:
 """
 
 import os
-from PIL import Image, ImageDraw
+from PIL import ImageDraw
 from PiFinder import displays
 from PiFinder import hardware_detect
 from PiFinder import utils
-import numpy as np
+from PiFinder.branding import welcome_image as product_welcome_image
+from PiFinder.image_util import convert_image_to_mode
 
 
 def do_nothing():
@@ -29,11 +30,11 @@ def show_splash():
 
     # load welcome image to screen
     root_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    welcome_image_path = os.path.join(root_dir, "images", "welcome.png")
-    welcome_image = Image.open(welcome_image_path)
-    welcome_image = Image.fromarray(np.array(welcome_image)[:, :, ::-1])
-    if welcome_image.size != (display.resX, display.resY):
-        welcome_image = welcome_image.resize((display.resX, display.resY))
+    banner_height = round(display.resY * 16 / 128)
+    welcome_image = product_welcome_image(
+        (display.resX, display.resY), top_margin=banner_height + 1
+    )
+    welcome_image = convert_image_to_mode(welcome_image, display.device.mode)
     screen_draw = ImageDraw.Draw(welcome_image)
 
     # Display version and Wifi mode
@@ -41,7 +42,6 @@ def show_splash():
         version = "v" + ver_f.read()
 
     wifi_mode = utils.read_wifi_mode()
-    banner_height = round(display.resY * 16 / 128)
     screen_draw.rectangle([0, 0, display.resX, banner_height], fill=(0, 0, 0))
     screen_draw.text(
         (0, 1),

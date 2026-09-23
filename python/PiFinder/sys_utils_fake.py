@@ -11,7 +11,7 @@ import tempfile
 # user's directory structure that mirrors the production layout.
 _pifinder_data_dir = os.path.expanduser("~/PiFinder_data")
 os.makedirs(_pifinder_data_dir, exist_ok=True)
-BACKUP_PATH = os.path.join(_pifinder_data_dir, "PiFinder_backup.zip")
+BACKUP_PATH = os.path.join(_pifinder_data_dir, "MFNavis_backup.zip")
 
 logger = logging.getLogger("SysUtils.Fake")
 ONSTEPX_DEVICE_NAME = "LX200 OnStepX"
@@ -589,7 +589,7 @@ def restart_pifinder():
     Uses systemctl to restart the PiFinder
     service
     """
-    logger.info("SYS: Restarting PiFinder")
+    logger.info("SYS: Restarting MFNavis")
     return True
 
 

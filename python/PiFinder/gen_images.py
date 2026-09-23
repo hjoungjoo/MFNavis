@@ -173,7 +173,7 @@ def create_catalog_image_dirs():
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Fetch survey images for PiFinder objects"
+        description="Fetch survey images for MFNavis objects"
     )
     parser.add_argument(
         "--force", action="store_true", help="Re-fetch even if image exists"

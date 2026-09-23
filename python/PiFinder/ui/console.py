@@ -6,10 +6,9 @@ This module contains all the UI Module classes
 
 """
 
-import os
 import time
 
-from PIL import Image
+from PiFinder.branding import welcome_image as product_welcome_image
 from PiFinder.ui.base import GPS_ANIM_RATE, UIModule
 from PiFinder import timez
 from PiFinder.ui.layout import rows_below_titlebar
@@ -36,19 +35,11 @@ class UIConsole(UIModule):
         self.dirty = True
         self.welcome = True
 
-        # load welcome image to screen
-        root_dir = os.path.realpath(
-            os.path.join(os.path.dirname(__file__), "..", "..", "..")
+        welcome_image = product_welcome_image(
+            (self.display_class.resX, self.display_class.resY),
+            top_margin=self.display_class.titlebar_height + 1,
         )
-        welcome_image_path = os.path.join(root_dir, "images", "welcome.png")
-        welcome_image = Image.open(welcome_image_path)
         welcome_image = convert_image_to_mode(welcome_image, self.colors.mode)
-        # The asset is authored at 128x128; scale it to fill this panel so it
-        # stays full-bleed behind the boot console (a no-op on the 128 panel).
-        if welcome_image.size != (self.display_class.resX, self.display_class.resY):
-            welcome_image = welcome_image.resize(
-                (self.display_class.resX, self.display_class.resY)
-            )
         self.screen.paste(welcome_image)
 
         self.lines = ["---- TOP ---", "Sess UUID:" + self.__uuid__]

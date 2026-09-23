@@ -1,12 +1,12 @@
 #!/usr/bin/bash
-# This script installs the MF_PiFinder fork on a prepared Raspberry Pi OS.
-# It clones this fork (hjoungjoo/MF_PiFinder, main branch) instead of the
+# This script installs MFNavis on a prepared Raspberry Pi OS.
+# It clones this fork (hjoungjoo/MFNavis, main branch) instead of the
 # upstream release, and adds the fork's SD-wear, evdev and console-boot steps.
 # The old upstream installer is archived in docs/history/pifinder_setup_legacy.txt.
 # See https://pifinder.readthedocs.io/en/release/software.html for more info.
 #
 # Install with:
-#   wget -O - https://raw.githubusercontent.com/hjoungjoo/MF_PiFinder/main/pifinder_setup.sh | bash
+#   wget -O - https://raw.githubusercontent.com/hjoungjoo/MFNavis/main/pifinder_setup.sh | bash
 
 set -e
 
@@ -54,11 +54,17 @@ if [[ -d PiFinder/ ]]; then
         echo "Tracked files have local changes; refusing setup update." >&2
         exit 1
     fi
+    # Keep existing installations on the new product repository.
+    case "$(git remote get-url origin)" in
+        https://github.com/hjoungjoo/MF_PiFinder|https://github.com/hjoungjoo/MF_PiFinder.git|git@github.com:hjoungjoo/MF_PiFinder.git)
+            git remote set-url origin https://github.com/hjoungjoo/MFNavis.git
+            ;;
+    esac
     git fetch --no-tags origin "refs/heads/${branch}"
     git cat-file -e FETCH_HEAD:deployment/cedar_free.json
     git merge --ff-only FETCH_HEAD
 else
-    git clone --recursive --branch "${PIFINDER_INSTALL_BRANCH:-main}" https://github.com/hjoungjoo/MF_PiFinder.git PiFinder
+    git clone --recursive --branch "${PIFINDER_INSTALL_BRANCH:-main}" https://github.com/hjoungjoo/MFNavis.git PiFinder
 fi
 
 PIFINDER_REPO_DIR="${PIFINDER_HOME}/PiFinder"
@@ -151,7 +157,11 @@ sudo install -d -o "${PIFINDER_USER}" -g "${PIFINDER_USER}" -m 755 \
 sudo cp "${PIFINDER_REPO_DIR}"/pi_config_files/dhcpcd.* /etc
 sudo cp "${PIFINDER_REPO_DIR}/pi_config_files/dhcpcd.conf.sta" /etc/dhcpcd.conf
 sudo cp "${PIFINDER_REPO_DIR}/pi_config_files/dnsmasq.conf" /etc/dnsmasq.conf
-sudo cp "${PIFINDER_REPO_DIR}/pi_config_files/hostapd.conf" /etc/hostapd/hostapd.conf
+# Preserve an existing AP password and custom SSID on reinstall.
+if [[ ! -f /etc/hostapd/hostapd.conf ]]; then
+    sudo install -d -m 755 /etc/hostapd
+    sudo cp "${PIFINDER_REPO_DIR}/pi_config_files/hostapd.conf" /etc/hostapd/hostapd.conf
+fi
 echo -n "Client" > "${PIFINDER_REPO_DIR}/wifi_status.txt"
 sudo systemctl unmask hostapd
 
@@ -323,13 +333,15 @@ else
 fi
 
 # Enable service
-pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/pifinder.service" /lib/systemd/system/pifinder.service
-pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/pifinder_splash.service" /lib/systemd/system/pifinder_splash.service
-pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/pifinder_apsta_prepare.service" /lib/systemd/system/pifinder_apsta_prepare.service
-pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/pifinder_apsta_monitor.service" /lib/systemd/system/pifinder_apsta_monitor.service
+# Migrate legacy units before installing canonical templates to avoid duplicate services.
+sudo python3 "${PIFINDER_REPO_DIR}/scripts/apply_product_branding.py" --apply
+pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/mfnavis.service" /lib/systemd/system/mfnavis.service
+pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/mfnavis_splash.service" /lib/systemd/system/mfnavis_splash.service
+pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/mfnavis_apsta_prepare.service" /lib/systemd/system/mfnavis_apsta_prepare.service
+pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/mfnavis_apsta_monitor.service" /lib/systemd/system/mfnavis_apsta_monitor.service
 sudo systemctl daemon-reload
-sudo systemctl enable pifinder
-sudo systemctl enable pifinder_splash
+sudo systemctl enable mfnavis
+sudo systemctl enable mfnavis_splash
 
 for group in input video render dialout gpio i2c spi; do
     if getent group "${group}" >/dev/null; then
@@ -339,4 +351,4 @@ done
 
 install_optional_indi_archive
 
-echo "PiFinder setup complete, please restart the Pi"
+echo "MFNavis setup complete, please restart the Pi"

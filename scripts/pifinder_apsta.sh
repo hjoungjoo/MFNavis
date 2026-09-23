@@ -2,7 +2,7 @@
 # Manage PiFinder's AP+STA Wi-Fi mode.
 #
 # wlan0 remains the STA interface for internet access. uap0 is a virtual AP
-# interface used by hostapd/dnsmasq for PiFinderAP. Broadcom single-radio
+# interface used by hostapd/dnsmasq for MFNavisAP. Broadcom single-radio
 # devices require the AP to follow the associated STA channel, so monitor mode
 # rewrites hostapd.conf and restarts hostapd when the STA channel changes.
 

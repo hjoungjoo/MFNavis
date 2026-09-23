@@ -286,7 +286,8 @@ def _all_uimodule_subclasses() -> set[str]:
 
     def _recurse(cls):
         for sub in cls.__subclasses__():
-            found.add(sub.__name__)
+            if sub.__module__.startswith("PiFinder.ui."):
+                found.add(sub.__name__)
             _recurse(sub)
 
     _recurse(UIModule)

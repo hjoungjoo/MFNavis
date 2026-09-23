@@ -7,8 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # wifi_status.txt) takes the AP-only path on the next boot.
 echo -n "AP" > "${SCRIPT_DIR}/wifi_status.txt"
 
-systemctl disable pifinder_apsta_monitor 2>/dev/null || true
-systemctl stop pifinder_apsta_monitor 2>/dev/null || true
+systemctl disable mfnavis_apsta_monitor 2>/dev/null || true
+systemctl stop mfnavis_apsta_monitor 2>/dev/null || true
 
 # AP-only shares the AP+STA plumbing: hostapd/dnsmasq run on the uap0 virtual
 # interface (NetworkManager keeps wlan0), and the AP IP is assigned directly
@@ -19,7 +19,7 @@ cp /etc/dhcpcd.conf.apsta /etc/dhcpcd.conf
 "${SCRIPT_DIR}/scripts/pifinder_apsta.sh" cleanup 2>/dev/null || true
 "${SCRIPT_DIR}/scripts/pifinder_apsta.sh" configure-ap
 
-systemctl enable pifinder_apsta_prepare
+systemctl enable mfnavis_apsta_prepare
 systemctl enable dnsmasq
 systemctl enable hostapd
 #systemctl start dnsmasq

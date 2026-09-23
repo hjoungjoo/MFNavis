@@ -120,7 +120,7 @@
 
 <div class="row valign-wrapper" style="margin: 0px;">
   <div class="col s12">
-    <h5 class="grey-text">{{ _('PiFinder Logs') }}</h5>
+    <h5 class="grey-text">{{ _('MFNavis Logs') }}</h5>
   </div>
 </div>
 
@@ -405,7 +405,7 @@ function loadLogConfigs() {
 document.getElementById('configSelect').addEventListener('change', function(e) {
     const configFile = e.target.value;
     if (!configFile) return;
-    if (!confirm(`{{ _('Switch log configuration to') }} "${e.target.options[e.target.selectedIndex].text}" {{ _('and restart PiFinder?') }}`)) {
+    if (!confirm(`{{ _('Switch log configuration to') }} "${e.target.options[e.target.selectedIndex].text}" {{ _('and restart MFNavis?') }}`)) {
         loadLogConfigs();
         return;
     }

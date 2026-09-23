@@ -427,11 +427,29 @@ class Server:
         # # Make translation function available to routes
         # app.jinja_env.globals['_'] = translate
 
+        # Customer-accessible local license documents, confined to notice roots.
+        @app.route("/legal/<path:filename>")
+        def product_legal(filename):
+            from flask import abort, send_from_directory
+
+            repo = os.path.dirname(os.path.dirname(views2_path))
+            if filename in {"THIRD_PARTY_NOTICES.md", "docs/MFNAVIS_RELEASE_ko.md"}:
+                return send_from_directory(repo, filename, mimetype="text/plain")
+            for prefix in ("LICENSES/", "OPEN_SOURCE_LICENSES/"):
+                if filename.startswith(prefix):
+                    return send_from_directory(
+                        os.path.join(repo, prefix),
+                        filename[len(prefix) :],
+                        mimetype="text/plain",
+                    )
+            abort(404)
+
         # Static files routes
         @app.route("/images/<path:filename>")
         def send_image(filename):
             return send_file(
-                os.path.join(views2_path, "images", filename), mimetype="image/png"
+                os.path.join(views2_path, "images", filename),
+                mimetype="image/svg+xml" if filename.endswith(".svg") else "image/png",
             )
 
         @app.route("/js/<path:filename>")
@@ -1147,7 +1165,7 @@ class Server:
                 self.ui_queue.put("reload_config")
 
             success_message = _(
-                "Equipment Imported, restart your PiFinder to use this new data"
+                "Equipment Imported, restart your MFNavis to use this new data"
             )
             if skipped:
                 success_message += " " + _(
@@ -1220,7 +1238,7 @@ class Server:
             return app.jinja_env.get_template("equipment.html").render(
                 title=_("Equipment"),
                 equipment=config.Config().equipment,
-                success_message=_("Eyepiece added, restart your PiFinder to use"),
+                success_message=_("Eyepiece added, restart your MFNavis to use"),
             )
 
         @app.route("/equipment/delete_eyepiece/<int:eyepiece_id>")
@@ -1236,7 +1254,7 @@ class Server:
                 title=_("Equipment"),
                 equipment=config.Config().equipment,
                 success_message=_(
-                    "Eyepiece Deleted, restart your PiFinder to remove from menu"
+                    "Eyepiece Deleted, restart your MFNavis to remove from menu"
                 ),
             )
 
@@ -1303,7 +1321,7 @@ class Server:
             return app.jinja_env.get_template("equipment.html").render(
                 title=_("Equipment"),
                 equipment=config.Config().equipment,
-                success_message=_("Instrument Added, restart your PiFinder to use"),
+                success_message=_("Instrument Added, restart your MFNavis to use"),
             )
 
         @app.route("/equipment/delete_instrument/<int:instrument_id>")
@@ -1319,7 +1337,7 @@ class Server:
                 title=_("Equipment"),
                 equipment=config.Config().equipment,
                 success_message=_(
-                    "Instrument Deleted, restart your PiFinder to remove from menu"
+                    "Instrument Deleted, restart your MFNavis to remove from menu"
                 ),
             )
 
@@ -1555,7 +1573,7 @@ class Server:
             try:
                 pifinder_dt = self.shared_state.datetime()
             except Exception:
-                logger.exception("Could not read PiFinder shared datetime")
+                logger.exception("Could not read MFNavis shared datetime")
                 pifinder_dt = None
 
             if pifinder_dt is None:
@@ -2647,7 +2665,12 @@ class Server:
             t0 = time.monotonic()
             try:
                 position = int(request.args.get("position", 0))
-                log_file = str(utils.log_dir / "pifinder.log")
+                log_path = utils.log_dir / "mfnavis.log"
+                if not log_path.exists():
+                    log_path = (
+                        utils.log_dir / "pifinder.log"
+                    )  # Legacy log before first restart.
+                log_file = str(log_path)
 
                 try:
                     file_size = os.path.getsize(log_file)
@@ -2710,7 +2733,10 @@ class Server:
                     # Add all rotated log files from the tmpfs log dir.
                     log_dir = str(utils.log_dir)
                     for filename in sorted(os.listdir(log_dir)):
-                        if filename.startswith("pifinder") and ".log" in filename:
+                        if (
+                            filename.startswith(("mfnavis", "pifinder"))
+                            and ".log" in filename
+                        ):
                             file_path = os.path.join(log_dir, filename)
                             zipf.write(file_path, filename)
 
@@ -2753,8 +2779,10 @@ class Server:
                 copied = 0
                 # App logs plus the SEP shadow CSV -- everything that lives
                 # on tmpfs to spare the SD and needs an explicit snapshot.
-                snapshot = sorted(utils.log_dir.glob("pifinder*.log*")) + sorted(
-                    utils.log_dir.glob("solver_shadow_log*.csv")
+                snapshot = (
+                    sorted(utils.log_dir.glob("mfnavis*.log*"))
+                    + sorted(utils.log_dir.glob("pifinder*.log*"))
+                    + sorted(utils.log_dir.glob("solver_shadow_log*.csv"))
                 )
                 for path in snapshot:
                     shutil.copy2(path, target_dir / path.name)
@@ -2821,7 +2849,7 @@ class Server:
                 logger.error("Failed to switch log config: %s", e)
                 return jsonify({"status": "error", "message": str(e)})
             return app.jinja_env.get_template("restart_pifinder.html").render(
-                title=_("Restarting PiFinder")
+                title=_("Restarting MFNavis")
             )
 
         @app.route("/logs/upload_config", methods=["POST"])
@@ -2862,10 +2890,8 @@ class Server:
         def tools_backup():
             _backup_file = sys_utils.backup_userdata()
 
-            # Assumes the standard backup location
             return send_file(
-                os.path.expanduser("~/PiFinder_data/PiFinder_backup.zip"),
-                as_attachment=True,
+                _backup_file, as_attachment=True, download_name="MFNavis_backup.zip"
             )
 
         @app.route("/tools/restore", methods=["POST"])
@@ -2874,16 +2900,12 @@ class Server:
             sys_utils.remove_backup()
             backup_file = request.files.get("backup_file")
             if backup_file:
-                backup_file.save(
-                    os.path.expanduser("~/PiFinder_data/PiFinder_backup.zip")
-                )
+                backup_file.save(sys_utils.BACKUP_PATH)
 
-                sys_utils.restore_userdata(
-                    os.path.expanduser("~/PiFinder_data/PiFinder_backup.zip")
-                )
+                sys_utils.restore_userdata(sys_utils.BACKUP_PATH)
 
             return app.jinja_env.get_template("restart_pifinder.html").render(
-                title=_("Restart PiFinder")
+                title=_("Restart MFNavis")
             )
 
         @app.route("/key_callback", methods=["POST"])
@@ -3040,7 +3062,7 @@ def run_server(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="PiFinder Flask Web Server with i18n support"
+        description="MFNavis Flask Web Server with i18n support"
     )
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument(
@@ -3058,7 +3080,7 @@ if __name__ == "__main__":
         format="%(asctime)s %(name)s:%(levelname)s:%(message)s",
     )
 
-    logger.info("Starting PiFinder Server in standalone mode")
+    logger.info("Starting MFNavis Server in standalone mode")
 
     # Create a single queue for command line testing
     test_queue: multiprocessing.Queue = multiprocessing.Queue()

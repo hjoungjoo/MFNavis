@@ -1,4 +1,4 @@
-/* PiFinder Web Catalogs — home search, catalog table, object detail */
+/* MFNavis Web Catalogs — home search, catalog table, object detail */
 /* global fetch */
 
 function pfcatEsc(text) {

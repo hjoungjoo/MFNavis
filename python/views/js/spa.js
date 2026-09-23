@@ -1,4 +1,4 @@
-// Same-document navigation for the PiFinder web UI.
+// Same-document navigation for the MFNavis web UI.
 //
 // The Fullscreen API is bound to the document, so a normal link navigation
 // always drops fullscreen and cannot be restored without a fresh user gesture.
@@ -187,7 +187,7 @@
         resolve();
       };
       element.onerror = function() {
-        console.error('PiFinder SPA: failed to load ' + url);
+        console.error('MFNavis SPA: failed to load ' + url);
         resolve();
       };
       document.head.appendChild(element);
@@ -208,7 +208,7 @@
           // let/const on the global lexical scope and throw on the second visit.
           (0, eval)(script.textContent);
         } catch (error) {
-          console.error('PiFinder SPA: page script failed', error);
+          console.error('MFNavis SPA: page script failed', error);
         }
         return undefined;
       });
@@ -238,7 +238,7 @@
       try {
         window.M.AutoInit(container);
       } catch (error) {
-        console.error('PiFinder SPA: Materialize init failed', error);
+        console.error('MFNavis SPA: Materialize init failed', error);
       }
     }
   }
@@ -319,7 +319,7 @@
     }).catch(function(error) {
       // Any doubt at all: hand the navigation back to the browser. Losing
       // fullscreen is far better than showing a broken control page.
-      console.warn('PiFinder SPA: falling back to full navigation', error);
+      console.warn('MFNavis SPA: falling back to full navigation', error);
       window.location.href = url;
     });
   }

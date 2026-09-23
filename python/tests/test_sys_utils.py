@@ -679,7 +679,7 @@ try:
         assert effective["latitude"] == pytest.approx(37.32361)
         assert effective["longitude"] == pytest.approx(126.82194)
         assert effective["elevation"] == pytest.approx(15)
-        assert effective["source"] == "PiFinder synced location"
+        assert effective["source"] == "MFNavis synced location"
         assert effective["driver_readback_matched"] is True
         assert (
             sys_utils.format_effective_onstep_location(onstep_props, cache)
@@ -937,7 +937,7 @@ try:
         monkeypatch.setattr(
             sys_utils.Network,
             "_networkmanager_wifi_profiles",
-            staticmethod(lambda: [{"name": "PiFinder lab", "ssid": "lab"}]),
+            staticmethod(lambda: [{"name": "MFNavis lab", "ssid": "lab"}]),
         )
         monkeypatch.setattr(network, "scan_wifi_networks", lambda: ["home", "other"])
 
@@ -961,7 +961,7 @@ try:
         monkeypatch.setattr(
             sys_utils.Network,
             "_networkmanager_wifi_profiles",
-            staticmethod(lambda: [{"name": "PiFinder lab", "ssid": "lab"}]),
+            staticmethod(lambda: [{"name": "MFNavis lab", "ssid": "lab"}]),
         )
         monkeypatch.setattr(network, "scan_wifi_networks", lambda: ["lab", "home"])
         calls = []
@@ -976,7 +976,7 @@ try:
         ok, message = network.connect_wifi_network(0, async_switch=False)
 
         assert ok is True
-        assert calls == [["-w", "25", "con", "up", "PiFinder lab"]]
+        assert calls == [["-w", "25", "con", "up", "MFNavis lab"]]
         result = network.get_last_connect_result()
         assert result is not None and result["ok"] is True
         assert "lab" in message
@@ -992,7 +992,7 @@ try:
         monkeypatch.setattr(
             sys_utils.Network,
             "_networkmanager_wifi_profiles",
-            staticmethod(lambda: [{"name": "PiFinder lab", "ssid": "lab"}]),
+            staticmethod(lambda: [{"name": "MFNavis lab", "ssid": "lab"}]),
         )
         monkeypatch.setattr(network, "scan_wifi_networks", lambda: [])
         monkeypatch.setattr(
@@ -1022,7 +1022,7 @@ try:
         monkeypatch.setattr(
             sys_utils.Network,
             "_networkmanager_wifi_profiles",
-            staticmethod(lambda: [{"name": "PiFinder lab", "ssid": "lab"}]),
+            staticmethod(lambda: [{"name": "MFNavis lab", "ssid": "lab"}]),
         )
         monkeypatch.setattr(network, "scan_wifi_networks", lambda: ["lab"])
         monkeypatch.setattr(sys_utils.time, "sleep", lambda _s: None)

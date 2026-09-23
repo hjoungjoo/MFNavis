@@ -49,7 +49,7 @@ s = s
 del s
 
 pifinder_menu = {
-    "name": "PiFinder",
+    "name": "MFNavis",
     "class": UITextMenu,
     "select": "single",
     "start_index": 2,
@@ -1175,7 +1175,7 @@ pifinder_menu = {
                                             "value": "indi_mount",
                                         },
                                         {
-                                            "name": _("PiFinder"),
+                                            "name": _("MFNavis"),
                                             "value": "pifinder",
                                         },
                                     ],
@@ -1304,7 +1304,7 @@ pifinder_menu = {
                     "pre_callback": callbacks.show_advanced_message,
                     "items": [
                         {
-                            "name": _("PiFinder Type"),
+                            "name": _("MFNavis Type"),
                             "class": UITextMenu,
                             "select": "single",
                             "config_option": "screen_direction",

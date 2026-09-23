@@ -27,7 +27,7 @@
 {% if status_message %}
 <div class="row">
   <div class="col s12">
-    <p class="grey-text"><b>{{ status_message }}</b></p>
+    <p class="grey-text"><b>{{ (status_message)|string|replace("PiFinder", "MFNavis")|replace("pifinder", "MFNavis") }}</b></p>
   </div>
 </div>
 {% endif %}
@@ -35,7 +35,7 @@
 {% if error_message %}
 <div class="row">
   <div class="col s12">
-    <p class="red-text">{{ error_message }}</p>
+    <p class="red-text">{{ (error_message)|string|replace("PiFinder", "MFNavis")|replace("pifinder", "MFNavis") }}</p>
   </div>
 </div>
 {% endif %}
@@ -191,9 +191,9 @@
     <table class="striped grey-text">
       <tbody>
         <tr><td>{{ _('GPS Lock') }}</td><td id="pifinder_location_lock_value">{{ pifinder_location_time.lock_status }}</td></tr>
-        <tr><td>{{ _('Location Source') }}</td><td id="pifinder_location_source_value">{{ pifinder_location_time.source }}</td></tr>
+        <tr><td>{{ _('Location Source') }}</td><td id="pifinder_location_source_value">{{ (pifinder_location_time.source)|string|replace("PiFinder", "MFNavis")|replace("pifinder", "MFNavis") }}</td></tr>
         <tr><td>{{ _('Location to Send') }}</td><td id="pifinder_location_value">{{ pifinder_location_time.latitude if pifinder_location_time.latitude != '' else '-' }}, {{ pifinder_location_time.longitude if pifinder_location_time.longitude != '' else '-' }} / {{ pifinder_location_time.elevation if pifinder_location_time.elevation != '' else '-' }}m</td></tr>
-        <tr><td>{{ _('PiFinder UTC Time') }}</td><td id="pifinder_utc_time_value">{{ pifinder_location_time.utc_time }}</td></tr>
+        <tr><td>{{ _('MFNavis UTC Time') }}</td><td id="pifinder_utc_time_value">{{ pifinder_location_time.utc_time }}</td></tr>
       </tbody>
     </table>
     <form action="/indi/location_time" method="post" id="location_time_form" class="col s12">
@@ -219,7 +219,7 @@
         <button type="button" id="reload_location_values" class="btn">{{ _('Reload Current Values') }}</button>
         <button type="submit" class="btn">{{ _('Send Location and Time') }}</button>
       </div>
-      <p id="location_time_sync_status" class="grey-text">{{ location_time_sync_status.message }}</p>
+      <p id="location_time_sync_status" class="grey-text">{{ (location_time_sync_status.message)|string|replace("PiFinder", "MFNavis")|replace("pifinder", "MFNavis") }}</p>
     </form>
   </div>
 </div>
@@ -229,7 +229,7 @@
     <h5 class="grey-text">{{ _('Pointing Coordinate Service') }}</h5>
     <table class="striped grey-text">
       <tbody>
-        <tr><td>{{ _('Selected Source') }}</td><td id="pcs_selected_source_value">{{ pointing_coordinate_status.selected_source }}</td></tr>
+        <tr><td>{{ _('Selected Source') }}</td><td id="pcs_selected_source_value">{{ (pointing_coordinate_status.selected_source)|string|replace("PiFinder", "MFNavis")|replace("pifinder", "MFNavis") }}</td></tr>
         <tr><td>{{ _('Mode') }}</td><td id="pcs_mode_value">{{ pointing_coordinate_status.mode }}</td></tr>
         <tr><td>{{ _('Quality') }}</td><td id="pcs_quality_value">{{ pointing_coordinate_status.quality }}</td></tr>
         <tr><td>{{ _('RA (deg)') }}</td><td id="pcs_ra_value">{{ pointing_coordinate_status.ra_deg }}</td></tr>
@@ -333,7 +333,7 @@
         <tr>
           <td>{{ _('Align Status') }}</td>
           <td id="multipoint_align_status">
-            {{ multipoint_align.get('message') or _('Idle') }}
+            {{ (multipoint_align.get('message') or _('Idle'))|string|replace("PiFinder", "MFNavis")|replace("pifinder", "MFNavis") }}
           </td>
         </tr>
         <tr>
@@ -398,7 +398,7 @@
           <td>{{ _('Auto Calculation') }}</td>
           <td id="backlash_auto_status">
             {% set backlash_auto = mount_control_status.get('backlash_auto', {}) %}
-            {{ backlash_auto.get('message') or mount_control_status.get('message') or '-' }}
+            {{ (backlash_auto.get('message') or mount_control_status.get('message') or '-')|string|replace("PiFinder", "MFNavis")|replace("pifinder", "MFNavis") }}
           </td>
         </tr>
         <tr>
@@ -476,7 +476,7 @@
       <div class="row">
         <div class="input-field col s12 m6">
           <input value="{{ mount_type }}" id="pifinder_mount_type" type="text" readonly>
-          <label for="pifinder_mount_type" class="active">{{ _('PiFinder Mount Type') }}</label>
+          <label for="pifinder_mount_type" class="active">{{ _('MFNavis Mount Type') }}</label>
         </div>
         <div class="input-field col s12 m6">
           <select id="skysafari_lx200_mount_code" name="skysafari_lx200_mount_code">
@@ -521,7 +521,7 @@
           <select id="indi_goto_method" name="indi_goto_method">
             <option value="off" {% if indi_goto_method == "off" %}selected{% endif %}>{{ _('Off') }}</option>
             <option value="indi_mount" {% if indi_goto_method == "indi_mount" %}selected{% endif %}>{{ _('INDI Mount') }}</option>
-            <option value="pifinder" {% if indi_goto_method == "pifinder" %}selected{% endif %}>{{ _('PiFinder') }}</option>
+            <option value="pifinder" {% if indi_goto_method == "pifinder" %}selected{% endif %}>{{ _('MFNavis') }}</option>
           </select>
           <label class="active">{{ _('GoTo Type') }}</label>
         </div>
@@ -575,7 +575,7 @@
             <option value="{{ n }}" {% if indi_pifinder_goto_max_gotos == n %}selected{% endif %}>{{ n }}</option>
             {% endfor %}
           </select>
-          <label class="active">{{ _('PiFinder GoTo: Max sync + GoTo iterations') }}</label>
+          <label class="active">{{ _('MFNavis GoTo: Max sync + GoTo iterations') }}</label>
         </div>
       </div>
       <div class="row">
@@ -585,7 +585,7 @@
     </form>
     <h6 class="grey-text">{{ _('GoTo / Guide Status') }}</h6>
     <p>{{ _('Service') }}:
-      <strong id="goto_guide_service_value">{{ goto_guide_status.get('service_state') or '-' }}{% if goto_guide_status.get('phase') %} / {{ goto_guide_status.get('phase') }}{% endif %}</strong></p>
+      <strong id="goto_guide_service_value">{{ goto_guide_status.get('service_state') or '-' }}{% if goto_guide_status.get('phase') %} / {{ (goto_guide_status.get('phase'))|string|replace("PiFinder", "MFNavis")|replace("pifinder", "MFNavis") }}{% endif %}</strong></p>
     <p>{{ _('Guide State') }}:
       <strong id="tracking_guide_state_value">{{ goto_guide_status.get('tracking_guide_state') or '-' }}</strong></p>
     <p>{{ _('Guide Error') }}:
@@ -593,7 +593,7 @@
     <p>{{ _('Recovery') }}:
       <strong id="tracking_guide_recovery_value">{{ goto_guide_status.get('tracking_guide_recovery_mode') or '-' }}</strong></p>
     <p>{{ _('Last Action') }}:
-      <strong id="goto_guide_last_action_value">{{ goto_guide_status.get('last_action') or '-' }}</strong></p>
+      <strong id="goto_guide_last_action_value">{{ (goto_guide_status.get('last_action') or '-')|string|replace("PiFinder", "MFNavis")|replace("pifinder", "MFNavis") }}</strong></p>
   </div>
 </div>
 {% endblock %}
@@ -1049,7 +1049,7 @@ document.addEventListener('DOMContentLoaded', function() {
   function setText(id, value) {
     var element = document.getElementById(id);
     if (element) {
-      element.textContent = value;
+      element.textContent = typeof value === 'string' ? value.replace(/pifinder/gi, 'MFNavis') : value;
     }
   }
 

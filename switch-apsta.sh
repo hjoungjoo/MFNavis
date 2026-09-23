@@ -11,7 +11,7 @@ cp /etc/dhcpcd.conf.apsta /etc/dhcpcd.conf
 nmcli device set wlan0 managed yes 2>/dev/null || true
 nmcli device connect wlan0 2>/dev/null || true
 "${SCRIPT_DIR}/scripts/pifinder_apsta.sh" prepare
-systemctl enable pifinder_apsta_prepare
-systemctl enable pifinder_apsta_monitor
+systemctl enable mfnavis_apsta_prepare
+systemctl enable mfnavis_apsta_monitor
 systemctl enable dnsmasq
 systemctl enable hostapd

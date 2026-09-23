@@ -78,7 +78,7 @@ def test_logs_page_loads(driver):
     login_to_logs(driver)
 
     # Verify page loaded successfully
-    assert "PiFinder - Logs" in driver.title
+    assert "MFNavis - Logs" in driver.title
 
 
 @pytest.mark.web
@@ -90,7 +90,7 @@ def test_logs_page_header_present(driver):
     header = WebDriverWait(driver, 10).until(
         EC.presence_of_element_located((By.TAG_NAME, "h5"))
     )
-    assert "PiFinder Logs" in header.text
+    assert "MFNavis Logs" in header.text
 
 
 @pytest.mark.web
@@ -230,7 +230,7 @@ def test_logs_stream_api_response(driver):
         assert isinstance(data["logs"], list)
         assert isinstance(data["position"], int)
     except requests.exceptions.RequestException:
-        pytest.skip("PiFinder web server not available")
+        pytest.skip("MFNavis web server not available")
 
 
 @pytest.mark.web
@@ -249,7 +249,7 @@ def test_logs_configs_api_response(driver):
         assert "configs" in data
         assert isinstance(data["configs"], list)
     except requests.exceptions.RequestException:
-        pytest.skip("PiFinder web server not available")
+        pytest.skip("MFNavis web server not available")
 
 
 @pytest.mark.web
@@ -299,7 +299,7 @@ def test_logs_config_select_reflects_available_files(driver):
             assert selected.get_attribute("value") == active_configs[0]["file"]
 
     except requests.exceptions.RequestException:
-        pytest.skip("PiFinder web server not available")
+        pytest.skip("MFNavis web server not available")
 
 
 @pytest.mark.web

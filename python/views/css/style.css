@@ -97,6 +97,16 @@ main {
 
 .pf-logo {
   height: 50px;
+  width: 50px;
+  object-fit: contain;
+}
+
+.pf-brand-name {
+  display: inline-flex;
+  align-items: center;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
 }
 
 .pf-main-nav {
@@ -123,6 +133,7 @@ main {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
+  gap: 0.5rem;
 }
 
 .pf-nav-controls {
@@ -170,6 +181,7 @@ main {
 @media only screen and (max-width: 992px) {
   .pf-logo {
     height: 44px;
+    width: 44px;
   }
 }
 

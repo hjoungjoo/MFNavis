@@ -259,7 +259,7 @@ def test_tools_restore_renders_restart_page(driver):
         response.status_code == 200
     ), f"Expected 200, got {response.status_code}: {response.text[:200]}"
     assert (
-        "Restarting PiFinder" in response.text
+        "Restarting MFNavis" in response.text
     ), "Expected restart_pifinder.html content in response"
 
 

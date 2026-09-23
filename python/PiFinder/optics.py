@@ -134,7 +134,7 @@ class OpticalTrain:
 
     @property
     def fov_degrees(self) -> float:
-        """Horizontal edge-to-edge FOV of PiFinder's cropped image."""
+        """Horizontal edge-to-edge FOV of MFNavis's cropped image."""
         if self.profile.pixel_pitch_um <= 0:
             raise ValueError("Camera profile has no pixel pitch")
         width_mm = self.profile.crop_size[0] * self.profile.pixel_pitch_um / 1000.0

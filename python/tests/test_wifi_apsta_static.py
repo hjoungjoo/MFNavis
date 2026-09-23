@@ -86,8 +86,8 @@ def test_mode_switch_scripts_manage_apsta_services():
     switch_cli = (REPO / "switch-cli.sh").read_text()
 
     assert 'echo -n "AP+STA"' in switch_apsta
-    assert "pifinder_apsta_prepare" in switch_apsta
-    assert "pifinder_apsta_monitor" in switch_apsta
+    assert "mfnavis_apsta_prepare" in switch_apsta
+    assert "mfnavis_apsta_monitor" in switch_apsta
     assert 'pifinder_apsta.sh" cleanup' in switch_ap
     assert 'pifinder_apsta.sh" cleanup' in switch_cli
 

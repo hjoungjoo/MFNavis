@@ -1,3 +1,6 @@
+#!/usr/bin/env bash
+set -e
+
 PIFINDER_REPO_DIR="${PIFINDER_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 source "${PIFINDER_REPO_DIR}/pifinder_paths.sh"
 
@@ -10,6 +13,8 @@ if [[ "${PIFINDER_CODE_UPDATE:-0}" == "1" ]]; then
 fi
 bash "${PIFINDER_REPO_DIR}/scripts/ensure_tetra3_link.sh" "${PIFINDER_REPO_DIR}"
 bash "${PIFINDER_REPO_DIR}/scripts/setup_mfds.sh"
+# Explicit system update: preserve installed service options and legacy aliases.
+sudo python3 "${PIFINDER_REPO_DIR}/scripts/apply_product_branding.py" --apply
 sudo python3 -m pip install --break-system-packages -r "${PIFINDER_REPO_DIR}/python/requirements.txt"
 
 # wifi_status.txt is runtime state and no longer tracked, so the update that
@@ -105,4 +110,4 @@ fi
 bash "${PIFINDER_REPO_DIR}/scripts/install_keyboard_power_ignore.sh" || return $?
 
 # DONE
-echo "Post Update Complete"
+echo "MFNavis system update complete"

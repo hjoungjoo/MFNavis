@@ -559,7 +559,7 @@ def write_stellarium(obs_list: ObsList) -> str:
     data = {
         "version": "1.0",
         "shortName": obs_list.name,
-        "description": "Exported from PiFinder",
+        "description": "Exported from MFNavis",
         "objects": [
             {
                 "designation": entry.name,
@@ -623,7 +623,7 @@ def read_stellarium(text: str) -> ObsList:
 
 def write_autostar(obs_list: ObsList) -> str:
     title = obs_list.name[:15]
-    lines = ["/ PiFinder export", f'TITLE "{title}"']
+    lines = ["/ MFNavis export", f'TITLE "{title}"']
     for entry in obs_list.entries:
         h, m, s = ra_to_hms_exact(entry.ra)
         ra_str = f"{h:02d}:{m:02d}:{round(s):02d}"
@@ -905,7 +905,7 @@ def read_nextour(text: str) -> ObsList:
 
 
 def write_eqmod(obs_list: ObsList) -> str:
-    lines = ["!J2000", f"# {obs_list.name} - exported from PiFinder"]
+    lines = ["!J2000", f"# {obs_list.name} - exported from MFNavis"]
     for entry in obs_list.entries:
         ra_hours = entry.ra / 15.0
         lines.append(f"{ra_hours:.4f}; {entry.dec:.4f}; {entry.name}")

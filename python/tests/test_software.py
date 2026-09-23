@@ -221,7 +221,7 @@ class TestForkReleaseChannel:
     def test_migration_gate_url_points_at_the_fork(self):
         import PiFinder.ui.software as software
 
-        assert "hjoungjoo/MF_PiFinder" in software.MIGRATION_GATE_URL
+        assert "hjoungjoo/MFNavis" in software.MIGRATION_GATE_URL
         assert "brickbots" not in software.MIGRATION_GATE_URL
 
     def test_release_version_url_points_at_the_fork(self):
@@ -230,7 +230,7 @@ class TestForkReleaseChannel:
         from PiFinder.ui.software import UISoftware
 
         src = inspect.getsource(UISoftware.get_release_version)
-        assert "hjoungjoo/MF_PiFinder" in src
+        assert "hjoungjoo/MFNavis" in src
         assert "brickbots" not in src
 
 

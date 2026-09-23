@@ -39,7 +39,7 @@ from PiFinder import board_config
 from PiFinder import utils
 import logging
 
-BACKUP_PATH = str(utils.data_dir / "PiFinder_backup.zip")
+BACKUP_PATH = str(utils.data_dir / "MFNavis_backup.zip")
 
 logger = logging.getLogger("SysUtils")
 
@@ -447,7 +447,7 @@ def write_onstep_location_cache(
     elevation: float | None = None,
     utc_datetime: Any = None,
 ) -> None:
-    """Persist the last high-precision location PiFinder successfully sent."""
+    """Persist the last high-precision location MFNavis successfully sent."""
     payload: dict[str, Any] = {
         "latitude": float(latitude),
         "longitude": float(longitude),
@@ -470,7 +470,7 @@ def write_onstep_location_cache(
 
 
 def read_onstep_location_cache() -> dict[str, Any]:
-    """Return the last high-precision location sent by PiFinder, if available."""
+    """Return the last high-precision location sent by MFNavis, if available."""
     try:
         with open(ONSTEP_LOCATION_CACHE_FILE, encoding="utf-8") as cache_in:
             payload = json.load(cache_in)
@@ -486,7 +486,7 @@ def format_onstep_location_display_with_cache(
     onstep_props: dict[str, Any],
     location_cache: dict[str, Any] | None = None,
 ) -> str:
-    """Format OnStep location, using cached PiFinder values when readback is coarse."""
+    """Format OnStep location, using cached MFNavis values when readback is coarse."""
     raw_lat = _onstep_property(onstep_props, "GEOGRAPHIC_COORD.LAT")
     raw_lon = _onstep_property(onstep_props, "GEOGRAPHIC_COORD.LONG")
     raw_elev = _onstep_property(onstep_props, "GEOGRAPHIC_COORD.ELEV")
@@ -533,7 +533,7 @@ def effective_onstep_location(
             "latitude": float(location_cache["latitude"]),
             "longitude": float(location_cache["longitude"]),
             "elevation": location_cache.get("elevation"),
-            "source": "PiFinder synced location",
+            "source": "MFNavis synced location",
             "driver_readback_matched": True,
         }
 
@@ -559,7 +559,7 @@ def format_effective_onstep_location(
     onstep_props: dict[str, Any],
     location_cache: dict[str, Any] | None = None,
 ) -> str:
-    """Format effective OnStep site coordinates as decimal PiFinder coordinates."""
+    """Format effective OnStep site coordinates as decimal MFNavis coordinates."""
     effective = effective_onstep_location(onstep_props, location_cache)
     if effective["latitude"] is None or effective["longitude"] is None:
         return "-"
@@ -1191,7 +1191,7 @@ def onstep_connection_configs_match(
 def onstep_connection_mirror_options(
     connection: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build the persistent PiFinder mirror keys for an effective transport."""
+    """Build the persistent MFNavis mirror keys for an effective transport."""
     normalized = normalize_onstep_connection_config(connection)
     if normalized is None:
         raise ValueError("Invalid OnStep connection configuration")
@@ -2465,7 +2465,7 @@ class Network:
         nm_band = Network._nm_band_for_preference(self.get_sta_band_preference())
         for ssid, network in saved_by_ssid.items():
             existing = profile_by_ssid.get(ssid)
-            profile_name = existing["name"] if existing else f"PiFinder {ssid}"
+            profile_name = existing["name"] if existing else f"MFNavis {ssid}"
             if not existing:
                 result = Network._nmcli(
                     [
@@ -2595,9 +2595,7 @@ class Network:
 
     def set_sta_band_preference(self, preference):
         preference = Network._normalize_sta_band_preference(preference)
-        contents = (
-            "# PiFinder STA band preference\n" f"PIFINDER_STA_BAND={preference}\n"
-        )
+        contents = "# MFNavis STA band preference\n" f"PIFINDER_STA_BAND={preference}\n"
         Network._write_root_file(PIFINDER_STA_BAND_CONF_PATH, contents)
         self._apply_sta_band_preference(preference)
         self.populate_wifi_networks()
@@ -3236,7 +3234,7 @@ class Network:
     def set_apsta_internet_sharing(self, enabled):
         enabled_value = "1" if enabled else "0"
         contents = (
-            "# PiFinder AP+STA internet sharing setting\n"
+            "# MFNavis AP+STA internet sharing setting\n"
             f"PIFINDER_APSTA_SHARE_INTERNET={enabled_value}\n"
         )
         Network._write_root_file(PIFINDER_APSTA_NAT_CONF_PATH, contents)
@@ -3897,8 +3895,8 @@ def restart_pifinder() -> None:
     Uses systemctl to restart the PiFinder
     service
     """
-    logger.info("SYS: Restarting PiFinder")
-    sh.sudo("systemctl", "restart", "pifinder")
+    logger.info("SYS: Restarting MFNavis")
+    sh.sudo("systemctl", "restart", "mfnavis")
 
 
 def restart_system() -> None:

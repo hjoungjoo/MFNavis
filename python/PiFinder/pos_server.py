@@ -811,7 +811,7 @@ def get_firmware_version(_shared_state, _input_str):
 
 
 def get_product(_shared_state, _input_str):
-    return "PiFinder"
+    return "MFNavis"
 
 
 def get_firmware_time(_shared_state, _input_str):
@@ -876,7 +876,7 @@ def _has_solved_pointing(shared_state) -> bool:
     try:
         solution = shared_state.solution()
     except Exception:
-        logger.debug("Could not read PiFinder solution state", exc_info=True)
+        logger.debug("Could not read MFNavis solution state", exc_info=True)
         return False
     return bool(solution and solution.has_pointing())
 
@@ -1030,7 +1030,7 @@ def _set_imu_alignment_from_target_if_no_solve(
 
     dt = _current_datetime(shared_state)
     if not dt:
-        logger.warning("SkySafari IMU align skipped; no PiFinder time")
+        logger.warning("SkySafari IMU align skipped; no MFNavis time")
         return False
 
     screen_direction = _get_config_option("screen_direction", "right")
@@ -1120,7 +1120,7 @@ def _align_pifinder_if_enabled(shared_state, ra_deg: float, dec_deg: float) -> b
         console_queue.put("SkySafari Alignment Set")
     ui_queue.put("reload_config")
     logger.info(
-        "SkySafari PiFinder align set target pixel: %s (cached solve age %.3fs, %.1fms)",
+        "SkySafari MFNavis align set target pixel: %s (cached solve age %.3fs, %.1fms)",
         target_pixel,
         time.time() - estimate.last_solve_success,
         (time.monotonic() - started) * 1000,

@@ -74,7 +74,7 @@ def main():
 
     if args.log:
         datenow = timez.local_now()
-        filehandler = f"PiFinder-{datenow:%Y%m%d-%H_%M_%S}.log"
+        filehandler = f"MFNavis-{datenow:%Y%m%d-%H_%M_%S}.log"
         fh = logging.FileHandler(filehandler)
         fh.setLevel(logger.level)
         logger.addHandler(fh)

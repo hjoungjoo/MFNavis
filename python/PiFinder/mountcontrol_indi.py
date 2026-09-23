@@ -578,7 +578,7 @@ else:
 
 
 class MountControlIndi(BacklashCalibrationMixin):
-    """Translate PiFinder queue commands into INDI telescope commands."""
+    """Translate MFNavis queue commands into INDI telescope commands."""
 
     def __init__(
         self,
@@ -2200,7 +2200,7 @@ class MountControlIndi(BacklashCalibrationMixin):
     def reconcile_onstep_connection_config(
         self, allow_fallback_apply: bool = True
     ) -> bool:
-        """Make PiFinder's transport mirror match the effective INDI settings."""
+        """Make MFNavis's transport mirror match the effective INDI settings."""
         device_name = sys_utils.get_indi_profile_device_name()
         if not sys_utils.is_onstep_family_device_name(device_name):
             self._configure_usb_serial_monitor(None)
@@ -2230,7 +2230,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         if effective is None and mirror is not None and allow_fallback_apply:
             logger.warning(
                 "No valid INDI OnStep transport settings; applying the verified "
-                "PiFinder mirror once"
+                "MFNavis mirror once"
             )
             result = sys_utils.apply_indi_onstep_connection(
                 connection_type=mirror["connection_type"],
@@ -2255,7 +2255,7 @@ class MountControlIndi(BacklashCalibrationMixin):
                     effective = verified
 
         if effective is None:
-            error = "No complete INDI or PiFinder OnStep connection configuration"
+            error = "No complete INDI or MFNavis OnStep connection configuration"
             logger.error(error)
             self._connection_config_status = self._connection_config_status_fields(
                 mirror, valid=False, error=error
@@ -2280,7 +2280,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         if changed_options:
             cfg.set_options(changed_options)
             logger.info(
-                "Reconciled PiFinder OnStep connection mirror from %s",
+                "Reconciled MFNavis OnStep connection mirror from %s",
                 effective.get("source", "INDI"),
             )
 
@@ -3053,7 +3053,7 @@ class MountControlIndi(BacklashCalibrationMixin):
             if self._time_sync_provisional:
                 logger.warning(
                     "System clock is not synchronized (GPS/NTP) yet; sending "
-                    "provisional PiFinder time to the mount so it can slew. "
+                    "provisional MFNavis time to the mount so it can slew. "
                     "Site/time is re-sent automatically once the clock is "
                     "trusted"
                 )
@@ -3251,7 +3251,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         try:
             solution = self.shared_state.solution()
         except Exception:
-            logger.debug("Could not read PiFinder solve for GoTo refine", exc_info=True)
+            logger.debug("Could not read MFNavis solve for GoTo refine", exc_info=True)
             return None
 
         if not solution or solution.last_solve_success is None:
@@ -3290,7 +3290,7 @@ class MountControlIndi(BacklashCalibrationMixin):
             }
             return float(pointing.RA), float(pointing.Dec), solution.last_solve_success
         except (AttributeError, TypeError, ValueError):
-            logger.debug("Invalid PiFinder solve for GoTo refine", exc_info=True)
+            logger.debug("Invalid MFNavis solve for GoTo refine", exc_info=True)
             return None
 
     def _arm_goto_refine(
@@ -5000,7 +5000,7 @@ class MountControlIndi(BacklashCalibrationMixin):
                     return "solve", float(pointing.RA) % 360.0, float(pointing.Dec)
             except (AttributeError, TypeError, ValueError):
                 logger.debug(
-                    "Could not read PiFinder solved pointing for multi-align",
+                    "Could not read MFNavis solved pointing for multi-align",
                     exc_info=True,
                 )
 
@@ -5098,7 +5098,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         if pointing is None:
             self._align_session_status(
                 STATE_FAILED,
-                "No PiFinder solve available for alignment sync",
+                "No MFNavis solve available for alignment sync",
             )
             return False
 
@@ -5129,7 +5129,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         ):
             self._align_session_status(
                 STATE_FAILED,
-                "Could not sync mount coordinates to PiFinder before alignment",
+                "Could not sync mount coordinates to MFNavis before alignment",
             )
             return False
 
@@ -5141,7 +5141,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._multipoint_align_controller.mark_mount_synced()
         self._align_session_status(
             STATE_WAITING,
-            f"Mount synced to PiFinder {source} before alignment",
+            f"Mount synced to MFNavis {source} before alignment",
         )
 
         return True
@@ -5158,7 +5158,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         if pifinder_ra is None or pifinder_dec is None:
             self._align_session_status(
                 STATE_FAILED,
-                "No PiFinder pointing was recorded for alignment sync verification",
+                "No MFNavis pointing was recorded for alignment sync verification",
             )
             return False
 
@@ -5202,7 +5202,7 @@ class MountControlIndi(BacklashCalibrationMixin):
             self._align_session_status(
                 STATE_FAILED,
                 (
-                    f"Mount coordinates no longer match PiFinder {phase}; "
+                    f"Mount coordinates no longer match MFNavis {phase}; "
                     f"separation {last_separation:.1f} arcmin"
                 ),
             )
@@ -5236,14 +5236,14 @@ class MountControlIndi(BacklashCalibrationMixin):
         if not set_switch("AlignStars", str(total_points)):
             logger.info(
                 "INDI mount does not expose AlignStars; "
-                "continuing PiFinder multi-point alignment without mount session"
+                "continuing MFNavis multi-point alignment without mount session"
             )
             return False
 
         if not set_switch("NewAlignStar", "0"):
             logger.info(
                 "INDI mount does not expose NewAlignStar start; "
-                "continuing PiFinder multi-point alignment without mount session"
+                "continuing MFNavis multi-point alignment without mount session"
             )
             return False
 
@@ -5448,7 +5448,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._multipoint_align_controller.record_native_alignment_started(False)
         session["mount_align_deferred"] = True
         session["mount_align_message"] = (
-            "Mount native alignment start deferred to preserve PiFinder sync"
+            "Mount native alignment start deferred to preserve MFNavis sync"
         )
 
         if target_ra is not None and target_dec is not None:

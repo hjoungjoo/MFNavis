@@ -105,7 +105,7 @@ def test_get_stored_option_does_not_use_default_config(config_dir):
 
 @pytest.mark.unit
 def test_goto_method_defaults_to_pifinder(config_dir):
-    """New and legacy configs without the key use PiFinder GoTo."""
+    """New and legacy configs without the key use MFNavis GoTo."""
     cfg = config.Config()
     assert cfg.get_stored_option("indi_goto_method") is None
     assert cfg.get_option("indi_goto_method") == "pifinder"

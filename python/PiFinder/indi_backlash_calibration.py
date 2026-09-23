@@ -811,7 +811,7 @@ class BacklashCalibrationMixin:
             self._backlash_auto_status(
                 "failed",
                 (
-                    "A usable PiFinder location/time is required to convert the "
+                    "A usable MFNavis location/time is required to convert the "
                     "Alt/Az backlash test target to RA/DEC"
                 ),
                 phase="target_calculation",
@@ -956,7 +956,7 @@ class BacklashCalibrationMixin:
             self._backlash_auto_status(
                 "failed",
                 (
-                    "A usable PiFinder location/time is required to convert the "
+                    "A usable MFNavis location/time is required to convert the "
                     "Alt/Az backlash init target to RA/DEC"
                 ),
                 phase="init_target_calculation",
@@ -1045,7 +1045,7 @@ class BacklashCalibrationMixin:
         if solved is None:
             self._backlash_auto_status(
                 "failed",
-                "Could not read solved PiFinder coordinate before backlash test",
+                "Could not read solved MFNavis coordinate before backlash test",
                 phase="solved_mount_sync",
                 solved_status=solved_status,
             )
@@ -1768,7 +1768,7 @@ class BacklashCalibrationMixin:
             "note": (
                 "Indoor directional estimate: each GoTo leg compares mount "
                 "travel from the previous settled mount readback to the actual "
-                "mount readback after the GoTo, then compares that with PiFinder "
+                "mount readback after the GoTo, then compares that with MFNavis "
                 "solved travel recorded across the same leg. Alt/Az and EQ fixed S/T "
                 "points are reused for record analysis; actual motion uses "
                 "GoTo commands with only the active-axis coordinate offset. "
@@ -1827,7 +1827,7 @@ class BacklashCalibrationMixin:
                 self._backlash_auto_status(
                     "running",
                     (
-                        "PiFinder shared location/time is not locked in the "
+                        "MFNavis shared location/time is not locked in the "
                         "mount-control process; continuing because this motion "
                         "test records mount/solved coordinates from the active "
                         "OnStep session."

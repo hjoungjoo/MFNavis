@@ -16,7 +16,7 @@ if [[ -z "${PIFINDER_USER:-}" ]]; then
 fi
 
 if [[ "${PIFINDER_USER}" == "root" ]]; then
-    echo "PiFinder must be installed for a non-root OS user." >&2
+    echo "MFNavis must be installed for a non-root OS user." >&2
     echo "Set PIFINDER_USER=<user> when running as root." >&2
     exit 1
 fi

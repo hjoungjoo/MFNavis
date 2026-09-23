@@ -3,7 +3,7 @@
 {% block content %}
 <div id="error" class="error-message"></div>
 <div class="center-align">
-    <img id="image" src="" alt="{{ _('PiFinder Screen') }}" class="pifinder-screen z-depth-2">
+    <img id="image" src="" alt="{{ _('MFNavis Screen') }}" class="pifinder-screen z-depth-2">
 </div>
 <center>
     <div style="display: grid; grid-template-columns: repeat(4, 1fr); margin: 0.5rem; justify-content: center; gap: 0.5rem;">
@@ -56,7 +56,7 @@ function fetchImage() {
             console.log(error);
             // When the image can't be fetched, display a static message
             const errorElement = document.getElementById('error');
-            errorElement.innerHTML = "{{ _('PiFinder server is currently unavailable. Please try again later.') }}";
+            errorElement.innerHTML = "{{ _('MFNavis server is currently unavailable. Please try again later.') }}";
         })
         .finally(() => {
             // Schedule the next fetch operation after 100 milliseconds, whether this operation was successful or not

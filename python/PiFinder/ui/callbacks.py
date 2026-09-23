@@ -64,7 +64,7 @@ def show_advanced_message(ui_module: UIModule) -> None:
     """
     Show popup message when entering Advanced settings menu
     """
-    ui_module.message(_("Options for\nDIY PiFinders"), 2)
+    ui_module.message(_("Options for\nDIY MFNaviss"), 2)
     return
 
 
@@ -311,7 +311,7 @@ def restart_pifinder(ui_module: UIModule) -> None:
 
 
 def mount_control_toggle(ui_module: UIModule) -> None:
-    """Restart PiFinder after changing the optional INDI mount-control process."""
+    """Restart MFNavis after changing the optional INDI mount-control process."""
     enabled = ui_module.config_object.get_option("mount_control", False)
     message = _("Mount Control\nOn") if enabled else _("Mount Control\nOff")
     ui_module.message(message, 1)

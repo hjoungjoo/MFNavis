@@ -13,8 +13,8 @@
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-  <meta name="apple-mobile-web-app-title" content="PiFinder"/>
-  <title>PiFinder - {% block title %}{{ title }}{% endblock %}</title>
+  <meta name="apple-mobile-web-app-title" content="MFNavis"/>
+  <title>MFNavis - {% block title %}{{ title }}{% endblock %}</title>
 
   <script>
     (function() {
@@ -36,16 +36,17 @@
   </script>
   <!-- CSS  -->
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/images/pwa-icon-192.png">
+  <link rel="icon" type="image/png" href="/images/mfnavis-logo.png">
+  <link rel="apple-touch-icon" href="/images/mfnavis-logo.png">
   <link href="/css/material_icons.css" rel="stylesheet">
   <link href="/css/materialize.css" type="text/css" rel="stylesheet" media="screen,projection"/>
-  <link href="/css/style.css?v=7" type="text/css" rel="stylesheet" media="screen,projection"/>
+  <link href="/css/style.css?v=8" type="text/css" rel="stylesheet" media="screen,projection"/>
 </head>
 <body class="grey darken-3">
   <nav class="grey darken-1 pf-main-nav" role="navigation">
     <div class="container pf-nav-shell">
       <div class="pf-nav-top-row">
-        <a id="logo-container" href="/#" class="pf-brand-logo"><img src="/images/WebLogo_RED.png" class="pf-logo"></a>
+        <a id="logo-container" href="/#" class="pf-brand-logo"><img src="/images/mfnavis-logo.png" class="pf-logo" alt="MFNavis"><span class="pf-brand-name" aria-hidden="true">MFNavis</span></a>
         <div class="pf-nav-controls hide-on-med-and-down">
           <div class="pf-fullscreen-menu">
             <button type="button" class="pf-nav-icon-button pf-fullscreen-button" title="{{ _('Fullscreen') }}" aria-label="{{ _('Fullscreen') }}">
@@ -116,8 +117,9 @@
       <div class="row">
         <div class="col l3 s12">
           <ul>
-            <li><a class="white-text" href="https://pifinder.readthedocs.io/en/release/user_guide.html">{{ _('PiFinder User Guide') }}</a></li>
-            <li><a class="white-text" href="https://pifinder.io/support">{{ _('PiFinder Support Page') }}</a></li>
+            <li>MFNavis · FNPD 한국 · MagicFly</li>
+            <li><a class="white-text" href="/legal/THIRD_PARTY_NOTICES.md">Open-source licenses / 오픈소스 고지</a></li>
+            <li><a class="white-text" href="/legal/docs/MFNAVIS_RELEASE_ko.md">소스 제공·수정판 설치 안내</a></li>
           </ul>
         </div>
       </div>

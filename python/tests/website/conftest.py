@@ -53,7 +53,7 @@ def _create_grid_driver(selenium_grid_url: str, browser: str):
 
 
 def _check_pifinder_server():
-    """Return True if the PiFinder web server is reachable."""
+    """Return True if the MFNavis web server is reachable."""
     try:
         requests.get(get_homepage_url(), timeout=5)
         return True
@@ -97,8 +97,8 @@ def shared_driver(request):
     """Setup WebDriver - local or via Selenium Grid, configurable via CLI options."""
     if not _check_pifinder_server():
         pytest.skip(
-            f"PiFinder web server not reachable at {get_homepage_url()} - "
-            "start PiFinder before running web tests"
+            f"MFNavis web server not reachable at {get_homepage_url()} - "
+            "start MFNavis before running web tests"
         )
 
     try:

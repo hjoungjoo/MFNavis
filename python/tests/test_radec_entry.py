@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import Mock
+from PiFinder.ui import radec_entry
 from PiFinder.ui.radec_entry import (
     CoordinateState,
     CoordinateEntryLogic,
@@ -73,12 +74,13 @@ class TestCoordinateState:
 class TestBlinkingCursor:
     """Test the BlinkingCursor with time injection"""
 
-    def test_blinking_cursor_visibility(self):
+    def test_blinking_cursor_visibility(self, monkeypatch):
         """Test cursor blinking with mocked time"""
         mock_time = Mock()
         mock_time.return_value = 0.0
 
-        cursor = BlinkingCursor(blink_interval=1.0, time_provider=mock_time)
+        monkeypatch.setattr(radec_entry.time, "time", mock_time)
+        cursor = BlinkingCursor(blink_interval=1.0)
 
         # At start (t=0), cursor should be visible
         mock_time.return_value = 0.0
@@ -104,13 +106,14 @@ class TestBlinkingCursor:
 class TestCoordinateConverter:
     """Test coordinate conversion with dependency injection"""
 
-    def test_hms_dms_conversion(self):
+    def test_hms_dms_conversion(self, monkeypatch):
         """Test HMS/DMS to decimal degree conversion"""
         mock_calc_utils = Mock()
         mock_calc_utils.ra_to_deg.return_value = 150.0  # 10h 0m 0s
         mock_calc_utils.dec_to_deg.return_value = 30.0  # +30d 0m 0s
 
-        converter = CoordinateConverter(mock_calc_utils)
+        monkeypatch.setattr(radec_entry, "calc_utils", mock_calc_utils)
+        converter = CoordinateConverter()
         ra_deg, dec_deg = converter.hms_dms_to_degrees(
             ["10", "0", "0", "30", "0", "0"], "+"
         )
@@ -120,13 +123,14 @@ class TestCoordinateConverter:
         mock_calc_utils.ra_to_deg.assert_called_with(10, 0, 0)
         mock_calc_utils.dec_to_deg.assert_called_with(30, 0, 0)
 
-    def test_hms_dms_negative_dec(self):
+    def test_hms_dms_negative_dec(self, monkeypatch):
         """Test HMS/DMS with negative declination"""
         mock_calc_utils = Mock()
         mock_calc_utils.ra_to_deg.return_value = 150.0
         mock_calc_utils.dec_to_deg.return_value = 30.0
 
-        converter = CoordinateConverter(mock_calc_utils)
+        monkeypatch.setattr(radec_entry, "calc_utils", mock_calc_utils)
+        converter = CoordinateConverter()
         ra_deg, dec_deg = converter.hms_dms_to_degrees(
             ["10", "0", "0", "30", "0", "0"], "-"
         )
@@ -313,13 +317,14 @@ class TestCoordinateEntryLogic:
         state = logic.get_current_state()
         assert state.fields[0] == ""
 
-    def test_coordinate_conversion_integration(self):
+    def test_coordinate_conversion_integration(self, monkeypatch):
         """Test coordinate conversion through the logic"""
         mock_calc_utils = Mock()
         mock_calc_utils.ra_to_deg.return_value = 150.0
         mock_calc_utils.dec_to_deg.return_value = 30.0
 
-        logic = CoordinateEntryLogic(calc_utils_provider=mock_calc_utils)
+        monkeypatch.setattr(radec_entry, "calc_utils", mock_calc_utils)
+        logic = CoordinateEntryLogic()
 
         # Set up some coordinates manually for testing
         logic._state = logic._state.with_field_updated(0, "10")
@@ -411,7 +416,9 @@ class TestLayoutConfig:
 
     def test_layout_constants(self):
         """Test that layout constants are defined"""
-        layout = LayoutConfig()
+        display = Mock(resX=128, resY=128, titlebar_height=16)
+        display.fonts.base.height = 11
+        layout = LayoutConfig(display)
 
         assert hasattr(layout, "FIELD_HEIGHT")
         assert hasattr(layout, "FIELD_WIDTH")
@@ -429,13 +436,14 @@ class TestLayoutConfig:
 class TestIntegration:
     """Integration tests combining multiple components"""
 
-    def test_full_coordinate_entry_workflow(self):
+    def test_full_coordinate_entry_workflow(self, monkeypatch):
         """Test complete workflow from input to coordinate conversion"""
         mock_calc_utils = Mock()
         mock_calc_utils.ra_to_deg.return_value = 150.0  # 10h
         mock_calc_utils.dec_to_deg.return_value = 45.0  # +45d
 
-        logic = CoordinateEntryLogic(calc_utils_provider=mock_calc_utils)
+        monkeypatch.setattr(radec_entry, "calc_utils", mock_calc_utils)
+        logic = CoordinateEntryLogic()
 
         # Enter coordinates: 10h 30m 0s, +45d 15m 0s
 

@@ -13,7 +13,7 @@ TARGET = "PiFinder/tetra3/tetra3"
 @pytest.fixture
 def repo(tmp_path):
     # Include whitespace so path handling is exercised as well.
-    root = tmp_path / "PiFinder test"
+    root = tmp_path / "MFNavis test"
     (root / "python" / TARGET).mkdir(parents=True)
     return root
 

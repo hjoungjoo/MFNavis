@@ -121,7 +121,7 @@ def test_goto_waits_during_manual_approach_and_for_post_stop_solve(monkeypatch):
     service._pointing["usable_for_goto"] = False
     service._tick_pulse_align()
     assert service.phase == "pifinder_pulse_align"
-    assert service.last_action == "pifinder manual approach"
+    assert service.last_action == "MFNavis manual approach"
     status.update(mount_motion_active=False, guide_observation_after_wall=1000.5)
     service._pointing["usable_for_goto"] = True
     service._pointing["current"].update(ra=100.0, dec=20.0)

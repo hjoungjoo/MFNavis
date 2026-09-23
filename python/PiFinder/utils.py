@@ -140,7 +140,7 @@ def acquire_single_instance_lock(
             holder = lock_file.read().strip() or "unknown"
             lock_file.close()
             log.error(
-                "Another PiFinder instance is already running (pid %s); not starting.",
+                "Another MFNavis instance is already running (pid %s); not starting.",
                 holder,
             )
             return False

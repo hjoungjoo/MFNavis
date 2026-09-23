@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Callable, Type, Union
 
 from PIL import Image, ImageDraw
 from PiFinder import utils
+from PiFinder.ui.help_text import render_help_text
 from PiFinder.image_util import make_red
 from PiFinder.displays import DisplayBase
 from PiFinder.config import Config
@@ -271,7 +272,13 @@ class UIModule:
         help_image_path = utils.pifinder_dir / "help" / self.__help_name__
         for i in range(1, 10):
             try:
-                help_image = Image.open(help_image_path / f"{i}.png")
+                text_path = help_image_path / f"{i}.txt"
+                if text_path.is_file():
+                    help_image = render_help_text(
+                        text_path.read_text(), self.fonts.base.font
+                    )
+                else:
+                    help_image = Image.open(help_image_path / f"{i}.png")
             except FileNotFoundError:
                 break
 
@@ -814,7 +821,7 @@ class UIModule:
     _GOTO_METHOD_LABELS = {
         "off": "Off",
         "indi_mount": "INDI Mount",
-        "pifinder": "PiFinder",
+        "pifinder": "MFNavis",
     }
 
     def _mount_control_queue(self):

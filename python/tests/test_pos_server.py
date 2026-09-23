@@ -1015,7 +1015,7 @@ def test_skysafari_sync_sets_imu_alignment_without_plate_solve(monkeypatch):
     monkeypatch.setattr(
         pos_server,
         "_align_pifinder_if_enabled",
-        lambda *_args: pytest.fail("PiFinder plate-solve align should not run"),
+        lambda *_args: pytest.fail("MFNavis plate-solve align should not run"),
     )
     monkeypatch.setattr(
         pos_server,
@@ -1362,7 +1362,7 @@ def test_skysafari_sync_skips_pifinder_align_in_indi_mount_mode(monkeypatch):
     monkeypatch.setattr(
         pos_server,
         "_align_pifinder_if_enabled",
-        lambda *args: pytest.fail("PiFinder align must not run in indi_mount mode"),
+        lambda *args: pytest.fail("MFNavis align must not run in indi_mount mode"),
     )
     monkeypatch.setattr(
         pos_server,

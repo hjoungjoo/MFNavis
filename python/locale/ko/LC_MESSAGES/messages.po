@@ -279,32 +279,32 @@ msgid "set as active eyepiece."
 msgstr "set as active eyepiece."
 
 #: PiFinder/server.py:883
-msgid "Equipment Imported, restart your PiFinder to use this new data"
-msgstr "Equipment Imported, restart your PiFinder to use this new data"
+msgid "Equipment Imported, restart your MFNavis to use this new data"
+msgstr "Equipment Imported, restart your MFNavis to use this new data"
 
 #: PiFinder/server.py:899
 msgid "Edit Eyepiece"
 msgstr "Edit Eyepiece"
 
 #: PiFinder/server.py:939
-msgid "Eyepiece added, restart your PiFinder to use"
-msgstr "Eyepiece added, restart your PiFinder to use"
+msgid "Eyepiece added, restart your MFNavis to use"
+msgstr "Eyepiece added, restart your MFNavis to use"
 
 #: PiFinder/server.py:952
-msgid "Eyepiece Deleted, restart your PiFinder to remove from menu"
-msgstr "Eyepiece Deleted, restart your PiFinder to remove from menu"
+msgid "Eyepiece Deleted, restart your MFNavis to remove from menu"
+msgstr "Eyepiece Deleted, restart your MFNavis to remove from menu"
 
 #: PiFinder/server.py:977
 msgid "Edit Instrument"
 msgstr "Edit Instrument"
 
 #: PiFinder/server.py:1025
-msgid "Instrument Added, restart your PiFinder to use"
-msgstr "Instrument Added, restart your PiFinder to use"
+msgid "Instrument Added, restart your MFNavis to use"
+msgstr "Instrument Added, restart your MFNavis to use"
 
 #: PiFinder/server.py:1038
-msgid "Instrument Deleted, restart your PiFinder to remove from menu"
-msgstr "Instrument Deleted, restart your PiFinder to remove from menu"
+msgid "Instrument Deleted, restart your MFNavis to remove from menu"
+msgstr "Instrument Deleted, restart your MFNavis to remove from menu"
 
 #: PiFinder/server.py:1066 views/base.html:63 views/base.html:77
 msgid "Observations"
@@ -519,12 +519,12 @@ msgid "No log files to save"
 msgstr "저장할 로그 파일이 없습니다"
 
 #: PiFinder/server.py:2422 views/restart_pifinder.html:6
-msgid "Restarting PiFinder"
-msgstr "PiFinder 재시작 중"
+msgid "Restarting MFNavis"
+msgstr "MFNavis 재시작 중"
 
 #: PiFinder/server.py:2484
-msgid "Restart PiFinder"
-msgstr "PiFinder 재시작"
+msgid "Restart MFNavis"
+msgstr "MFNavis 재시작"
 
 #: PiFinder/ui/align.py:50
 msgid "Align Timeout"
@@ -692,10 +692,10 @@ msgstr "취소"
 #: PiFinder/ui/callbacks.py:59
 msgid ""
 "Options for\n"
-"DIY PiFinders"
+"DIY MFNaviss"
 msgstr ""
 "Options for\n"
-"DIY PiFinders"
+"DIY MFNaviss"
 
 #: PiFinder/ui/callbacks.py:74
 msgid "Filters Reset"
@@ -1482,8 +1482,8 @@ msgid "Preparing Align"
 msgstr "정렬 준비"
 
 #: PiFinder/ui/indi.py:830
-msgid "Syncing PiFinder"
-msgstr "PiFinder 동기화"
+msgid "Syncing MFNavis"
+msgstr "MFNavis 동기화"
 
 #: PiFinder/ui/indi.py:831
 msgid "Wait for mount"
@@ -2367,8 +2367,8 @@ msgid "INDI Mount"
 msgstr "INDI 마운트"
 
 #: PiFinder/ui/menu_structure.py:1154 views/indi_mount.html:483
-msgid "PiFinder"
-msgstr "PiFinder"
+msgid "MFNavis"
+msgstr "MFNavis"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/ui/menu_structure.py:1160 views/indi_mount.html:496
@@ -2403,8 +2403,8 @@ msgid "Invert Guide Dec/Alt"
 msgstr "가이드 Dec/Alt 반전"
 
 #: PiFinder/ui/menu_structure.py:1283
-msgid "PiFinder Type"
-msgstr "PiFinder형"
+msgid "MFNavis Type"
+msgstr "MFNavis형"
 
 #: PiFinder/ui/menu_structure.py:1290
 msgid "Left"
@@ -3530,12 +3530,12 @@ msgid "Resume Fullscreen"
 msgstr "전체 화면 복귀"
 
 #: views/base.html:113
-msgid "PiFinder User Guide"
-msgstr "PiFinder User Guide"
+msgid "MFNavis User Guide"
+msgstr "MFNavis User Guide"
 
 #: views/base.html:114
-msgid "PiFinder Support Page"
-msgstr "PiFinder Support Page"
+msgid "MFNavis Support Page"
+msgstr "MFNavis Support Page"
 
 #: views/edit_eyepiece.html:7
 msgid "Add a new eyepiece"
@@ -3637,11 +3637,11 @@ msgstr "Download instruments from DeepskyLog"
 
 #: views/equipment.html:45
 msgid ""
-"This will delete all instruments and eyepieces from your PiFinder and "
+"This will delete all instruments and eyepieces from your MFNavis and "
 "replace them with the instruments and eyepieces from DeepskyLog. Are you "
 "really sure?"
 msgstr ""
-"This will delete all instruments and eyepieces from your PiFinder and "
+"This will delete all instruments and eyepieces from your MFNavis and "
 "replace them with the instruments and eyepieces from DeepskyLog. Are you "
 "really sure?"
 
@@ -3746,8 +3746,8 @@ msgid "Set to Browser Date/Time"
 msgstr "Set to Browser Date/Time"
 
 #: views/index.html:6 views/remote.html:6
-msgid "PiFinder Screen"
-msgstr "PiFinder Screen"
+msgid "MFNavis Screen"
+msgstr "MFNavis Screen"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/index.html:14 views/indi_mount.html:206 views/indi_mount.html:1087
@@ -3772,8 +3772,8 @@ msgid "Software Version"
 msgstr "Software Version"
 
 #: views/index.html:66 views/remote.html:59
-msgid "PiFinder server is currently unavailable. Please try again later."
-msgstr "PiFinder server is currently unavailable. Please try again later."
+msgid "MFNavis server is currently unavailable. Please try again later."
+msgstr "MFNavis server is currently unavailable. Please try again later."
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:17
@@ -3979,8 +3979,8 @@ msgstr "전송할 위치"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:170
-msgid "PiFinder UTC Time"
-msgstr "PiFinder UTC 시간"
+msgid "MFNavis UTC Time"
+msgstr "MFNavis UTC 시간"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:185
@@ -4292,8 +4292,8 @@ msgstr "SkySafari 마운트 모드"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:438
-msgid "PiFinder Mount Type"
-msgstr "PiFinder 마운트 종류"
+msgid "MFNavis Mount Type"
+msgstr "MFNavis 마운트 종류"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:444
@@ -4365,8 +4365,8 @@ msgid "Invert guide pulse Dec/Alt (NS)"
 msgstr "가이드 펄스 Dec/Alt(NS) 반전"
 
 #: views/indi_mount.html:537
-msgid "PiFinder GoTo: Max sync + GoTo iterations"
-msgstr "PiFinder GoTo: 최대 sync + GoTo 반복 횟수"
+msgid "MFNavis GoTo: Max sync + GoTo iterations"
+msgstr "MFNavis GoTo: 최대 sync + GoTo 반복 횟수"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:541
@@ -5061,8 +5061,8 @@ msgid "You can change this using the Tool menu option"
 msgstr "You can change this using the Tool menu option"
 
 #: views/logs.html:123
-msgid "PiFinder Logs"
-msgstr "PiFinder Logs"
+msgid "MFNavis Logs"
+msgstr "MFNavis Logs"
 
 #: views/logs.html:141
 msgid "Download All Logs"
@@ -5131,8 +5131,8 @@ msgid "Switch log configuration to"
 msgstr "Switch log configuration to"
 
 #: views/logs.html:408
-msgid "and restart PiFinder?"
-msgstr "and restart PiFinder?"
+msgid "and restart MFNavis?"
+msgstr "and restart MFNavis?"
 
 #: views/logs.html:428
 msgid "File must be named logconf_<name>.json"
@@ -5268,11 +5268,11 @@ msgstr "Save and Restart"
 #: views/network.html:114
 #, fuzzy
 msgid ""
-"This will save the network settings, apply them and restart the PiFinder."
+"This will save the network settings, apply them and restart the MFNavis."
 " You may have to adjust your network settings to re-connect. Are you "
 "sure?"
 msgstr ""
-"This will update the network settings and restart the PiFinder. You may "
+"This will update the network settings and restart the MFNavis. You may "
 "have to adjust your network settings to re-connect. Are you sure?"
 
 #: views/network.html:117 views/tools.html:96
@@ -5446,11 +5446,11 @@ msgstr ""
 msgid ""
 "You may need to change the URL above or connect to a different wifi "
 "network on your phone/tablet/computer depending on the changes you made "
-"to the PiFinder configuration."
+"to the MFNavis configuration."
 msgstr ""
 "You may need to change the URL above or connect to a different wifi "
 "network on your phone/tablet/computer depending on the changes you made "
-"to the PiFinder configuration."
+"to the MFNavis configuration."
 
 #: views/restart.html:11 views/restart_pifinder.html:8
 msgid "If you are not automatically redirected"
@@ -5670,8 +5670,8 @@ msgstr "정확"
 
 #: views/catalogs/object.html:74
 #, fuzzy
-msgid "Push to PiFinder"
-msgstr "PiFinder 재시작"
+msgid "Push to MFNavis"
+msgstr "MFNavis 재시작"
 
 #: views/catalogs/object.html:75
 msgid "Stop GoTo"

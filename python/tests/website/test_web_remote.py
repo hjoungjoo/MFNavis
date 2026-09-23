@@ -155,7 +155,7 @@ def test_remote_image_present(driver, window_size, viewport_name):
     assert image is not None, "Image element not found on remote page"
 
     # Verify image has the correct attributes
-    assert image.get_attribute("alt") == "PiFinder Screen", "Image alt text incorrect"
+    assert image.get_attribute("alt") == "MFNavis Screen", "Image alt text incorrect"
     assert "pifinder-screen" in image.get_attribute("class"), "Image class incorrect"
 
 
@@ -247,7 +247,7 @@ def test_remote_all_elements_comprehensive(driver, window_size, viewport_name):
     login_to_remote(driver)
 
     # Verify page title
-    assert "PiFinder - Remote" in driver.title
+    assert "MFNavis - Remote" in driver.title
 
     # Check image is present
     image = driver.find_element(By.ID, "image")
@@ -343,7 +343,7 @@ def test_ui_state_changes_with_button_presses(driver):
 
 @pytest.mark.web
 def test_remote_nav_wakeup(driver):
-    """Wake the device and navigate to the Objects item in the PiFinder main menu."""
+    """Wake the device and navigate to the Objects item in the MFNavis main menu."""
     login_to_remote(driver)
 
     # ZL = LNG_LEFT (back to top). Two ZL presses: first wakes device from sleep

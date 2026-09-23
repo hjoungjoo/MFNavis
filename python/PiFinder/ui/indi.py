@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from PIL import ImageChops
 
 from PiFinder import utils
+from PiFinder.branding import product_label
 from PiFinder.indi_align import (
     BRIGHT_ALIGN_STARS,
     align_star_altaz,
@@ -791,7 +792,9 @@ class UIIndiMultiPointAlign(UIIndiGuide):
         for row in rows:
             if y + line_h > self.display_class.resY:
                 break
-            self._draw_text((4, y), row[:28], font=font, fill=self.colors.get(192))
+            self._draw_text(
+                (4, y), product_label(row)[:28], font=font, fill=self.colors.get(192)
+            )
             y += line_h
 
         hint_y = self.display_class.resY - (len(hints) * line_h) - 2
@@ -830,7 +833,7 @@ class UIIndiMultiPointAlign(UIIndiGuide):
                     str(message),
                 ],
                 [
-                    _("Syncing PiFinder"),
+                    _("Syncing MFNavis"),
                     _("Wait for mount"),
                     _("Left mode/cancel"),
                 ],

@@ -9,7 +9,7 @@
 ## 신규 설치
 
 ```bash
-git clone https://github.com/hjoungjoo/MF_PiFinder.git PiFinder
+git clone https://github.com/hjoungjoo/MFNavis.git PiFinder
 cd PiFinder
 bash scripts/setup_mfds.sh
 bash scripts/ensure_tetra3_link.sh .

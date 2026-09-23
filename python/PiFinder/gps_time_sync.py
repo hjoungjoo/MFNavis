@@ -600,7 +600,7 @@ class GpsTimeSyncMonitor:
         if stats["latest_seconds"] is None:
             return self._set_gps_state(
                 "no_reference",
-                "GPS time received before PiFinder internal time was available",
+                "GPS time received before MFNavis internal time was available",
             )
 
         if len(self.samples) < self.min_samples:
@@ -1009,7 +1009,7 @@ class GpsTimeSyncMonitor:
             return
         self.samples.clear()
         self.latest_sample = None
-        changed = self._set_gps_state("waiting_for_gps_time", "PiFinder datetime reset")
+        changed = self._set_gps_state("waiting_for_gps_time", "MFNavis datetime reset")
         changed = self._evaluate_state() or changed
         changed = self._refresh_action_wait_states() or changed
         self.write_status(force=changed)

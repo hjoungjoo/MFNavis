@@ -39,7 +39,7 @@ def i2c_present(address: int) -> bool:
 
 
 def detect_ssd1333_display() -> bool:
-    """Detect whether this PiFinder should default to the SSD1333 display."""
+    """Detect whether this MFNavis should default to the SSD1333 display."""
     try:
         return i2c_present(BQ25895_ADDRESS)
     except Exception as e:

@@ -65,13 +65,13 @@ class MultiprocLogging:
     def __init__(
         self,
         log_conf: Optional[Path] = None,
-        out_file: Optional[Path] = None,
+        out_file: Optional[Path | str] = None,
         formatter: str = "%(asctime)s %(processName)s-%(name)s:%(levelname)s:%(message)s",
         console_only: bool = False,
     ):
         self._queues: List[Queue] = []
         self._log_conf_file = log_conf
-        self._log_output_file = out_file
+        self._log_output_file = Path(out_file) if out_file is not None else None
         self._formatter = formatter
         self._console_only = console_only
         self._proc: Optional[Process] = None

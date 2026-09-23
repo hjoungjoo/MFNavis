@@ -32,20 +32,16 @@ then
     mv "${PIFINDER_REPO_DIR}/config.json" "${PIFINDER_DATA_DIR}/config.json"
 fi
 
-# Adjust service definition
-sudo systemctl disable pifinder
-sudo rm /etc/systemd/system/pifinder.service
-pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/pifinder.service" /lib/systemd/system/pifinder.service
-sudo systemctl daemon-reload
-sudo systemctl enable pifinder
-
-# add PiFinder_splash if not already in place
-if ! [ -f "/lib/systemd/system/pifinder_spash.service" ]
-then
-    pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/pifinder_splash.service" /lib/systemd/system/pifinder_splash.service
-    sudo systemctl daemon-reload
-    sudo systemctl enable pifinder_splash
+# The full post-update path has already migrated existing service definitions.
+# Only create missing units; do not discard installed command-line overrides.
+if ! systemctl cat mfnavis.service >/dev/null 2>&1; then
+    pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/mfnavis.service" /lib/systemd/system/mfnavis.service
 fi
+if ! systemctl cat mfnavis_splash.service >/dev/null 2>&1; then
+    pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/mfnavis_splash.service" /lib/systemd/system/mfnavis_splash.service
+fi
+sudo systemctl daemon-reload
+sudo systemctl enable mfnavis mfnavis_splash
 
 # allow the PiFinder service user to adjust network config without exposing
 # saved Wi-Fi credentials to every local user

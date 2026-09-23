@@ -295,9 +295,9 @@ msgid "set as active eyepiece."
 msgstr "choisi comme oculaire actif"
 
 #: PiFinder/server.py:883
-msgid "Equipment Imported, restart your PiFinder to use this new data"
+msgid "Equipment Imported, restart your MFNavis to use this new data"
 msgstr ""
-"Equipement importé, redemerage du PiFinder pour utilisation de ces "
+"Equipement importé, redemerage du MFNavis pour utilisation de ces "
 "nouvelles données"
 
 # AI-TRANSLATED (claude): needs human review
@@ -306,24 +306,24 @@ msgid "Edit Eyepiece"
 msgstr "Modifier oculaire"
 
 #: PiFinder/server.py:939
-msgid "Eyepiece added, restart your PiFinder to use"
-msgstr "Oculaire ajouté, redemarage du PiFinder pour utilisation"
+msgid "Eyepiece added, restart your MFNavis to use"
+msgstr "Oculaire ajouté, redemarage du MFNavis pour utilisation"
 
 #: PiFinder/server.py:952
-msgid "Eyepiece Deleted, restart your PiFinder to remove from menu"
-msgstr "Oculaire supprimé, redémarage du PiFinder pour le supprimer du menu"
+msgid "Eyepiece Deleted, restart your MFNavis to remove from menu"
+msgstr "Oculaire supprimé, redémarage du MFNavis pour le supprimer du menu"
 
 #: PiFinder/server.py:977
 msgid "Edit Instrument"
 msgstr "Editer instrument"
 
 #: PiFinder/server.py:1025
-msgid "Instrument Added, restart your PiFinder to use"
-msgstr "instrument ajouté, redemarage du PiFinder pour utilisation"
+msgid "Instrument Added, restart your MFNavis to use"
+msgstr "instrument ajouté, redemarage du MFNavis pour utilisation"
 
 #: PiFinder/server.py:1038
-msgid "Instrument Deleted, restart your PiFinder to remove from menu"
-msgstr "instrument supprimé, redémarage du PiFinder pour le supprimer du menu"
+msgid "Instrument Deleted, restart your MFNavis to remove from menu"
+msgstr "instrument supprimé, redémarage du MFNavis pour le supprimer du menu"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:1066 views/base.html:63 views/base.html:77
@@ -517,13 +517,13 @@ msgstr ""
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:2422 views/restart_pifinder.html:6
-msgid "Restarting PiFinder"
-msgstr "Redémarrage PiFinder"
+msgid "Restarting MFNavis"
+msgstr "Redémarrage MFNavis"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:2484
-msgid "Restart PiFinder"
-msgstr "Redémarrer PiFinder"
+msgid "Restart MFNavis"
+msgstr "Redémarrer MFNavis"
 
 #: PiFinder/ui/align.py:50
 msgid "Align Timeout"
@@ -718,10 +718,10 @@ msgstr "Abandon"
 #: PiFinder/ui/callbacks.py:59
 msgid ""
 "Options for\n"
-"DIY PiFinders"
+"DIY MFNaviss"
 msgstr ""
 "Options pour\n"
-"DIY PiFinders"
+"DIY MFNaviss"
 
 #: PiFinder/ui/callbacks.py:74
 msgid "Filters Reset"
@@ -1556,8 +1556,8 @@ msgstr "Mise en station"
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/ui/indi.py:830
 #, fuzzy
-msgid "Syncing PiFinder"
-msgstr "Redémarrage PiFinder"
+msgid "Syncing MFNavis"
+msgstr "Redémarrage MFNavis"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/ui/indi.py:831
@@ -1993,9 +1993,8 @@ msgstr "RàZ position"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/ui/menu_structure.py:127 views/indi_mount.html:42
-#, fuzzy
 msgid "Restart INDI"
-msgstr "Redémarrer PiFinder"
+msgstr "Redémarrer INDI"
 
 #: PiFinder/ui/menu_structure.py:133
 msgid "Guide"
@@ -2548,8 +2547,8 @@ msgstr "tube, sur monture."
 
 #: PiFinder/ui/menu_structure.py:1154 views/indi_mount.html:483
 #, fuzzy
-msgid "PiFinder"
-msgstr "Type de PiFinder"
+msgid "MFNavis"
+msgstr "Type de MFNavis"
 
 #: PiFinder/ui/menu_structure.py:1160 views/indi_mount.html:496
 msgid "Tracking Guide"
@@ -2585,8 +2584,8 @@ msgid "Invert Guide Dec/Alt"
 msgstr ""
 
 #: PiFinder/ui/menu_structure.py:1283
-msgid "PiFinder Type"
-msgstr "Type de PiFinder"
+msgid "MFNavis Type"
+msgstr "Type de MFNavis"
 
 #: PiFinder/ui/menu_structure.py:1290
 msgid "Left"
@@ -3874,13 +3873,13 @@ msgstr "Reprendre d'ici"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/base.html:113
-msgid "PiFinder User Guide"
-msgstr "Guide PiFinder"
+msgid "MFNavis User Guide"
+msgstr "Guide MFNavis"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/base.html:114
-msgid "PiFinder Support Page"
-msgstr "Page d'aide PiFinder"
+msgid "MFNavis Support Page"
+msgstr "Page d'aide MFNavis"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/edit_eyepiece.html:7
@@ -4007,11 +4006,11 @@ msgstr "Télécharger les instruments depuis DeepskyLog"
 # AI-TRANSLATED (claude): needs human review
 #: views/equipment.html:45
 msgid ""
-"This will delete all instruments and eyepieces from your PiFinder and "
+"This will delete all instruments and eyepieces from your MFNavis and "
 "replace them with the instruments and eyepieces from DeepskyLog. Are you "
 "really sure?"
 msgstr ""
-"Ceci supprimera tous les instruments et oculaires de votre PiFinder et "
+"Ceci supprimera tous les instruments et oculaires de votre MFNavis et "
 "les remplacera par ceux de DeepskyLog. Êtes-vous vraiment sûr ?"
 
 # AI-TRANSLATED (claude): needs human review
@@ -4141,8 +4140,8 @@ msgstr "Régler sur l'heure du navigateur"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/index.html:6 views/remote.html:6
-msgid "PiFinder Screen"
-msgstr "Écran PiFinder"
+msgid "MFNavis Screen"
+msgstr "Écran MFNavis"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/index.html:14 views/indi_mount.html:206 views/indi_mount.html:1087
@@ -4172,9 +4171,9 @@ msgstr "Version logiciel"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/index.html:66 views/remote.html:59
-msgid "PiFinder server is currently unavailable. Please try again later."
+msgid "MFNavis server is currently unavailable. Please try again later."
 msgstr ""
-"Le serveur PiFinder est actuellement indisponible. Veuillez réessayer "
+"Le serveur MFNavis est actuellement indisponible. Veuillez réessayer "
 "plus tard."
 
 #: views/indi_mount.html:17
@@ -4194,9 +4193,8 @@ msgstr ""
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:43
-#, fuzzy
 msgid "REBOOT INDI"
-msgstr "Redémarrer PiFinder"
+msgstr "REDÉMARRER INDI"
 
 #: views/indi_mount.html:47
 msgid "INDI Profile"
@@ -4369,8 +4367,8 @@ msgstr "Position sauvegardée"
 
 #: views/indi_mount.html:170
 #, fuzzy
-msgid "PiFinder UTC Time"
-msgstr "Type de PiFinder"
+msgid "MFNavis UTC Time"
+msgstr "Type de MFNavis"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:185
@@ -4675,8 +4673,8 @@ msgstr ""
 
 #: views/indi_mount.html:438
 #, fuzzy
-msgid "PiFinder Mount Type"
-msgstr "Type de PiFinder"
+msgid "MFNavis Mount Type"
+msgstr "Type de MFNavis"
 
 #: views/indi_mount.html:444
 msgid "Polar / EQ"
@@ -4743,7 +4741,7 @@ msgid "Invert guide pulse Dec/Alt (NS)"
 msgstr ""
 
 #: views/indi_mount.html:537
-msgid "PiFinder GoTo: Max sync + GoTo iterations"
+msgid "MFNavis GoTo: Max sync + GoTo iterations"
 msgstr ""
 
 #: views/indi_mount.html:541
@@ -4961,9 +4959,8 @@ msgstr "Personnalisé"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:1610
-#, fuzzy
 msgid "Restarting INDI"
-msgstr "Redémarrage PiFinder"
+msgstr "Redémarrage de INDI"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:1613
@@ -5456,8 +5453,8 @@ msgstr "Vous pouvez le modifier via le menu Outils"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/logs.html:123
-msgid "PiFinder Logs"
-msgstr "Journaux PiFinder"
+msgid "MFNavis Logs"
+msgstr "Journaux MFNavis"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/logs.html:141
@@ -5542,8 +5539,8 @@ msgstr "Basculer la config journal vers"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/logs.html:408
-msgid "and restart PiFinder?"
-msgstr "et redémarrer le PiFinder ?"
+msgid "and restart MFNavis?"
+msgstr "et redémarrer le MFNavis ?"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/logs.html:428
@@ -5687,11 +5684,11 @@ msgstr "Enregistrer et redémarrer"
 #: views/network.html:114
 #, fuzzy
 msgid ""
-"This will save the network settings, apply them and restart the PiFinder."
+"This will save the network settings, apply them and restart the MFNavis."
 " You may have to adjust your network settings to re-connect. Are you "
 "sure?"
 msgstr ""
-"Ceci mettra à jour les réglages réseau et redémarrera le PiFinder. Vous "
+"Ceci mettra à jour les réglages réseau et redémarrera le MFNavis. Vous "
 "devrez peut-être ajuster vos réglages réseau pour vous reconnecter. Êtes-"
 "vous sûr ?"
 
@@ -5886,11 +5883,11 @@ msgstr ""
 msgid ""
 "You may need to change the URL above or connect to a different wifi "
 "network on your phone/tablet/computer depending on the changes you made "
-"to the PiFinder configuration."
+"to the MFNavis configuration."
 msgstr ""
 "Vous devrez peut-être changer l'URL ci-dessus ou vous connecter à un "
 "autre réseau wifi sur votre téléphone/tablette/ordinateur selon les "
-"modifications apportées à la configuration du PiFinder."
+"modifications apportées à la configuration du MFNavis."
 
 # AI-TRANSLATED (claude): needs human review
 #: views/restart.html:11 views/restart_pifinder.html:8
@@ -5918,13 +5915,10 @@ msgstr "Changer le mot de passe"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/tools.html:30
-#, fuzzy
 msgid ""
 "This will change the password for this web interface and the current "
 "system user account for SSH and other tools"
-msgstr ""
-"Ceci changera le mot de passe de cette interface web et du compte "
-"utilisateur pifinder pour ssh et autres outils"
+msgstr "Ceci modifie le mot de passe de cette interface web et du compte utilisateur système actuel pour SSH et les autres outils."
 
 # AI-TRANSLATED (claude): needs human review
 #: views/tools.html:36
@@ -6134,8 +6128,8 @@ msgstr "Fin"
 # AI-TRANSLATED (claude): needs human review
 #: views/catalogs/object.html:74
 #, fuzzy
-msgid "Push to PiFinder"
-msgstr "Redémarrer PiFinder"
+msgid "Push to MFNavis"
+msgstr "Redémarrer MFNavis"
 
 #: views/catalogs/object.html:75
 msgid "Stop GoTo"

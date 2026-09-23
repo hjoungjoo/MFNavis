@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install or manage the optional privileged PiFinder time-sync helper service.
+# Install or manage the optional privileged MFNavis time-sync helper service.
 #
 # chronyd is the preferred default system-clock manager. This helper is still
 # useful for RTC writes and for the explicit `time_sync_clock_manager=pifinder`
@@ -11,18 +11,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PIFINDER_REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${PIFINDER_REPO_DIR}/pifinder_paths.sh"
 
-SERVICE_NAME="pifinder_gps_time_sync.service"
+SERVICE_NAME="mfnavis_gps_time_sync.service"
 SERVICE_TEMPLATE="${PIFINDER_REPO_DIR}/pi_config_files/${SERVICE_NAME}"
 SERVICE_TARGET="/lib/systemd/system/${SERVICE_NAME}"
 SERVICE_DROPIN_DIR="/etc/systemd/system/${SERVICE_NAME}.d"
 DRY_RUN_DROPIN="${SERVICE_DROPIN_DIR}/dry-run.conf"
 
+migrate_service() {
+    sudo python3 "${PIFINDER_REPO_DIR}/scripts/apply_product_branding.py" \
+        --apply --services-only --unit pifinder_gps_time_sync
+}
+
 install_service() {
+    migrate_service
     pifinder_render_config "${SERVICE_TEMPLATE}" "${SERVICE_TARGET}"
     sudo systemctl daemon-reload
     echo "Installed ${SERVICE_NAME}"
     echo "Note: chronyd remains the preferred system-clock manager."
-    echo "      PiFinder helper writes the system clock only in pifinder clock-manager mode."
+    echo "      MFNavis helper writes the system clock only in pifinder clock-manager mode."
 }
 
 install_dry_run_override() {
@@ -37,7 +43,8 @@ install_dry_run_override() {
 }
 
 remove_dry_run_override() {
-    sudo rm -f "${DRY_RUN_DROPIN}"
+    sudo rm -f "${DRY_RUN_DROPIN}" \
+        /etc/systemd/system/pifinder_gps_time_sync.service.d/dry-run.conf
     sudo rmdir "${SERVICE_DROPIN_DIR}" 2>/dev/null || true
     sudo systemctl daemon-reload
 }
@@ -60,6 +67,7 @@ case "${1:-install}" in
         sudo systemctl enable --now "${SERVICE_NAME}"
         ;;
     disable)
+        migrate_service
         sudo systemctl disable --now "${SERVICE_NAME}" 2>/dev/null || true
         remove_dry_run_override
         ;;

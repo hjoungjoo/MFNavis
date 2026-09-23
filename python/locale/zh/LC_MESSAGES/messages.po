@@ -301,8 +301,8 @@ msgstr "已设为当前目镜。"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:883
-msgid "Equipment Imported, restart your PiFinder to use this new data"
-msgstr "设备已导入，重启PiFinder后生效"
+msgid "Equipment Imported, restart your MFNavis to use this new data"
+msgstr "设备已导入，重启MFNavis后生效"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:899
@@ -311,13 +311,13 @@ msgstr "编辑目镜"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:939
-msgid "Eyepiece added, restart your PiFinder to use"
-msgstr "目镜已添加，重启PiFinder后生效"
+msgid "Eyepiece added, restart your MFNavis to use"
+msgstr "目镜已添加，重启MFNavis后生效"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:952
-msgid "Eyepiece Deleted, restart your PiFinder to remove from menu"
-msgstr "目镜已删除，重启PiFinder后从菜单移除"
+msgid "Eyepiece Deleted, restart your MFNavis to remove from menu"
+msgstr "目镜已删除，重启MFNavis后从菜单移除"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:977
@@ -326,13 +326,13 @@ msgstr "编辑望远镜"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:1025
-msgid "Instrument Added, restart your PiFinder to use"
-msgstr "望远镜已添加，重启PiFinder后生效"
+msgid "Instrument Added, restart your MFNavis to use"
+msgstr "望远镜已添加，重启MFNavis后生效"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:1038
-msgid "Instrument Deleted, restart your PiFinder to remove from menu"
-msgstr "望远镜已删除，重启PiFinder后从菜单移除"
+msgid "Instrument Deleted, restart your MFNavis to remove from menu"
+msgstr "望远镜已删除，重启MFNavis后从菜单移除"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:1066 views/base.html:63 views/base.html:77
@@ -528,13 +528,13 @@ msgstr ""
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:2422 views/restart_pifinder.html:6
-msgid "Restarting PiFinder"
-msgstr "正在重启PiFinder"
+msgid "Restarting MFNavis"
+msgstr "正在重启MFNavis"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:2484
-msgid "Restart PiFinder"
-msgstr "重启PiFinder"
+msgid "Restart MFNavis"
+msgstr "重启MFNavis"
 
 #: PiFinder/ui/align.py:50
 msgid "Align Timeout"
@@ -726,9 +726,9 @@ msgstr "取消"
 #: PiFinder/ui/callbacks.py:59
 msgid ""
 "Options for\n"
-"DIY PiFinders"
+"DIY MFNaviss"
 msgstr ""
-"DIY PiFinder\n"
+"DIY MFNavis\n"
 "选项"
 
 #: PiFinder/ui/callbacks.py:74
@@ -1568,8 +1568,8 @@ msgstr "极轴校准"
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/ui/indi.py:830
 #, fuzzy
-msgid "Syncing PiFinder"
-msgstr "正在重启PiFinder"
+msgid "Syncing MFNavis"
+msgstr "正在重启MFNavis"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/ui/indi.py:831
@@ -2007,9 +2007,8 @@ msgstr "重置位置"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/ui/menu_structure.py:127 views/indi_mount.html:42
-#, fuzzy
 msgid "Restart INDI"
-msgstr "重启PiFinder"
+msgstr "重启 INDI"
 
 #: PiFinder/ui/menu_structure.py:133
 msgid "Guide"
@@ -2558,8 +2557,8 @@ msgstr "架上镜筒。"
 
 #: PiFinder/ui/menu_structure.py:1154 views/indi_mount.html:483
 #, fuzzy
-msgid "PiFinder"
-msgstr "PiFinder类型"
+msgid "MFNavis"
+msgstr "MFNavis类型"
 
 #: PiFinder/ui/menu_structure.py:1160 views/indi_mount.html:496
 msgid "Tracking Guide"
@@ -2594,8 +2593,8 @@ msgid "Invert Guide Dec/Alt"
 msgstr ""
 
 #: PiFinder/ui/menu_structure.py:1283
-msgid "PiFinder Type"
-msgstr "PiFinder类型"
+msgid "MFNavis Type"
+msgstr "MFNavis类型"
 
 #: PiFinder/ui/menu_structure.py:1290
 msgid "Left"
@@ -3927,13 +3926,13 @@ msgstr "从当前位置继续"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/base.html:113
-msgid "PiFinder User Guide"
-msgstr "PiFinder用户指南"
+msgid "MFNavis User Guide"
+msgstr "MFNavis用户指南"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/base.html:114
-msgid "PiFinder Support Page"
-msgstr "PiFinder支持页面"
+msgid "MFNavis Support Page"
+msgstr "MFNavis支持页面"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/edit_eyepiece.html:7
@@ -4060,10 +4059,10 @@ msgstr "从DeepskyLog下载器材"
 # AI-TRANSLATED (claude): needs human review
 #: views/equipment.html:45
 msgid ""
-"This will delete all instruments and eyepieces from your PiFinder and "
+"This will delete all instruments and eyepieces from your MFNavis and "
 "replace them with the instruments and eyepieces from DeepskyLog. Are you "
 "really sure?"
-msgstr "这将删除PiFinder上的所有器材和目镜,并替换为DeepskyLog中的器材和目镜。确定继续吗?"
+msgstr "这将删除MFNavis上的所有器材和目镜,并替换为DeepskyLog中的器材和目镜。确定继续吗?"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/equipment.html:50
@@ -4192,8 +4191,8 @@ msgstr "设为浏览器日期/时间"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/index.html:6 views/remote.html:6
-msgid "PiFinder Screen"
-msgstr "PiFinder屏幕"
+msgid "MFNavis Screen"
+msgstr "MFNavis屏幕"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/index.html:14 views/indi_mount.html:206 views/indi_mount.html:1087
@@ -4223,8 +4222,8 @@ msgstr "软件版本"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/index.html:66 views/remote.html:59
-msgid "PiFinder server is currently unavailable. Please try again later."
-msgstr "PiFinder服务器当前不可用。请稍后再试。"
+msgid "MFNavis server is currently unavailable. Please try again later."
+msgstr "MFNavis服务器当前不可用。请稍后再试。"
 
 #: views/indi_mount.html:17
 msgid ""
@@ -4244,9 +4243,8 @@ msgstr ""
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:43
-#, fuzzy
 msgid "REBOOT INDI"
-msgstr "重启PiFinder"
+msgstr "重启 INDI"
 
 #: views/indi_mount.html:47
 msgid "INDI Profile"
@@ -4415,8 +4413,8 @@ msgstr "位置已保存"
 
 #: views/indi_mount.html:170
 #, fuzzy
-msgid "PiFinder UTC Time"
-msgstr "PiFinder类型"
+msgid "MFNavis UTC Time"
+msgstr "MFNavis类型"
 
 #: views/indi_mount.html:185
 #, fuzzy
@@ -4722,8 +4720,8 @@ msgstr ""
 
 #: views/indi_mount.html:438
 #, fuzzy
-msgid "PiFinder Mount Type"
-msgstr "PiFinder类型"
+msgid "MFNavis Mount Type"
+msgstr "MFNavis类型"
 
 #: views/indi_mount.html:444
 msgid "Polar / EQ"
@@ -4787,7 +4785,7 @@ msgid "Invert guide pulse Dec/Alt (NS)"
 msgstr ""
 
 #: views/indi_mount.html:537
-msgid "PiFinder GoTo: Max sync + GoTo iterations"
+msgid "MFNavis GoTo: Max sync + GoTo iterations"
 msgstr ""
 
 #: views/indi_mount.html:541
@@ -5005,9 +5003,8 @@ msgstr "自定义"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:1610
-#, fuzzy
 msgid "Restarting INDI"
-msgstr "正在重启PiFinder"
+msgstr "正在重启 INDI"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:1613
@@ -5499,8 +5496,8 @@ msgstr "你可以通过工具菜单选项更改此项"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/logs.html:123
-msgid "PiFinder Logs"
-msgstr "PiFinder日志"
+msgid "MFNavis Logs"
+msgstr "MFNavis日志"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/logs.html:141
@@ -5585,8 +5582,8 @@ msgstr "切换日志配置为"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/logs.html:408
-msgid "and restart PiFinder?"
-msgstr "并重启PiFinder吗?"
+msgid "and restart MFNavis?"
+msgstr "并重启MFNavis吗?"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/logs.html:428
@@ -5728,10 +5725,10 @@ msgstr "保存并重启"
 #: views/network.html:114
 #, fuzzy
 msgid ""
-"This will save the network settings, apply them and restart the PiFinder."
+"This will save the network settings, apply them and restart the MFNavis."
 " You may have to adjust your network settings to re-connect. Are you "
 "sure?"
-msgstr "这将更新网络设置并重启PiFinder。你可能需要调整网络设置才能重新连接。确定继续吗?"
+msgstr "这将更新网络设置并重启MFNavis。你可能需要调整网络设置才能重新连接。确定继续吗?"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:117 views/tools.html:96
@@ -5925,8 +5922,8 @@ msgstr "此过程约需45秒,完成后将自动跳转到主页。"
 msgid ""
 "You may need to change the URL above or connect to a different wifi "
 "network on your phone/tablet/computer depending on the changes you made "
-"to the PiFinder configuration."
-msgstr "根据你对PiFinder配置所做的更改,你可能需要修改上方的网址,或在手机/平板/电脑上连接到不同的WiFi网络。"
+"to the MFNavis configuration."
+msgstr "根据你对MFNavis配置所做的更改,你可能需要修改上方的网址,或在手机/平板/电脑上连接到不同的WiFi网络。"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/restart.html:11 views/restart_pifinder.html:8
@@ -5952,11 +5949,10 @@ msgstr "修改密码"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/tools.html:30
-#, fuzzy
 msgid ""
 "This will change the password for this web interface and the current "
 "system user account for SSH and other tools"
-msgstr "这将修改此网页界面的密码,以及用于ssh和其他工具的pifinder用户账户密码"
+msgstr "这将修改此网页界面及当前系统用户账户用于 SSH 等工具的密码。"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/tools.html:36
@@ -6163,8 +6159,8 @@ msgstr "精确"
 # AI-TRANSLATED (claude): needs human review
 #: views/catalogs/object.html:74
 #, fuzzy
-msgid "Push to PiFinder"
-msgstr "重启PiFinder"
+msgid "Push to MFNavis"
+msgstr "重启MFNavis"
 
 #: views/catalogs/object.html:75
 msgid "Stop GoTo"

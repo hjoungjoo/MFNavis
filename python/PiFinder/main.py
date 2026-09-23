@@ -539,7 +539,7 @@ def main(
     keyboard_base = keyboard_interface.KeyboardInterface()
 
     os_detail, platform, arch = utils.get_os_info()
-    logger.info("PiFinder running on %s, %s, %s", os_detail, platform, arch)
+    logger.info("MFNavis running on %s, %s, %s", os_detail, platform, arch)
 
     # init UI Modes
     integrator_command_queue: Queue = Queue()
@@ -1431,7 +1431,7 @@ if __name__ == "__main__":
         # Logs live on tmpfs (utils.log_dir); use the web Logs page "Save to
         # SD" action to persist a session worth keeping.
         utils.create_path(utils.log_dir)
-        log_path = utils.log_dir / "pifinder.log"
+        log_path = utils.log_dir / "mfnavis.log"
         try:
             log_helper = MultiprocLogging(
                 Path("pifinder_logconf.json"),
@@ -1447,7 +1447,7 @@ if __name__ == "__main__":
             logging.getLogger("tetra3.Tetra3").setLevel(logging.WARNING)
             logging.getLogger("picamera2.picamera2").setLevel(logging.WARNING)
 
-    rlogger.info("Starting PiFinder ...")
+    rlogger.info("Starting MFNavis ...")
     parser = argparse.ArgumentParser(description="eFinder")
     parser.add_argument(
         "-fh",

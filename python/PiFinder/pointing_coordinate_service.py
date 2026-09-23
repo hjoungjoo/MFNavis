@@ -431,7 +431,7 @@ class PointingCoordinateService:
         try:
             solution = shared_state.solution()
         except Exception:
-            logger.debug("Could not read PiFinder solution", exc_info=True)
+            logger.debug("Could not read MFNavis solution", exc_info=True)
             return CoordinateSample.invalid(SOURCE_SOLVE, "solution unavailable")
 
         if not solution or not solution.has_pointing():

@@ -21,7 +21,7 @@ from web_test_utils import get_homepage_url
 
 @pytest.mark.web
 def test_webpage_loads_and_displays_image(driver):
-    """Test that the PiFinder web interface loads and displays an image"""
+    """Test that the MFNavis web interface loads and displays an image"""
     # Navigate to localhost:8080
     driver.get(get_homepage_url())
 
@@ -29,7 +29,7 @@ def test_webpage_loads_and_displays_image(driver):
     WebDriverWait(driver, 10).until(lambda d: d.title != "")
 
     # Verify page loaded successfully
-    assert "PiFinder - Home" in driver.title
+    assert "MFNavis - Home" in driver.title
 
     # Look for image elements in the page
     # Common selectors for images
