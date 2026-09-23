@@ -6,8 +6,10 @@ After=basic.target mfnavis.service
 Type=simple
 User=root
 WorkingDirectory=__PIFINDER_REPO_DIR__/python
+Environment=MFNAVIS_DATA_DIR=__PIFINDER_DATA_DIR__
+Environment=MFNAVIS_RUNTIME_DIR=/dev/shm/mfnavis
 Environment=PIFINDER_DATA_DIR=__PIFINDER_DATA_DIR__
-ExecStart=/usr/bin/python -m PiFinder.gps_time_sync_helper
+ExecStart=/usr/bin/python -m MFNavis.gps_time_sync_helper
 Restart=on-failure
 RestartSec=5
 

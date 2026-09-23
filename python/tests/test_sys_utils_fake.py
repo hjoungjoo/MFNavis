@@ -10,6 +10,18 @@ import json
 from PiFinder.sys_utils_fake import backup_userdata, restore_userdata, BACKUP_PATH
 
 
+@pytest.fixture(autouse=True)
+def isolated_userdata(tmp_path, monkeypatch):
+    """Exercise fake backups without depending on the device's user files."""
+    data = tmp_path / "MFNavis_data"
+    data.mkdir()
+    (data / "config.json").write_text('{"version": "test"}')
+    (data / "observations.db").write_bytes(b"test observations")
+    (data / "obslists").mkdir()
+    (data / "obslists" / "test.txt").write_text("M31")
+    monkeypatch.setattr("PiFinder.sys_utils_fake._pifinder_data_dir", str(data))
+
+
 class TestBackupUserdata:
     """Test the backup_userdata function"""
 

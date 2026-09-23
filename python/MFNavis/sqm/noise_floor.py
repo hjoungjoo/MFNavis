@@ -14,7 +14,6 @@ from typing import Tuple, Dict, Any
 import time
 import logging
 import json
-from pathlib import Path
 
 from .camera_profiles import get_camera_profile
 
@@ -328,7 +327,9 @@ class NoiseFloorEstimator:
         """
         try:
             # Load from ~/PiFinder_data/sqm_calibration_{camera_type}.json
-            data_dir = Path.home() / "PiFinder_data"
+            from PiFinder import utils
+
+            data_dir = utils.data_dir
             calibration_file = data_dir / f"sqm_calibration_{self.camera_type}.json"
 
             if not calibration_file.exists():
@@ -415,7 +416,9 @@ class NoiseFloorEstimator:
             }
 
             # Save to ~/PiFinder_data/sqm_calibration_{camera_type}.json
-            data_dir = Path.home() / "PiFinder_data"
+            from PiFinder import utils
+
+            data_dir = utils.data_dir
             data_dir.mkdir(exist_ok=True)
 
             calibration_file = data_dir / f"sqm_calibration_{self.camera_type}.json"

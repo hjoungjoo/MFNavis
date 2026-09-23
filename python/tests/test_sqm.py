@@ -14,6 +14,14 @@ from PiFinder.sqm.save_sweep_metadata import save_sweep_metadata
 from PiFinder.sqm.wings import WingEstimator
 
 
+@pytest.fixture(autouse=True)
+def isolated_calibration_directory(tmp_path, monkeypatch):
+    """Keep calibration reads and writes independent of other tests and the device."""
+    data = tmp_path / "calibration-data"
+    data.mkdir()
+    monkeypatch.setattr("PiFinder.utils.data_dir", data)
+
+
 @pytest.mark.unit
 class TestSQMExtinction:
     """
@@ -771,12 +779,6 @@ class TestNoiseFloorEstimation:
 
     def test_save_and_load_calibration(self, tmp_path, monkeypatch):
         """Test calibration save/load round-trip."""
-        # Redirect Path.home() to tmp_path
-        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-
-        # Create PiFinder_data directory
-        (tmp_path / "PiFinder_data").mkdir()
-
         estimator = NoiseFloorEstimator(camera_type="testcam")
 
         # Save calibration with new values
@@ -1027,7 +1029,7 @@ class TestGetCameraProfile:
     def test_invalid_calibration_cannot_partially_override_factory_profile(
         self, tmp_path, monkeypatch
     ):
-        calibration_dir = tmp_path / "PiFinder_data"
+        calibration_dir = tmp_path / "MFNavis_data"
         calibration_dir.mkdir()
         (calibration_dir / "sqm_calibration_imx462.json").write_text(
             json.dumps(
@@ -1469,7 +1471,7 @@ class TestPedestalOverride:
     def test_optional_calibration_applies_measured_dark_signal(
         self, tmp_path, monkeypatch
     ):
-        calibration_dir = tmp_path / "PiFinder_data"
+        calibration_dir = tmp_path / "MFNavis_data"
         calibration_dir.mkdir()
         (calibration_dir / "sqm_calibration_imx462.json").write_text(
             json.dumps(
@@ -1480,7 +1482,7 @@ class TestPedestalOverride:
                 }
             )
         )
-        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        monkeypatch.setattr("PiFinder.utils.data_dir", calibration_dir)
         sqm = SQM("imx462")
         mags = [5.0, 6.0, 7.0]
         sol, centroids = _mock_solution(mags)

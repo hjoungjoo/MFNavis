@@ -9,7 +9,9 @@ import tempfile
 # so we need to create a backup file that can be served from there.
 # Since we can't write to /home/pifinder as a regular user, we'll use the current
 # user's directory structure that mirrors the production layout.
-_pifinder_data_dir = os.path.expanduser("~/PiFinder_data")
+from PiFinder import utils
+
+_pifinder_data_dir = str(utils.data_dir)
 os.makedirs(_pifinder_data_dir, exist_ok=True)
 BACKUP_PATH = os.path.join(_pifinder_data_dir, "MFNavis_backup.zip")
 

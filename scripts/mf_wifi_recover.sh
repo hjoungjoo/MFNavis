@@ -15,12 +15,14 @@
 
 set -u
 
-LOG_FILE="${MF_WIFI_RECOVER_LOG:-/home/pifinder/PiFinder_data/wifi_recover.log}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../pifinder_paths.sh"
+LOG_FILE="${MF_WIFI_RECOVER_LOG:-${PIFINDER_DATA_DIR}/wifi_recover.log}"
 STA_IFACE="wlan0"
 AP_IFACE="uap0"
 # Units above the driver, in stop order. prepare is a oneshot that recreates
 # the uap0 virtual interface; the monitor keeps AP/STA on one channel.
-AP_UNITS=(pifinder_apsta_monitor hostapd dnsmasq)
+AP_UNITS=(mfnavis_apsta_monitor hostapd dnsmasq)
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "${LOG_FILE}"
@@ -75,8 +77,8 @@ log "${STA_IFACE} back after ${waited}s"
 # 4) Bring the stack back in boot order: NM re-manages the STA, prepare
 #    recreates uap0, then the AP-side units that were running before.
 systemctl start NetworkManager 2>/dev/null || true
-if systemctl cat pifinder_apsta_prepare >/dev/null 2>&1; then
-    systemctl restart pifinder_apsta_prepare 2>/dev/null || true
+if systemctl cat mfnavis_apsta_prepare >/dev/null 2>&1; then
+    systemctl restart mfnavis_apsta_prepare 2>/dev/null || true
 fi
 for unit in "${ACTIVE_UNITS[@]}"; do
     systemctl start "${unit}" 2>/dev/null || true

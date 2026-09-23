@@ -14,10 +14,14 @@ pytestmark = pytest.mark.unit
 @pytest.mark.parametrize("explicit", [False, True])
 def test_fresh_process_data_and_runtime_paths(tmp_path, explicit):
     env = dict(os.environ)
+    env.pop("MFNAVIS_DATA_DIR", None)
+    env.pop("MFNAVIS_RUNTIME_DIR", None)
     env.pop("PIFINDER_DATA_DIR", None)
     env.pop("PIFINDER_RUNTIME_DIR", None)
-    data = Path.home() / "PiFinder_data"
-    runtime = Path("/dev/shm/pifinder")
+    data = Path.home() / "MFNavis_data"
+    if not data.exists() and (Path.home() / "PiFinder_data").exists():
+        data = Path.home() / "PiFinder_data"
+    runtime = Path("/dev/shm/mfnavis")
     if explicit:
         data = tmp_path / "test-data"
         runtime = tmp_path / "test-runtime"

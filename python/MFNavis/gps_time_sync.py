@@ -21,7 +21,6 @@ from __future__ import annotations
 import datetime
 import json
 import logging
-import os
 import subprocess
 import time
 from collections import deque
@@ -35,7 +34,7 @@ from PiFinder import utils
 
 logger = logging.getLogger("GPS.TimeSync")
 
-DATA_DIR = Path(os.environ.get("PIFINDER_DATA_DIR", utils.data_dir))
+DATA_DIR = utils.data_dir
 # STATUS_FILE is rewritten every few seconds while time sync is active and is
 # meaningless after a reboot, so it lives on the tmpfs runtime dir (/dev/shm)
 # to spare the SD card -- the same treatment as the other volatile status

@@ -1,6 +1,6 @@
 # MFNavis
 
-현재 정식 저장소는 **https://github.com/hjoungjoo/MFNavis** 입니다. 기존 MF_PiFinder 저장소는 과거 기록으로 보존하며, 기존 코드·데이터 경로는 호환성을 위해 유지합니다.
+현재 정식 저장소는 **https://github.com/hjoungjoo/MFNavis** 입니다. 기존 MF_PiFinder 저장소는 과거 기록으로 보존하며, 새 설치는 ~/MFNavis와 ~/MFNavis_data를 사용하며 기존 경로는 호환 별칭으로 유지합니다.
 
 제품 **MFNavis** · 판매·배포 **FNPD 한국** · 제작·수정 **MagicFly**.
 [제3자 고지](THIRD_PARTY_NOTICES.md) · [판매 및 대응소스 제공 기준](docs/MFNAVIS_RELEASE_ko.md).
@@ -50,20 +50,20 @@ Raspberry Pi Imager로 Pi 4/Pi 5/CM5의 부팅 저장장치에
 
 GitHub에서 최신 공개 릴리즈 태그를 자동 조회하여 해당 버전을 설치합니다.
 버전 번호를 입력할 필요가 없으며, 조회에 실패하면 설치를 중단합니다.
-`~/PiFinder`가 없는 새 설치에서 실행하는 명령입니다.
+`~/MFNavis`가 없는 새 설치에서 실행하는 명령입니다.
 
 ```bash
 PF_RELEASE_TAG="$(python3 -c 'import json, urllib.request; print(json.load(urllib.request.urlopen("https://api.github.com/repos/hjoungjoo/MFNavis/releases/latest"))["tag_name"])')" &&
 [ -n "$PF_RELEASE_TAG" ] &&
-wget -O /tmp/mf-pifinder-setup.sh "https://raw.githubusercontent.com/hjoungjoo/MFNavis/${PF_RELEASE_TAG}/pifinder_setup.sh" &&
-PIFINDER_INSTALL_BRANCH="$PF_RELEASE_TAG" bash /tmp/mf-pifinder-setup.sh
+wget -O /tmp/mfnavis-setup.sh "https://raw.githubusercontent.com/hjoungjoo/MFNavis/${PF_RELEASE_TAG}/mfnavis_setup.sh" &&
+PIFINDER_INSTALL_BRANCH="$PF_RELEASE_TAG" bash /tmp/mfnavis-setup.sh
 ```
 
 **개발 버전(main) 설치:**
 
 ```bash
-wget -O /tmp/mf-pifinder-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavis/main/pifinder_setup.sh &&
-PIFINDER_INSTALL_BRANCH=main bash /tmp/mf-pifinder-setup.sh
+wget -O /tmp/mfnavis-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavis/main/mfnavis_setup.sh &&
+PIFINDER_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh
 ```
 
 설치 완료 메시지를 확인한 뒤 재부팅합니다.
@@ -76,17 +76,17 @@ sudo reboot
 
 | 상황 | 동작 및 안내 |
 | --- | --- |
-| 사용자명이 `pifinder` | 코드: `/home/pifinder/PiFinder`, 데이터: `/home/pifinder/PiFinder_data`. |
-| 다른 사용자명 | 같은 명령으로 해당 사용자 홈의 `~/PiFinder`, `~/PiFinder_data`에 설치합니다. 이후 명령도 같은 사용자로 실행하세요. |
-| `~/PiFinder_main` 등 별도 코드 경로 | 설치 스크립트는 어디서 실행해도 대상 사용자 홈의 `PiFinder`를 사용합니다. `PIFINDER_REPO_DIR`로 바꿀 수 없으므로 새 설치에는 기본 경로를 사용하세요. |
+| 사용자명이 `pifinder` | 코드: `/home/pifinder/MFNavis`, 데이터: `/home/pifinder/MFNavis_data`. |
+| 다른 사용자명 | 같은 명령으로 해당 사용자 홈의 `~/MFNavis`, `~/MFNavis_data`에 설치합니다. 이후 명령도 같은 사용자로 실행하세요. |
+| `~/MFNavis_main` 등 별도 코드 경로 | 설치 스크립트는 어디서 실행해도 대상 사용자 홈의 `MFNavis`를 사용합니다. `PIFINDER_REPO_DIR`로 바꿀 수 없으므로 새 설치에는 기본 경로를 사용하세요. |
 | 별도 데이터 경로 | 설치 명령 앞에 `PIFINDER_DATA_DIR=/절대/경로`를 지정합니다. 이후 업데이트와 캐시 명령에도 같은 값을 지정해야 합니다. 기존 데이터는 자동 이동하지 않습니다. |
-| `~/PiFinder`가 이미 있음 | 설치 스크립트는 **현재 브랜치**를 fast-forward 갱신합니다. `PIFINDER_INSTALL_BRANCH`는 새로 복제할 때만 적용됩니다. 추적 파일에 로컬 수정이 있으면 중단합니다. |
+| `~/MFNavis`가 이미 있음 | 설치 스크립트는 **현재 브랜치**를 fast-forward 갱신합니다. `PIFINDER_INSTALL_BRANCH`는 새로 복제할 때만 적용됩니다. 추적 파일에 로컬 수정이 있으면 중단합니다. |
 | 태그로 설치한 기존 릴리즈 | 새 태그 설치는 가능하지만, 이후 detached HEAD 상태에서 설치 스크립트를 재실행하면 중단합니다. 위 새 설치 명령으로 기존 릴리즈와 `main`을 전환하지 마세요. |
 
-기존 장치는 먼저 `git -C ~/PiFinder status -sb`로 상태를 확인하고
-`~/PiFinder_data`와 로컬 수정 사항을 백업하세요. 브랜치 설치는 의도한 브랜치인지
+기존 장치는 먼저 `git -C ~/MFNavis status -sb`로 상태를 확인하고
+`~/MFNavis_data`와 로컬 수정 사항을 백업하세요. 브랜치 설치는 의도한 브랜치인지
 확인한 뒤 갱신합니다. 기존 설치의 코드 갱신 후에는 해당 저장소 최상위에서
-`bash pifinder_post_update.sh`를 실행해 MFDS 자동 설치를 포함한 런타임 변경을
+`bash mfnavis_post_update.sh`를 실행해 MFDS 자동 설치를 포함한 런타임 변경을
 적용합니다. 이 스크립트는 업데이트용이며 최초 OS·서비스 설치를 대신하지 않습니다.
 
 패키지 구성은 [MFDS 바이너리 설치 안내](./docs/MFDS_BINARY_DISTRIBUTION_ko.md)를 참고하세요.
@@ -98,13 +98,13 @@ INDI 마운트 지원은 선택 사항으로, 설치 스크립트가 INDI 아카
 **전체 이미지 다운로드는 시간이 오래 걸리는 작업입니다.** 수천 장의 서베이 이미지를
 받으므로 네트워크와 서버 상태에 따라 수 시간이 걸릴 수 있습니다. 관측 당일 직전에
 시작하기보다 미리 준비하세요. 장치 전원과 인터넷 연결을 유지하고, POSS+SDSS 전체
-캐시에는 **최소 6 GB의 여유 공간**을 확보하세요. 휴대전화가 PiFinder AP에 연결된
-것만으로는 PiFinder 자체에 인터넷이 제공되지 않을 수 있습니다.
+캐시에는 **최소 6 GB의 여유 공간**을 확보하세요. 휴대전화가 MFNavis AP에 연결된
+것만으로는 MFNavis 자체에 인터넷이 제공되지 않을 수 있습니다.
 
 설치된 저장소에서 별·카탈로그 런타임 캐시와 POSS/SDSS 이미지를 모두 준비합니다.
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 python3 scripts/warm_pifinder_caches.py
 ```
 
@@ -127,7 +127,7 @@ python3 scripts/warm_pifinder_caches.py --images poss
 1. **부팅과 조작 확인:** 재부팅 후 LCD와 키패드가 동작하는지 확인합니다.
    [입력 조작](./docs/mf_dev/mf_input_controls_ko.md)과
    [키보드 매핑](./docs/mf_dev/mf_keyboard_mapping_ko.md)을 참고하세요.
-2. **하드웨어 선택:** `Settings > Advanced`에서 장착 방향에 맞는 `PiFinder Type`,
+2. **하드웨어 선택:** `Settings > Advanced`에서 장착 방향에 맞는 `MFNavis Type`,
    실제 `Camera Type`, `GPS Settings`의 GPS 종류·포트·통신 속도를 설정합니다.
    재시작 안내가 나오면 따르세요.
 3. **네트워크와 웹 UI 확인:** 같은 네트워크에서 `http://<호스트명>.local`을 엽니다.
@@ -155,7 +155,7 @@ python3 scripts/warm_pifinder_caches.py --images poss
    하늘 좌표가 솔빙되는지 확인하세요. 보정 프로파일의 적용 조건과 상세 설명은
    [렌즈 보정 안내](./docs/mf_dev/mf_lens_distortion_correction_ko.md)를 참고하세요.
 8. **망원경과 정렬:** 알고 있는 별을 접안렌즈 중심에 놓고 `Start > Align`에서
-   PiFinder와 망원경의 시선을 맞춥니다. 카탈로그 대상을 선택해 Push-to 방향을 확인합니다.
+   MFNavis와 망원경의 시선을 맞춥니다. 카탈로그 대상을 선택해 Push-to 방향을 확인합니다.
 9. **마운트 제어 설정(선택):** INDI는 기본으로 꺼져 있습니다.
    [INDI 설치·설정](./docs/mf_dev/mf_indi_mount_install_ko.md)에 따라 먼저
    Telescope Simulator로 연결·GoTo·Sync를 확인한 뒤 실제 마운트를 연결합니다.
@@ -174,3 +174,5 @@ python3 scripts/warm_pifinder_caches.py --images poss
 ## Upstream reference / 원본 프로젝트 자료
 
 [Historical upstream documentation](README.upstream_ko.md) is preserved for provenance.
+
+[Product paths / 제품 경로 이전](docs/MFNAVIS_PATHS_ko.md)

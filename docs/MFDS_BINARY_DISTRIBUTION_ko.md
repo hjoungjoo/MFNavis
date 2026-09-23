@@ -9,7 +9,7 @@
 ## 신규 설치
 
 ```bash
-git clone https://github.com/hjoungjoo/MFNavis.git PiFinder
+git clone https://github.com/hjoungjoo/MFNavis.git MFNavis
 cd PiFinder
 bash scripts/setup_mfds.sh
 bash scripts/ensure_tetra3_link.sh .
@@ -41,7 +41,7 @@ MFDS를 올릴 때는 MFDS 새 버전을 빌드·시험하고 같은 태그 릴�
 ## Pi 4·5 전처리 가속 옵션
 
 기본값은 CPU DoG 필터와 NEON 자동 누적이다. `default_config.json`의 기본값을
-사용하며, `~/PiFinder_data/config.json`에 같은 키를 지정하면 저장된 선택이 우선한다.
+사용하며, `~/MFNavis_data/config.json`에 같은 키를 지정하면 저장된 선택이 우선한다.
 이 설정은 솔버 시작 시 적용되므로 변경 후 PiFinder를 재시작한다.
 
 ```json

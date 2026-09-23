@@ -30,7 +30,9 @@ REQUEST_TIMEOUT = 10
 # migration gate could remotely trigger a NixOS migration this fork excludes).
 # Until a release branch is cut on the fork these URLs 404, which reads as
 # "no release published" below.
-MIGRATION_GATE_URL = "https://raw.githubusercontent.com/hjoungjoo/MFNavis/release/migration_gate.json"
+MIGRATION_GATE_URL = (
+    "https://raw.githubusercontent.com/hjoungjoo/MFNavis/release/migration_gate.json"
+)
 
 # Secret unlock: 7x square button
 _UNLOCK_SEQUENCE = ["square"] * 7

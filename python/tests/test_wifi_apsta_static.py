@@ -57,17 +57,17 @@ def test_apsta_system_files_target_virtual_ap_interface():
     monitor_service = (
         REPO / "pi_config_files/pifinder_apsta_monitor.service"
     ).read_text()
-    manager = (REPO / "scripts/pifinder_apsta.sh").read_text()
+    manager = (REPO / "scripts/mfnavis_apsta.sh").read_text()
 
     assert "interface uap0" in dhcpcd
     assert "static ip_address=10.10.10.1/24" in dhcpcd
     assert "Before=hostapd.service dnsmasq.service" in prepare_service
     assert (
-        "ExecStart=/usr/bin/bash __PIFINDER_REPO_DIR__/scripts/pifinder_apsta.sh prepare"
+        "ExecStart=/usr/bin/bash __PIFINDER_REPO_DIR__/scripts/mfnavis_apsta.sh prepare"
         in prepare_service
     )
     assert (
-        "ExecStart=/usr/bin/bash __PIFINDER_REPO_DIR__/scripts/pifinder_apsta.sh monitor"
+        "ExecStart=/usr/bin/bash __PIFINDER_REPO_DIR__/scripts/mfnavis_apsta.sh monitor"
         in monitor_service
     )
     assert 'AP_IFACE="${PIFINDER_AP_IFACE:-uap0}"' in manager
@@ -88,8 +88,8 @@ def test_mode_switch_scripts_manage_apsta_services():
     assert 'echo -n "AP+STA"' in switch_apsta
     assert "mfnavis_apsta_prepare" in switch_apsta
     assert "mfnavis_apsta_monitor" in switch_apsta
-    assert 'pifinder_apsta.sh" cleanup' in switch_ap
-    assert 'pifinder_apsta.sh" cleanup' in switch_cli
+    assert 'mfnavis_apsta.sh" cleanup' in switch_ap
+    assert 'mfnavis_apsta.sh" cleanup' in switch_cli
 
 
 def test_wifi_profile_import_is_installed_by_setup_and_update():

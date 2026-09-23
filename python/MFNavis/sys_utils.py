@@ -19,7 +19,7 @@ import requests
 import sh
 
 try:
-    from sh import wpa_cli, unzip, passwd
+    from sh import wpa_cli, passwd
 except ImportError:
     # Off-device (CI, dev machines) these binaries may not exist. The code
     # paths that call them only run on the Pi, so fail at call time instead
@@ -31,7 +31,6 @@ except ImportError:
         return _fail
 
     wpa_cli = _missing_command("wpa_cli")
-    unzip = _missing_command("unzip")
     passwd = _missing_command("passwd")
 
 import socket
@@ -58,8 +57,8 @@ DHCPD_AP_CONF_PATH = "/etc/dhcpcd.conf.ap"
 DHCPD_APSTA_CONF_PATH = "/etc/dhcpcd.conf.apsta"
 DHCPD_ACTIVE_CONF_PATH = "/etc/dhcpcd.conf"
 DNSMASQ_CONF_PATH = "/etc/dnsmasq.conf"
-PIFINDER_APSTA_NAT_CONF_PATH = "/etc/pifinder_apsta_nat.conf"
-PIFINDER_STA_BAND_CONF_PATH = "/etc/pifinder_sta_band.conf"
+PIFINDER_APSTA_NAT_CONF_PATH = "/etc/mfnavis_apsta_nat.conf"
+PIFINDER_STA_BAND_CONF_PATH = "/etc/mfnavis_sta_band.conf"
 DNSMASQ_LEASES_PATH = "/var/lib/misc/dnsmasq.leases"
 DEFAULT_AP_IP = "10.10.10.1"
 AP_SECURITY_OPEN = "OPEN"
@@ -3868,26 +3867,17 @@ def backup_userdata():
         obslist/*
     """
 
+    from PiFinder.userdata_backup import create_backup
+
     remove_backup()
-
-    _zip = sh.Command("zip")
-    _zip(
-        BACKUP_PATH,
-        str(utils.data_dir / "config.json"),
-        str(utils.data_dir / "observations.db"),
-        glob.glob(str(utils.data_dir / "obslists" / "*")),
-    )
-
-    return BACKUP_PATH
+    return create_backup(utils.data_dir, BACKUP_PATH)
 
 
 def restore_userdata(zip_path):
-    """
-    Compliment to backup_userdata
-    restores userdata
-    OVERWRITES existing data!
-    """
-    unzip("-d", "/", "-o", zip_path)
+    """Restore current or legacy backup entries into the selected data directory."""
+    from PiFinder.userdata_backup import restore_backup
+
+    restore_backup(zip_path, utils.data_dir)
 
 
 def restart_pifinder() -> None:
@@ -3922,7 +3912,7 @@ def update_software():
     """
     logger.info("SYS: Running update")
     try:
-        sh.bash(str(utils.pifinder_dir / "pifinder_update.sh"))
+        sh.bash(str(utils.pifinder_dir / "mfnavis_update.sh"))
     except Exception:
         # MF: a failed update script (no release branch cut yet, network
         # drop mid-pull) must report failure, not unwind the UI main loop

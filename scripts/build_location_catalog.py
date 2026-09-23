@@ -315,7 +315,7 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("python/PiFinder/data/location_catalog.json"),
+        default=Path("python/MFNavis/data/location_catalog.json"),
     )
     args = parser.parse_args()
     build_catalog(args.source_dir, args.output)

@@ -20,7 +20,7 @@ STATUS_FILE="${PIFINDER_REPO_DIR}/wifi_status.txt"
 HOSTAPD_CONF="${PIFINDER_HOSTAPD_CONF:-/etc/hostapd/hostapd.conf}"
 DNSMASQ_CONF="${PIFINDER_DNSMASQ_CONF:-/etc/dnsmasq.conf}"
 APSTA_DHCPCD_CONF="${PIFINDER_APSTA_DHCPCD_CONF:-/etc/dhcpcd.conf.apsta}"
-APSTA_NAT_CONF="${PIFINDER_APSTA_NAT_CONF:-/etc/pifinder_apsta_nat.conf}"
+APSTA_NAT_CONF="${PIFINDER_APSTA_NAT_CONF:-/etc/mfnavis_apsta_nat.conf}"
 NFT_TABLE="${PIFINDER_APSTA_NFT_TABLE:-pifinder_apsta}"
 
 IW_BIN="${IW_BIN:-$(command -v iw || true)}"

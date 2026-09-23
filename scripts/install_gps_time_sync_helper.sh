@@ -36,7 +36,7 @@ install_dry_run_override() {
     printf "%s\n" \
         "[Service]" \
         "ExecStart=" \
-        "ExecStart=/usr/bin/python -m PiFinder.gps_time_sync_helper --dry-run" \
+        "ExecStart=/usr/bin/python -m MFNavis.gps_time_sync_helper --dry-run" \
         | sudo tee "${DRY_RUN_DROPIN}" >/dev/null
     sudo systemctl daemon-reload
     echo "Installed dry-run override for ${SERVICE_NAME}"

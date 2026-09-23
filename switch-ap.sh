@@ -16,8 +16,8 @@ systemctl stop mfnavis_apsta_monitor 2>/dev/null || true
 # service recreates uap0 before hostapd/dnsmasq start on boot; the channel
 # monitor is not needed because AP-only uses a fixed default channel.
 cp /etc/dhcpcd.conf.apsta /etc/dhcpcd.conf
-"${SCRIPT_DIR}/scripts/pifinder_apsta.sh" cleanup 2>/dev/null || true
-"${SCRIPT_DIR}/scripts/pifinder_apsta.sh" configure-ap
+"${SCRIPT_DIR}/scripts/mfnavis_apsta.sh" cleanup 2>/dev/null || true
+"${SCRIPT_DIR}/scripts/mfnavis_apsta.sh" configure-ap
 
 systemctl enable mfnavis_apsta_prepare
 systemctl enable dnsmasq

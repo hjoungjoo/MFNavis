@@ -27,15 +27,17 @@ Services
 The primary service is ``mfnavis.service``. The startup splash and AP helpers
 use ``mfnavis_splash.service``, ``mfnavis_apsta_prepare.service`` and
 ``mfnavis_apsta_monitor.service``. Legacy service aliases remain available to
-existing installation/update scripts. The Python package and existing user
-account/data paths remain compatible with the original installation.
+existing installation/update scripts. The login account is preserved. New code lives in ``~/MFNavis``, user data
+in ``~/MFNavis_data``, and volatile state in ``/dev/shm/mfnavis``.
+Services launch ``MFNavis.main``. Legacy path and Python import aliases remain
+available for integrations and older tools.
 
 Backup and diagnostics
 ----------------------
 
 The web backup downloads as ``MFNavis_backup.zip``. Restore accepts existing
-backup uploads regardless of their original filename; user data paths remain
-unchanged. New application logs use ``mfnavis.log``. Legacy logs can still be
+backup uploads regardless of their original filename. Legacy archive paths
+are mapped into the selected MFNavis data directory. New application logs use ``mfnavis.log``. Legacy logs can still be
 read and exported. Observation-list exports identify MFNavis as the producer;
 existing observation-list file formats remain supported.
 

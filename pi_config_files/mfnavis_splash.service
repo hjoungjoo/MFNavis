@@ -3,7 +3,9 @@ Description=MFNavisSplash
 
 [Service]
 WorkingDirectory=__PIFINDER_REPO_DIR__/python
-ExecStart=/usr/bin/python -m PiFinder.splash
+Environment=MFNAVIS_DATA_DIR=__PIFINDER_DATA_DIR__
+Environment=MFNAVIS_RUNTIME_DIR=/dev/shm/mfnavis
+ExecStart=/usr/bin/python -m MFNavis.splash
 
 [Install]
 Alias=pifinder_splash.service

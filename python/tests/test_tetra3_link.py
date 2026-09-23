@@ -7,7 +7,7 @@ import pytest
 
 pytestmark = pytest.mark.unit
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "ensure_tetra3_link.sh"
-TARGET = "PiFinder/tetra3/tetra3"
+TARGET = "MFNavis/tetra3/tetra3"
 
 
 @pytest.fixture

@@ -5,7 +5,6 @@ from PiFinder.sky_quality import BORTLE_SQM_RANGES
 from PiFinder.ui.ui_utils import TextLayouter
 from PiFinder.image_util import gamma_correct_med, subtract_background
 import time
-from pathlib import Path
 from typing import Any, TYPE_CHECKING
 from PIL import Image, ImageDraw, ImageChops, ImageOps
 
@@ -283,9 +282,7 @@ class UISQM(UIModule):
     def _is_calibrated(self) -> bool:
         """Check if SQM calibration file exists for current camera."""
         camera_type = self.shared_state.camera_type()
-        calibration_file = (
-            Path.home() / "PiFinder_data" / f"sqm_calibration_{camera_type}.json"
-        )
+        calibration_file = utils.data_dir / f"sqm_calibration_{camera_type}.json"
         return calibration_file.exists()
 
     def active(self):

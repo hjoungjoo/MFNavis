@@ -1,6 +1,6 @@
 # MFNavis
 
-Canonical repository: **https://github.com/hjoungjoo/MFNavis**. The previous MF_PiFinder repository is historical. Existing source/data paths remain compatible.
+Canonical repository: **https://github.com/hjoungjoo/MFNavis**. The previous MF_PiFinder repository is historical. New installs use ~/MFNavis and ~/MFNavis_data; old paths are compatibility aliases.
 
 Product by **MagicFly**, sold and distributed by **FNPD 한국**.
 Derived from PiFinder; historical upstream documentation is retained separately.
@@ -54,20 +54,20 @@ installation is needed.
 
 The command automatically looks up the latest published release on GitHub and
 installs that tag. No version entry is needed. If the lookup fails, installation
-stops. These commands are for a new installation with no existing `~/PiFinder`.
+stops. These commands are for a new installation with no existing `~/MFNavis`.
 
 ```bash
 PF_RELEASE_TAG="$(python3 -c 'import json, urllib.request; print(json.load(urllib.request.urlopen("https://api.github.com/repos/hjoungjoo/MFNavis/releases/latest"))["tag_name"])')" &&
 [ -n "$PF_RELEASE_TAG" ] &&
-wget -O /tmp/mf-pifinder-setup.sh "https://raw.githubusercontent.com/hjoungjoo/MFNavis/${PF_RELEASE_TAG}/pifinder_setup.sh" &&
-PIFINDER_INSTALL_BRANCH="$PF_RELEASE_TAG" bash /tmp/mf-pifinder-setup.sh
+wget -O /tmp/mfnavis-setup.sh "https://raw.githubusercontent.com/hjoungjoo/MFNavis/${PF_RELEASE_TAG}/mfnavis_setup.sh" &&
+PIFINDER_INSTALL_BRANCH="$PF_RELEASE_TAG" bash /tmp/mfnavis-setup.sh
 ```
 
 **Development version (main):**
 
 ```bash
-wget -O /tmp/mf-pifinder-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavis/main/pifinder_setup.sh &&
-PIFINDER_INSTALL_BRANCH=main bash /tmp/mf-pifinder-setup.sh
+wget -O /tmp/mfnavis-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavis/main/mfnavis_setup.sh &&
+PIFINDER_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh
 ```
 
 After the script reports successful completion, reboot:
@@ -80,17 +80,17 @@ sudo reboot
 
 | Situation | Behavior / action |
 | --- | --- |
-| User `pifinder` | Code: `/home/pifinder/PiFinder`; data: `/home/pifinder/PiFinder_data`. |
-| Another OS user | The same commands use that user's home: `~/PiFinder` and `~/PiFinder_data`. Use that user's account for subsequent commands. |
-| Custom code directory, such as `~/PiFinder_main` | The setup script always targets `PiFinder` in the selected user's home, even when launched elsewhere; setting `PIFINDER_REPO_DIR` does not override this. Use the standard location for a new installation. |
+| User `pifinder` | Code: `/home/pifinder/MFNavis`; data: `/home/pifinder/MFNavis_data`. |
+| Another OS user | The same commands use that user's home: `~/MFNavis` and `~/MFNavis_data`. Use that user's account for subsequent commands. |
+| Custom code directory, such as `~/MFNavis_main` | The setup script always targets `MFNavis` in the selected user's home, even when launched elsewhere; setting `PIFINDER_REPO_DIR` does not override this. Use the standard location for a new installation. |
 | Custom data directory | Pass `PIFINDER_DATA_DIR=/absolute/path` with the installation command. Use the same value for later updates and cache commands. This does not move existing data. |
-| `~/PiFinder` already exists | Setup updates its **current branch** with a fast-forward merge; `PIFINDER_INSTALL_BRANCH` only selects a version when cloning a new directory. Local tracked changes cause setup to stop. |
+| `~/MFNavis` already exists | Setup updates its **current branch** with a fast-forward merge; `PIFINDER_INSTALL_BRANCH` only selects a version when cloning a new directory. Local tracked changes cause setup to stop. |
 | Existing tagged release checkout | A fresh tag install succeeds, but rerunning setup on its detached HEAD stops. Do not use these fresh-install commands to switch an existing checkout between a release and `main`. |
 
-For an existing deployment, first check `git -C ~/PiFinder status -sb` and
-back up `~/PiFinder_data` and any local changes. A branch checkout must be on
+For an existing deployment, first check `git -C ~/MFNavis status -sb` and
+back up `~/MFNavis_data` and any local changes. A branch checkout must be on
 the intended branch before updating. After updating an existing installation's
-code, run `bash pifinder_post_update.sh` from its repository root to apply
+code, run `bash mfnavis_post_update.sh` from its repository root to apply
 runtime updates, including automatic MFDS installation. This is an update hook,
 not a substitute for first-time OS and service setup.
 
@@ -103,15 +103,15 @@ when an INDI archive is available/configured; otherwise follow the
 
 **The full image download takes a long time.** Thousands of survey images can
 take hours depending on the connection and survey servers; reserve time before
-an observing trip. Keep the PiFinder itself online and powered, and allow at
-least **6 GB free** for the full POSS+SDSS cache. A phone connected to PiFinder's
+an observing trip. Keep the MFNavis itself online and powered, and allow at
+least **6 GB free** for the full POSS+SDSS cache. A phone connected to MFNavis's
 AP alone does not necessarily give the device internet access.
 
 From the installed repository, build the star/catalog runtime caches and
 download both image surveys:
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 python3 scripts/warm_pifinder_caches.py
 ```
 
@@ -135,7 +135,7 @@ location, prefix the command with `PIFINDER_DATA_DIR=/absolute/path`.
 1. **Check startup and controls.** After reboot, confirm the LCD and keypad
    respond. See [input controls](./docs/mf_dev/mf_input_controls_en.md) and
    [keyboard mapping](./docs/mf_dev/mf_keyboard_mapping_en.md).
-2. **Select the hardware.** In `Settings > Advanced`, set `PiFinder Type` to
+2. **Select the hardware.** In `Settings > Advanced`, set `MFNavis Type` to
    match the mounting orientation, select `Camera Type`, and check the GPS
    type, port, and baud rate in `GPS Settings`. Follow any restart prompts.
 3. **Check networking and the web UI.** On the same network, open
@@ -167,7 +167,7 @@ location, prefix the command with `PIFINDER_DATA_DIR=/absolute/path`.
    [lens correction guide](./docs/mf_dev/mf_lens_distortion_correction_en.md)
    for profile application conditions and details.
 8. **Align with the telescope.** Center a known star in the eyepiece and use
-   `Start > Align` to align PiFinder's pointing with the telescope. Select a
+   `Start > Align` to align MFNavis's pointing with the telescope. Select a
    catalog target and check the Push-to directions.
 9. **Configure optional mount control.** INDI is disabled by default. Follow
    the [INDI setup guide](./docs/mf_dev/mf_indi_mount_install_en.md) and verify
@@ -189,3 +189,5 @@ status, see the [feature review checklist](./docs/mf_dev/mf_feature_review_check
 ## Upstream reference / 원본 프로젝트 자료
 
 [Historical upstream documentation](README.upstream.md) is preserved for provenance.
+
+[Product paths / 제품 경로 이전](docs/MFNAVIS_PATHS_ko.md)

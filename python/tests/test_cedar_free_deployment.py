@@ -91,7 +91,7 @@ def repository(tmp_path):
         shutil.copy(ROOT / "scripts" / name, repo / "scripts")
     shutil.copy(ROOT / "pifinder_update.sh", repo)
     (repo / "scripts/ensure_tetra3_link.sh").write_text(":\n")
-    (repo / "pifinder_paths.sh").write_text(":\n")
+    (repo / "mfnavis_paths.sh").write_text(":\n")
     (repo / "pifinder_post_update.sh").write_text("echo called > post-called\n")
     write_package(repo, tmp_path)
     git(repo, "add", ".")

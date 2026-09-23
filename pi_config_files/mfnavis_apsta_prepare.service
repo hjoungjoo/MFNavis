@@ -6,7 +6,7 @@ Before=hostapd.service dnsmasq.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/bash __PIFINDER_REPO_DIR__/scripts/pifinder_apsta.sh prepare
+ExecStart=/usr/bin/bash __PIFINDER_REPO_DIR__/scripts/mfnavis_apsta.sh prepare
 RemainAfterExit=yes
 
 [Install]
