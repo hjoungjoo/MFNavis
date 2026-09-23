@@ -34,6 +34,7 @@ def camera_ui(resolution, target):
     ui.screen = Image.new("RGB", resolution)
     ui.draw = ImageDraw.Draw(ui.screen, "RGBA")
     ui.camera_image = Image.new("L", (512, 512))
+    ui.camera_zoom_level = 0
     ui.object = SimpleNamespace(display_name="Test star", obj_type="*", const="ORI")
     ui.shared_state = SimpleNamespace(
         target_pixel=lambda: target,
@@ -51,32 +52,95 @@ def camera_ui(resolution, target):
 
 
 @pytest.mark.parametrize("resolution", [(128, 128), (320, 240)])
-def test_alignment_ring_matches_live_star_and_leaves_center_open(resolution):
+@pytest.mark.parametrize("zoom_level", [0, 1, 2])
+def test_alignment_ring_matches_live_star_and_leaves_center_open(
+    resolution, zoom_level
+):
     ui = camera_ui(resolution, (230, 310))
+    ui.camera_zoom_level = zoom_level
     ImageDraw.Draw(ui.camera_image).ellipse((306, 226, 314, 234), fill=255)
     ui._render_camera_push()
     width, height = resolution
     side = min(width, height - 16)
-    x = (width - side) // 2 + (310.5 * side / 512) - 0.5
-    y = 16 + (height - 16 - side) // 2 + (230.5 * side / 512) - 0.5
-    radius = side / 10.2  # middle (2 degree) segmented circle
+    crop_size = 512 // (2**zoom_level)
+    crop_start = (512 - crop_size) // 2
+    x = (width - side) // 2 + ((310.5 - crop_start) * side / crop_size) - 0.5
+    y = 16 + (height - 16 - side) // 2 + ((230.5 - crop_start) * side / crop_size) - 0.5
+    if zoom_level:
+        x, y = (width - 1) / 2, 16 + (height - 16 - 1) / 2
+    radius = side * (2**zoom_level) / 10.2  # middle (2 degree) segmented circle
     assert ui.screen.getpixel((round(x), round(y)))[0] > 100
     assert any(
         ui.screen.getpixel((px, py))[0] == 192
-        for px in range(round(x + radius * 0.7) - 2, round(x + radius * 0.7) + 3)
+        for px in range(round(x - radius * 0.7) - 2, round(x - radius * 0.7) + 3)
         for py in range(round(y + radius * 0.7) - 2, round(y + radius * 0.7) + 3)
     )
     ui.camera_image.paste(0, (0, 0, 512, 512))
     ui._render_camera_push()
     assert ui.screen.getpixel((round(x), round(y))) == (0, 0, 0)
     ui._render_pointing_instructions.assert_called_with(compact=True)
+    ui._draw_camera_pointer.assert_called_with((x, y), side, (230, 310), 10.2)
 
 
+def test_camera_zoom_keys_stop_at_limits_without_changing_equipment():
+    ui = camera_ui((320, 240), (256, 256))
+    ui.object_display_mode = DM_CAMERA
+    ui.update = Mock()
+    ui.change_fov = Mock()
+    for key, expected in (
+        (ui.key_minus, 0),
+        (ui.key_plus, 1),
+        (ui.key_plus, 2),
+        (ui.key_plus, 2),
+        (ui.key_minus, 1),
+        (ui.key_minus, 0),
+        (ui.key_minus, 0),
+    ):
+        key()
+        assert ui.camera_zoom_level == expected
+        ui.update.assert_called()
+    ui.change_fov.assert_not_called()
+    ui.object_display_mode = DM_LOCATE
+    ui.key_plus()
+    ui.change_fov.assert_called_with(1)
+    ui.key_minus()
+    ui.change_fov.assert_called_with(-1)
+
+
+@pytest.mark.parametrize("zoom_level", [1, 2])
+@pytest.mark.parametrize(
+    "target", [(100, 256), (256, 350), (0, 0), (511, 511), (230.25, 310.75)]
+)
+def test_zoom_centres_alignment_even_near_sensor_edge(zoom_level, target):
+    ui = camera_ui((320, 240), target)
+    ui.camera_zoom_level = zoom_level
+    y, x = target
+    ImageDraw.Draw(ui.camera_image).ellipse((x - 4, y - 4, x + 4, y + 4), fill=255)
+    ui._render_camera_push()
+    ui._draw_camera_pointer.assert_called_with((159.5, 127.5), 224, target, 10.2)
+    # The geometric centre lies between four display pixels. At the sensor
+    # edge some of those samples legitimately fall in the black padding.
+    assert max(ui.screen.crop((159, 127, 161, 129)).getchannel("R").getdata()) > 100
+
+
+@pytest.mark.parametrize("zoom_level", [1, 2])
+def test_zoom_pads_sensor_boundary_without_moving_alignment(zoom_level):
+    ui = camera_ui((320, 240), (0, 0))
+    ui.camera_zoom_level = zoom_level
+    ui.camera_image.paste(255, (0, 0, 512, 512))
+    ui._render_camera_push()
+    assert ui.screen.getpixel((100, 80)) == (0, 0, 0)
+    assert ui.screen.getpixel((200, 150)) == (255, 0, 0)
+
+
+@pytest.mark.parametrize("zoom_level", [0, 1, 2])
 @pytest.mark.parametrize("target", [None, (-1, -1), (float("nan"), 256), (512, 256)])
-def test_unavailable_alignment_does_not_invent_center_marker(target):
+def test_unavailable_alignment_does_not_invent_center_marker(target, zoom_level):
     ui = camera_ui((128, 128), target)
+    ui.camera_zoom_level = zoom_level
     ui._render_camera_push()
     assert ui.screen.crop((30, 45, 100, 85)).getbbox() is None
+    ui._draw_camera_pointer.assert_not_called()
 
 
 def test_square_cycles_camera_and_existing_modes():

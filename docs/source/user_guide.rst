@@ -244,13 +244,19 @@ Object Details
 --------------------
 
 Press **RIGHT** from the Object List to open the Object Details screen for the highlighted
-object.  This screen shows large Push-To instructions,
+object.  This screen opens in the live Push-To camera view and also offers large Push-To instructions,
 :ref:`object images<user_guide:object images>`, and catalog details.
 
 Press **SQUARE** to cycle through the object's information.  Press **UP/DOWN** to move to
 the next or previous object in the list.  **LEFT** goes back to the full list, and
 **RIGHT** opens the :ref:`Logging<user_guide:logging observations>` interface for the
 current object.
+
+In the Push-To camera view, press **+** to zoom in and **-** to zoom out through
+1x, 2x, and 4x.  The current magnification appears below the object name.  Zoom
+keeps the alignment point centred in the live image at 2x and 4x, with the
+alignment rings following the image scale.  Areas beyond the camera frame are
+shown in black.  Without a valid alignment point, zoom uses the image centre.
 
 .. image:: images/user_guide/object_details_01.png
 

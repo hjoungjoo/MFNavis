@@ -102,7 +102,8 @@ class UIObjectDetails(UIModule):
         self.mount_type = self.config_object.get_option("mount_type")
         self.object = self.item_definition["object"]
         self.object_list = self.item_definition["object_list"]
-        self.object_display_mode = DM_LOCATE
+        self.object_display_mode = DM_CAMERA
+        self.camera_zoom_level = 0
         self.object_image = None
 
         # Marking Menu - Just default help for now
@@ -757,8 +758,35 @@ class UIObjectDetails(UIModule):
         side = min(width, height - top)
         left = (width - side) // 2
         image_top = top + (height - top - side) // 2
+        zoom_factor = 2**self.camera_zoom_level
+        # Read once so the image and overlays use the same alignment point.
+        target = self.shared_state.target_pixel()
+        valid_target = (
+            target is not None
+            and len(target) == 2
+            and all(math.isfinite(v) and 0 <= v < CAMERA_NATIVE_RES for v in target)
+        )
+        crop_size = CAMERA_NATIVE_RES / zoom_factor
+        crop_x = crop_y = (CAMERA_NATIVE_RES - crop_size) / 2
         frame = self.camera_image.copy().convert("L")
-        frame = ImageOps.autocontrast(frame.resize((side, side)))
+        if self.camera_zoom_level > 0:
+            if valid_target:
+                y, x = target
+                crop_x = x + 0.5 - crop_size / 2
+                crop_y = y + 0.5 - crop_size / 2
+            # Keep fractional pixel alignment and pad beyond the sensor in black
+            # instead of shifting the reticle away from the viewport centre.
+            scale = crop_size / side
+            frame = frame.transform(
+                (side, side),
+                Image.Transform.AFFINE,
+                (scale, 0, crop_x, 0, scale, crop_y),
+                resample=Image.Resampling.BILINEAR,
+                fillcolor=0,
+            )
+        else:
+            frame = frame.resize((side, side))
+        frame = ImageOps.autocontrast(frame)
         frame = ImageChops.multiply(
             frame.convert("RGB"), Image.new("RGB", (side, side), self.colors.get(255))
         )
@@ -781,6 +809,7 @@ class UIObjectDetails(UIModule):
 
         fitted_text(self.object.display_name, top + 2, self.fonts.base.font)
         fitted_text(
+            f"{zoom_factor}x  "
             f"{_(OBJ_TYPES.get(self.object.obj_type, 'Unknown'))}  {self.object.const}",
             top + self.fonts.base.height + 3,
             self.fonts.small.font,
@@ -790,21 +819,22 @@ class UIObjectDetails(UIModule):
 
         # target_pixel is (Y, X) in the SAME rotated 512x512 space as frame;
         # no extra camera or telescope rotation should be applied here.
-        target = self.shared_state.target_pixel()
-        if target is not None and len(target) == 2:
+        if valid_target:
             y, x = target
-            if all(math.isfinite(v) and 0 <= v < CAMERA_NATIVE_RES for v in (y, x)):
-                cx = left + (x + 0.5) * side / CAMERA_NATIVE_RES - 0.5
-                cy = image_top + (y + 0.5) * side / CAMERA_NATIVE_RES - 0.5
-                if not hasattr(self, "_camera_optics"):
-                    self._camera_optics = OpticalTrainResolver()
-                fov = self._camera_optics.resolve(
-                    self.shared_state.camera_type(),
-                    self.shared_state.camera_lens(),
-                    manual_focal_from_state(self.shared_state),
-                ).fov_degrees
-                draw_reticle(self.draw, (cx, cy), side / fov, self.colors.get(192))
-                self._draw_camera_pointer((cx, cy), side, target, fov)
+            cx = left + (x - crop_x + 0.5) * side / crop_size - 0.5
+            cy = image_top + (y - crop_y + 0.5) * side / crop_size - 0.5
+            if not hasattr(self, "_camera_optics"):
+                self._camera_optics = OpticalTrainResolver()
+            fov = self._camera_optics.resolve(
+                self.shared_state.camera_type(),
+                self.shared_state.camera_lens(),
+                manual_focal_from_state(self.shared_state),
+            ).fov_degrees
+            draw_reticle(
+                self.draw, (cx, cy), side * zoom_factor / fov, self.colors.get(192)
+            )
+            # Direction uses the original target pixel and full camera FOV.
+            self._draw_camera_pointer((cx, cy), side, target, fov)
 
     def _draw_camera_pointer(self, center, side, target_pixel, fov):
         solution = self.shared_state.solution()
@@ -1109,7 +1139,10 @@ class UIObjectDetails(UIModule):
         self.update()
 
     def key_plus(self):
-        if self.object_display_mode == DM_DESC:
+        if self.object_display_mode == DM_CAMERA:
+            self.camera_zoom_level = min(2, self.camera_zoom_level + 1)
+            self.update()
+        elif self.object_display_mode == DM_DESC:
             self.descTextLayout.next()
             typeconst = self.texts.get("type-const")
             if typeconst and isinstance(typeconst, TextLayouter):
@@ -1118,7 +1151,10 @@ class UIObjectDetails(UIModule):
             self.change_fov(1)
 
     def key_minus(self):
-        if self.object_display_mode == DM_DESC:
+        if self.object_display_mode == DM_CAMERA:
+            self.camera_zoom_level = max(0, self.camera_zoom_level - 1)
+            self.update()
+        elif self.object_display_mode == DM_DESC:
             self.descTextLayout.previous()
             typeconst = self.texts.get("type-const")
             if typeconst and isinstance(typeconst, TextLayouter):

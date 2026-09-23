@@ -50,6 +50,7 @@ def subtract_background(image, percent=1):
 
 
 def convert_image_to_mode(image: Image.Image, mode: str):
-    if mode == "RGB":
+    """Map an RGB image to the display's colour order, swapping only for BGR."""
+    if mode == "BGR":
         return Image.fromarray(np.array(image)[:, :, ::-1])
     return image

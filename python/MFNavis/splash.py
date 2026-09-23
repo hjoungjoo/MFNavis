@@ -34,7 +34,7 @@ def show_splash():
     welcome_image = product_welcome_image(
         (display.resX, display.resY), top_margin=banner_height + 1
     )
-    welcome_image = convert_image_to_mode(welcome_image, display.device.mode)
+    welcome_image = convert_image_to_mode(welcome_image, display.colors.mode)
     screen_draw = ImageDraw.Draw(welcome_image)
 
     # Display version and Wifi mode
@@ -47,7 +47,7 @@ def show_splash():
         (0, 1),
         f"Wifi:{wifi_mode: <6}  {version: >8}",
         font=display.fonts.base.font,
-        fill=(255, 0, 0),
+        fill=display.colors.get(255),
     )
 
     display.device.display(welcome_image.convert(display.device.mode))
