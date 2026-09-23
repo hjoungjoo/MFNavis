@@ -393,6 +393,7 @@ class SepShadowRunner:
             lens_key = getattr(shared_state, "camera_lens", lambda: "")()
             options: dict[str, Any] = {
                 "sigma": self.sigma,
+                "overlay_max_stars": 128,
                 "saturation_level": self.saturation_level,
                 "warm_pixel_map": self.warm_pixel_map,
                 "cloud_window_gate": wide_cloud_gate_enabled(
@@ -415,10 +416,14 @@ class SepShadowRunner:
             # here raced the matched republish: the next attempt's detect
             # overwrote it, so the confirmed/candidate split almost never
             # reached the screen.
+            overlay_centroids = detection.overlay_centroids
+            if overlay_centroids is None:
+                overlay_centroids = detection.centroids
             self._last_overlay = {
                 "detector_backend": detection.backend,
                 "detector_fallback_reason": detection.fallback_reason,
-                "centroids": detection.centroids.tolist(),
+                "centroids": overlay_centroids.tolist(),
+                "solver_centroids": len(detection.centroids),
                 "frame_hw": [int(frame.shape[0]), int(frame.shape[1])],
                 "frame_id": entry.get("frame_id"),
                 "masked": detection.masked_count,

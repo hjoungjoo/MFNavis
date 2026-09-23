@@ -156,6 +156,20 @@ def processing_enabled(settings: dict[str, Any] | None = None) -> bool:
     return bool(normalize_settings(settings)["processing_enabled"])
 
 
+def solver_preprocess_status(
+    shared_state, settings: dict[str, Any]
+) -> dict[str, Any] | None:
+    if not settings.get("solver_preprocess_enabled") or not hasattr(
+        shared_state, "solver_preprocess_status"
+    ):
+        return None
+    try:
+        status = shared_state.solver_preprocess_status()
+    except Exception:
+        return None
+    return status if isinstance(status, dict) else None
+
+
 def disabled_status(settings: dict[str, Any]) -> dict[str, Any]:
     normalized = normalize_settings(settings)
     return {

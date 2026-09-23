@@ -52,8 +52,8 @@
 
 ## 이미지별 고정 및 출하 확인
 
-`deployment/mfds.lock.json`은 기존 일반 MFDS 0.4.0 배포를 고정한다. 이 파일의
-기존 바이너리는 ctypes 포함 개발 패키지이므로 그대로 판매 이미지로 간주하지 않는다.
+`deployment/mfds.lock.json`은 일반 MFDS 0.4.1 배포를 고정한다. 이 파일의
+바이너리는 ctypes 포함 개발 패키지이므로 그대로 판매 이미지로 간주하지 않는다.
 `make commercial`로 만든 새 패키지는 다른 해시를 갖는다. 판매용 lock은
 `profile: commercial-process-only`를 요구하고 일반 패키지는 거절해야 한다.
 
@@ -79,10 +79,10 @@ python3 scripts/install_mfds.py --commercial --lock deployment/mfds-commercial.l
 python/.venv/bin/python scripts/collect_product_licenses.py --output OPEN_SOURCE_LICENSES
 ```
 
-`mfds-commercial.lock.json`은 양 아키텍처의 정식 패키지가 나온 뒤 작성한다.
-기존 lock의 schema·version·source_commit·assets 구조에
+`deployment/mfds-commercial.lock.json`은 MFDS v0.4.1 양 아키텍처의 정식
+상용 패키지와 실제 해시를 고정한다. 기존 lock의 schema·version·source_commit·assets 구조에
 `"profile": "commercial-process-only"`를 추가하고 URL/두 SHA256을 실제 파일로
-계산한다. 없는 릴리스 URL이나 해시를 미리 만들어 유효한 lock처럼 배포하지 않는다.
+계산했다. 이후 갱신에서도 없는 릴리스 URL이나 해시를 미리 만들어 배포하지 않는다.
 고지 수집기의 종료 코드 1은 원문 누락 검토가 남았다는 뜻이다.
 
 판매 이미지의 서비스에는 `deployment/mfnavis/20-commercial.conf`를

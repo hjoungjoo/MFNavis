@@ -2,7 +2,7 @@
 
 ## 관리 원칙
 
-검출기·전처리·연동 모듈의 수정과 빌드는 [MFDS](https://github.com/hjoungjoo/MFDS)에서 수행한다. PiFinder는 MFDS 소스 서브모듈을 갖지 않고 `deployment/mfds.lock.json`에 고정된 정식 릴리즈 패키지를 설치한다. 현재 패키지는 [MFDS v0.4.0](https://github.com/hjoungjoo/MFDS/releases/tag/v0.4.0)이다.
+검출기·전처리·연동 모듈의 수정과 빌드는 [MFDS](https://github.com/hjoungjoo/MFDS)에서 수행한다. PiFinder는 MFDS 소스 서브모듈을 갖지 않고 `deployment/mfds.lock.json`에 고정된 정식 릴리즈 패키지를 설치한다. 현재 패키지는 [MFDS v0.4.1](https://github.com/hjoungjoo/MFDS/releases/tag/v0.4.1)이다.
 
 패키지에 포함되는 것은 native 서버·공유 라이브러리·CLI 빌드 결과, 해석 실행에 필요한 GPL Python 연동 모듈과 지원 파일·문서·라이선스 고지다. C++ 원본·헤더·Makefile·Git 저장소는 설치하지 않는다. Python 파일을 PiFinder에서 수정하지 말고 MFDS에서 수정하고 새 패키지로 배포한다.
 
@@ -31,7 +31,7 @@ PiFinder는 버전·소스 커밋·아키텍처별 다운로드 URL·아카이�
 오프라인 설치도 동일한 고정 해시를 요구한다.
 
 ```bash
-python3 scripts/install_mfds.py --archive /path/to/MFDS-0.4.0-linux-aarch64.tar.gz
+python3 scripts/install_mfds.py --archive /path/to/MFDS-0.4.1-linux-aarch64.tar.gz
 ```
 
 이후 코드 업데이트는 후보 체크아웃에서 새 패키지를 먼저 설치·검증하고 기존 소스와 패키지 링크를 기록한다. 다운로드·검증 실패는 운영 링크를 바꾸지 않으며 활성화 이후 오류가 발생하면 이전 PiFinder 커밋과 MFDS 패키지 링크로 복구한다. 이전 버전 패키지는 복구용으로 캐시에 유지한다.
@@ -74,6 +74,6 @@ MFDS를 올릴 때는 MFDS 새 버전을 빌드·시험하고 같은 태그 릴�
 
 현재 파이 5 실측에서 GPU DoG는 CPU보다 느려 기본으로 켜지 않는다. NEON 누적은
 동일 출력으로 전체 전처리 중앙값을 6.5~11.1% 줄였다. 자세한 조건과 범위는
-[MFDS CPU 검증 기록](https://github.com/hjoungjoo/MFDS/blob/v0.4.0/docs/CPU_PREPROCESS_ko.md)을
+[MFDS CPU 검증 기록](https://github.com/hjoungjoo/MFDS/blob/v0.4.1/docs/CPU_PREPROCESS_ko.md)을
 참조한다. 전처리 ON/OFF, 누적 창, 검출 임계값, `solver_preprocess_mode`의
 동기/비동기 스케줄링 선택은 기존 설정을 그대로 따른다.

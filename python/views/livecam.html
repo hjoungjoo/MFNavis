@@ -364,6 +364,18 @@
         <div class="livecam-status-value" id="statusPreprocess">-</div>
       </div>
       <div class="livecam-status-item">
+        <div class="livecam-status-label">{{ _('Last Solve Result') }}</div>
+        <div class="livecam-status-value" id="statusSolveResult">-</div>
+      </div>
+      <div class="livecam-status-item">
+        <div class="livecam-status-label">{{ _('Last Successful Solve') }}</div>
+        <div class="livecam-status-value" id="statusSolveSuccess">-</div>
+      </div>
+      <div class="livecam-status-item">
+        <div class="livecam-status-label">{{ _('Solver Stars (Detected / Matched)') }}</div>
+        <div class="livecam-status-value" id="statusSolveStars">-</div>
+      </div>
+      <div class="livecam-status-item">
         <div class="livecam-status-label">{{ _('RAW Shape') }}</div>
         <div class="livecam-status-value" id="statusShape">-</div>
       </div>
@@ -498,6 +510,54 @@ function collectSettings() {
   };
 }
 
+function formatStatusAge(seconds) {
+  if (seconds === null || seconds === undefined) return '-';
+  const age = Math.max(0, Math.floor(seconds));
+  if (age < 60) return `${age}s`;
+  if (age < 3600) return `${Math.floor(age / 60)}m ${age % 60}s`;
+  return `${Math.floor(age / 3600)}h ${Math.floor(age % 3600 / 60)}m`;
+}
+
+function renderSolverStatus(settings, preprocess, solver) {
+  const preprocessLabels = {
+    disabled: {{ _('Off') | tojson }},
+    waiting: {{ _('Waiting') | tojson }},
+    warming: {{ _('Collecting frames') | tojson }},
+    ready: {{ _('Ready') | tojson }},
+    background_processing: {{ _('Processing in background') | tojson }},
+    reset_moving: {{ _('Reset: moving') | tojson }},
+    fast_raw_after_motion: {{ _('Fast RAW after movement') | tojson }},
+    waiting_for_raw: {{ _('Waiting for RAW') | tojson }},
+    waiting_for_stars: {{ _('Waiting for stars') | tojson }},
+    preview_error: {{ _('Preview error') | tojson }},
+    error: {{ _('Error') | tojson }}
+  };
+  const state = settings.solver_preprocess_enabled ? (preprocess.state || 'waiting') : 'disabled';
+  let text = preprocessLabels[state] || state;
+  // Background processing reports bias samples, not accumulated frames.
+  if (['warming', 'ready', 'waiting_for_stars'].includes(state) && preprocess.frame_count != null) {
+    text += ` (${preprocess.frame_count} / ${preprocess.frame_limit || 5})`;
+  }
+  setText('statusPreprocess', text);
+  const solveLabels = {
+    success: {{ _('Success') | tojson }},
+    failed: {{ _('Failed') | tojson }},
+    waiting: {{ _('Waiting for first solve') | tojson }},
+    unavailable: {{ _('Unavailable') | tojson }}
+  };
+  let result = solveLabels[solver.state] || solveLabels.unavailable;
+  if (solver.attempt_age_s != null) {
+    result += ` (${formatStatusAge(solver.attempt_age_s)} {{ _('ago') }})`;
+  }
+  setText('statusSolveResult', result);
+  setText('statusSolveSuccess', !solver.state || solver.state === 'unavailable'
+    ? solveLabels.unavailable
+    : solver.success_age_s == null
+      ? {{ _('No successful solve yet') | tojson }}
+      : `${formatStatusAge(solver.success_age_s)} {{ _('ago') }}`);
+  setText('statusSolveStars', `${solver.detected_stars ?? '-'} / ${solver.matched_stars ?? '-'}`);
+}
+
 function renderStatus(data, syncControls = false) {
   const settings = data.settings || {};
   const frame = data.frame || {};
@@ -508,16 +568,7 @@ function renderStatus(data, syncControls = false) {
     controlsHydrated = true;
   }
   setText('statusSource', frame.source || settings.input_frame_source);
-  let preprocessText = '-';
-  if (settings.input_frame_source === 'star_only' && settings.solver_preprocess_enabled) {
-    const state = preprocess.state || 'waiting';
-    const count = preprocess.frame_count ?? frame.preprocess_frames;
-    const limit = preprocess.frame_limit || 5;
-    preprocessText = count === null || count === undefined
-      ? state
-      : `${state} (${count} / ${limit})`;
-  }
-  setText('statusPreprocess', preprocessText);
+  renderSolverStatus(settings, preprocess, data.solver || {});
   setText('statusShape', frame.shape ? frame.shape.join(' x ') : null);
   setText('statusDisplayShape', stack.display_shape ? stack.display_shape.join(' x ') : null);
   setText('statusDtype', frame.dtype);
@@ -580,11 +631,8 @@ function renderStatus(data, syncControls = false) {
         settings.input_frame_source === 'star_only' &&
         settings.solver_preprocess_enabled
       ) {
-        const preprocessState = preprocess.state || 'waiting_for_raw';
-        const frameCount = preprocess.frame_count || 0;
         placeholder.textContent =
-          `{{ _('Solver preprocessing') }}: ${preprocessState} ` +
-          `(${frameCount} / ${preprocess.frame_limit || 5}, ${seconds}s)`;
+          `{{ _('Solver preprocessing') }}: ${document.getElementById('statusPreprocess').textContent} (${seconds}s)`;
       } else {
         placeholder.textContent =
           "{{ _('Processing is on. Waiting for the camera to publish the next RAW frame') }}" +

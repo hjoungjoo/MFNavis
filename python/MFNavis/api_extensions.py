@@ -37,6 +37,7 @@ from PiFinder.livecam_config import (
     normalize_settings,
     save_settings_to_config,
     settings_from_config,
+    solver_preprocess_status,
 )
 
 logger = logging.getLogger("PiFinderAPI")
@@ -137,6 +138,29 @@ def _solution_to_dict(sol) -> dict:
         "CedarGatedCentroids": getattr(diag, "CedarGatedCentroids", None),
         "CedarCenterCentroids": getattr(diag, "CedarCenterCentroids", None),
         "SepCentroids": getattr(diag, "SepCentroids", None),
+    }
+
+
+def _livecam_solver_status(shared_state) -> dict:
+    """Report the latest completed camera attempt, independent of IMU pointing."""
+    getter = getattr(shared_state, "solution", None)
+    sol = getter() if callable(getter) else None
+    if sol is None:
+        return {"state": "unavailable"}
+    attempt = sol.last_solve_attempt or None
+    success = sol.last_solve_success or None
+    now = time.time()
+    state = "waiting"
+    if attempt is not None:
+        state = "success" if success is not None and success >= attempt else "failed"
+    return {
+        "state": state,
+        "last_attempt": attempt,
+        "last_success": success,
+        "attempt_age_s": max(0.0, now - attempt) if attempt is not None else None,
+        "success_age_s": max(0.0, now - success) if success is not None else None,
+        "detected_stars": sol.diagnostics.Centroids if attempt is not None else None,
+        "matched_stars": sol.diagnostics.Matches if attempt is not None else None,
     }
 
 
@@ -961,10 +985,15 @@ def register_api_routes(app, server_instance, require_auth=False):
             settings = _raw_stack_settings()
             processor = _raw_stack_processor(create=False)
             if not settings["processing_enabled"] and processor is None:
-                return _json_response(disabled_status(settings))
-            data = (processor or _raw_stack_processor()).status(
-                server_instance.shared_state, settings
-            )
+                data = disabled_status(settings)
+                data["preprocess"] = solver_preprocess_status(
+                    server_instance.shared_state, settings
+                )
+            else:
+                data = (processor or _raw_stack_processor()).status(
+                    server_instance.shared_state, settings
+                )
+            data["solver"] = _livecam_solver_status(server_instance.shared_state)
             return _json_response(data)
         except Exception as e:
             logger.error("api/camera/raw-stack/status error: %s", e)

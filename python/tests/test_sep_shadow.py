@@ -13,6 +13,7 @@ window.
 
 import numpy as np
 import pytest
+import time
 from PIL import Image
 
 from PiFinder import solver_frame_map as sfm
@@ -220,6 +221,46 @@ def test_detect_rejects_full_raw_from_a_neighbouring_frame(tmp_path):
     )
 
     assert runner.detect(shared, expected_frame_id=102) is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("expanded", [False, True])
+def test_raw_overlay_keeps_display_candidates_separate_from_solver(
+    monkeypatch, tmp_path, expanded
+):
+    runner = _runner(tmp_path)
+    points = np.array([[80.0, 90.0], [110.0, 120.0]])
+    detection = SepDetection(
+        points[:1],
+        np.ones(1),
+        0,
+        0,
+        1,
+        overlay_centroids=points if expanded else None,
+    )
+
+    def fake_detect(frame, **kwargs):
+        assert kwargs["overlay_max_stars"] == 128
+        return detection
+
+    monkeypatch.setattr("PiFinder.sep_shadow.detect_primary_stars", fake_detect)
+    shared = DummyRawShared(
+        {
+            "frame": np.zeros((256, 256), dtype=np.uint16),
+            "frame_id": 101,
+            "timestamp": time.time(),
+        }
+    )
+    try:
+        run = runner.detect(shared, expected_frame_id=101)
+        assert run.detection is detection
+        assert len(run.detection.centroids) == 1
+        np.testing.assert_array_equal(
+            runner._last_overlay["centroids"], points if expanded else points[:1]
+        )
+        assert runner._last_overlay["solver_centroids"] == 1
+    finally:
+        runner._star_only.close()
 
 
 @pytest.mark.unit

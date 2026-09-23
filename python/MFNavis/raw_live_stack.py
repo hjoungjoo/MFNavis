@@ -22,6 +22,7 @@ from PIL import Image, ImageDraw
 from PiFinder.observation import observation_snapshot
 from PiFinder.solver_capture import json_value
 from PiFinder.livecam_config import (
+    solver_preprocess_status,
     COLOR_MODE_COLOR,
     COLOR_MODE_MONO,
     COLOR_MODE_THEME,
@@ -349,7 +350,7 @@ class RawLiveStackProcessor:
             if normalized["processing_enabled"]
             else None
         )
-        preprocess = _shared_preprocess_status(shared_state, normalized)
+        preprocess = solver_preprocess_status(shared_state, normalized)
         return {
             "settings": normalized,
             "frame": info,
@@ -855,20 +856,6 @@ def _shared_info(
             return None
     entry = _shared_entry(shared_state, settings)
     return entry.get("info") if entry else None
-
-
-def _shared_preprocess_status(
-    shared_state, settings: dict[str, Any]
-) -> dict[str, Any] | None:
-    if not _solver_preprocessed_selected(settings) or not hasattr(
-        shared_state, "solver_preprocess_status"
-    ):
-        return None
-    try:
-        status = shared_state.solver_preprocess_status()
-    except Exception:
-        return None
-    return status if isinstance(status, dict) else None
 
 
 def _bit_depth_from_raw_format(raw_format: str | None) -> int | None:

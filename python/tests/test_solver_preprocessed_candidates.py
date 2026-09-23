@@ -227,6 +227,7 @@ def test_raw_runner_retains_verified_frame_id(monkeypatch):
 
     detection = SimpleNamespace(
         centroids=POINTS,
+        overlay_centroids=None,
         backend="mf",
         fallback_reason=None,
         masked_count=0,
