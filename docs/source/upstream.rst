@@ -45,12 +45,12 @@ The PiFinder is my attempt to improve my time at my telescope.  I don't get near
 * **Good push-to functionality**:  This is one place the Nexus DSC shines... if it's well aligned.  The catalog system is okay, and once you select and object the screen is clear and helpful to get the telescope pointed correctly.
 * **Observation logging**:  I like to keep track of what I see each night.  I don't often sketch, just record what I saw when, with what eyepiece and some basic info about the experience.  If I could do this right at the eyepiece, that'd save time.
 
-My hope is that other people will find this combination of functionality useful, will build their own PiFinder and help the whole project improve by making suggestions and potentially contributing to the software.  It's a pretty easy build with off the shelf parts and beginner friendly soldering.  
+My hope is that other people will find this combination of functionality useful, will build their own PiFinder and help the whole project improve by making suggestions and potentially contributing to the software.  It's a pretty easy build with off the shelf parts and beginner friendly soldering.
 
 Features
 --------
 
-* Zero setup: Just turn it on and point it at the sky!  
+* Zero setup: Just turn it on and point it at the sky!
 * Accurate pointing: Onboard GPS determines location and time while the camera determines where the telescope is pointing.  Inertial Measurement Unit tracks telescope motion and updates sky position between camera solves
 * Self-contained:  Includes catalog search/filtering, sky/object charting, push-to guidance and logging all via the screen and keypad on the unit.
 * Dark site friendly:  Red OLED screen and soft backlit keys have wide brightness adjustment, right down to 'off'. No need for bright cell phones or tablets
