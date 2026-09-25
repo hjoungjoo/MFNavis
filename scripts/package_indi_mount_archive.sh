@@ -51,8 +51,8 @@ copy_path_to_rootfs() {
     local dest
 
     if [ ! -e "${path}" ] && [ ! -L "${path}" ]; then
-        echo "WARNING: missing installed path: ${path}" >&2
-        return 0
+        echo "ERROR: missing installed path: ${path}" >&2
+        return 1
     fi
 
     dest="${rootfs}$(normalize_usrmerge_path "${path}")"
@@ -153,7 +153,8 @@ require_file "${INDI_MANIFEST}"
 require_file "${INDI_3RDPARTY_MANIFEST}"
 
 mkdir -p "${OUT_DIR}"
-STAGING="$(mktemp -d)"
+# /tmp is a small tmpfs on installed devices; the uncompressed rootfs needs disk.
+STAGING="$(mktemp -d /var/tmp/mfnavis-indi-package.XXXXXX)"
 trap 'rm -rf "${STAGING}"' EXIT
 
 ROOTFS="${STAGING}/rootfs"

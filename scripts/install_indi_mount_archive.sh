@@ -2,6 +2,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PIFINDER_REPO_DIR="${REPO_ROOT}"
+source "${REPO_ROOT}/pifinder_paths.sh"
 ARCHIVE="${1:-}"
 FASTAPI_VERSION="${FASTAPI_VERSION:-0.103.2}"
 STARLETTE_VERSION="${STARLETTE_VERSION:-0.27.0}"
@@ -18,17 +20,29 @@ if [ -z "${ARCHIVE}" ]; then
     exit 1
 fi
 
-# pifinder_setup.sh mounts /tmp as a small tmpfs (SD-wear reduction), far too
+# mfnavis_setup.sh mounts /tmp as a small tmpfs (SD-wear reduction), far too
 # small to rebuild the split archive and extract its rootfs; use disk-backed
 # /var/tmp instead of the mktemp default.
-TMPDIR="$(mktemp -d /var/tmp/pifinder-indi.XXXXXX)"
-trap 'rm -rf "${TMPDIR}"' EXIT
+INDI_TMPDIR="$(mktemp -d /var/tmp/mfnavis-indi.XXXXXX)"
+APP_WAS_ACTIVE=0
+INDI_WAS_ACTIVE=0
+cleanup() {
+    local status=$?
+    trap - EXIT
+    if [ "${INDI_WAS_ACTIVE}" -eq 1 ]; then
+        sudo systemctl start indiwebmanager.service || status=1
+    fi
+    if [ "${APP_WAS_ACTIVE}" -eq 1 ]; then
+        sudo systemctl start mfnavis.service || status=1
+    fi
+    rm -rf "${INDI_TMPDIR}"
+    exit "${status}"
+}
+trap cleanup EXIT
 
 prepare_archive() {
     local requested="$1"
     local rebuilt
-    local expected
-    local actual
 
     if [ -f "${requested}" ]; then
         printf "%s\n" "${requested}"
@@ -45,26 +59,17 @@ prepare_archive() {
         exit 1
     fi
 
-    rebuilt="${TMPDIR}/$(basename "${requested}")"
+    rebuilt="${INDI_TMPDIR}/$(basename "${requested}")"
     echo "Rebuilding split archive: ${requested}" >&2
     cat "${parts[@]}" > "${rebuilt}"
-
-    if [ -f "${requested}.sha256" ]; then
-        expected="$(sed -n 's/[[:space:]].*//p' "${requested}.sha256" | head -n 1)"
-        actual="$(sha256sum "${rebuilt}")"
-        actual="${actual%% *}"
-        if [ "${expected}" != "${actual}" ]; then
-            echo "Split archive checksum mismatch." >&2
-            echo "Expected: ${expected}" >&2
-            echo "Actual:   ${actual}" >&2
-            exit 1
-        fi
-    fi
 
     printf "%s\n" "${rebuilt}"
 }
 
-ARCHIVE="$(prepare_archive "${ARCHIVE}")"
+ARCHIVE_REQUESTED="${ARCHIVE}"
+ARCHIVE="$(prepare_archive "${ARCHIVE_REQUESTED}")"
+python3 "${REPO_ROOT}/scripts/verify_indi_archive.py" \
+    "${ARCHIVE}" "${ARCHIVE_REQUESTED}.sha256"
 
 if [ "$(uname -m)" != "aarch64" ]; then
     echo "This archive installer supports only Raspberry Pi OS Bookworm 64-bit/aarch64." >&2
@@ -78,20 +83,17 @@ if [ -r /etc/os-release ]; then
     fi
 fi
 
-SERVICE_USER="${SUDO_USER:-$(whoami)}"
-if [ "${SERVICE_USER}" = "root" ] && id pifinder >/dev/null 2>&1; then
-    SERVICE_USER="pifinder"
-fi
+SERVICE_USER="${PIFINDER_USER}"
 
-tar -C "${TMPDIR}" -xzf "${ARCHIVE}"
+tar -C "${INDI_TMPDIR}" -xzf "${ARCHIVE}"
 
-if [ ! -d "${TMPDIR}/rootfs" ] || [ ! -f "${TMPDIR}/metadata/build_info.txt" ]; then
+if [ ! -d "${INDI_TMPDIR}/rootfs" ] || [ ! -f "${INDI_TMPDIR}/metadata/build_info.txt" ]; then
     echo "Invalid archive format: missing rootfs or metadata/build_info.txt" >&2
     exit 1
 fi
 
 echo "Installing INDI binary archive:"
-cat "${TMPDIR}/metadata/build_info.txt"
+cat "${INDI_TMPDIR}/metadata/build_info.txt"
 echo
 
 sudo apt update
@@ -116,8 +118,14 @@ PIP_BREAK_SYSTEM_PACKAGES=1 sudo python3 -m pip install --break-system-packages 
     "requests==2.32.4" \
     "importlib_metadata==8.5.0"
 
-sudo systemctl stop pifinder || true
-sudo systemctl stop indiwebmanager.service || true
+if sudo systemctl is-active --quiet mfnavis.service; then
+    APP_WAS_ACTIVE=1
+    sudo systemctl stop mfnavis.service
+fi
+if sudo systemctl is-active --quiet indiwebmanager.service; then
+    INDI_WAS_ACTIVE=1
+    sudo systemctl stop indiwebmanager.service
+fi
 
 # --keep-directory-symlink is REQUIRED: on Bookworm /lib, /bin, /sbin and
 # /lib64 are symlinks into /usr (the "usrmerge" layout). The rootfs overlay
@@ -127,7 +135,8 @@ sudo systemctl stop indiwebmanager.service || true
 # dynamically-linked binary — sudo, rm, bash — dies with
 # "cannot execute: required file not found" and the whole system is bricked.
 # The flag tells tar to descend into the existing symlinked directory instead.
-sudo tar -C "${TMPDIR}/rootfs" -cf - . | sudo tar -C / --keep-directory-symlink -xpf -
+sudo tar -C "${INDI_TMPDIR}/rootfs" --owner=0 --group=0 --numeric-owner -cf - . \
+    | sudo tar -C / --numeric-owner --keep-directory-symlink -xpf -
 sudo ldconfig
 
 # Safety net: if a previous run (or an older archive) already clobbered the
@@ -143,7 +152,7 @@ for merged in lib bin sbin lib64; do
 done
 sudo ldconfig
 
-cat > "${TMPDIR}/indiwebmanager.service" <<EOF
+cat > "${INDI_TMPDIR}/indiwebmanager.service" <<EOF
 [Unit]
 Description=INDI Web Manager
 After=multi-user.target
@@ -160,12 +169,13 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-sudo cp "${TMPDIR}/indiwebmanager.service" /etc/systemd/system/indiwebmanager.service
+sudo cp "${INDI_TMPDIR}/indiwebmanager.service" /etc/systemd/system/indiwebmanager.service
 sudo chown root:root /etc/systemd/system/indiwebmanager.service
 sudo chmod 644 /etc/systemd/system/indiwebmanager.service
 sudo systemctl daemon-reload
 sudo systemctl enable indiwebmanager.service
 sudo systemctl restart indiwebmanager.service
+INDI_WAS_ACTIVE=0
 
 if ! sudo grep -q "refclock SHM 0 poll 3 refid gps1" /etc/chrony/chrony.conf; then
     echo "" | sudo tee -a /etc/chrony/chrony.conf >/dev/null
@@ -173,8 +183,11 @@ if ! sudo grep -q "refclock SHM 0 poll 3 refid gps1" /etc/chrony/chrony.conf; th
     echo "refclock SHM 0 poll 3 refid gps1" | sudo tee -a /etc/chrony/chrony.conf >/dev/null
 fi
 sudo systemctl restart chrony
-sudo systemctl start pifinder || true
+if [ "${APP_WAS_ACTIVE}" -eq 1 ]; then
+    sudo systemctl start mfnavis.service
+    APP_WAS_ACTIVE=0
+fi
 
 echo
 echo "INDI archive install complete."
-echo "Open INDI Web Manager at: http://pifinder.local:8624"
+echo "Open INDI Web Manager at: http://$(hostname).local:8624"

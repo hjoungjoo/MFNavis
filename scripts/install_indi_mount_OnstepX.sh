@@ -17,6 +17,56 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PIFINDER_REPO_DIR="${REPO_ROOT}"
+source "${REPO_ROOT}/pifinder_paths.sh"
+APP_WAS_ACTIVE=0
+INDI_WAS_ACTIVE=0
+SERVICE_FILE=""
+cleanup() {
+    local status=$?
+    trap - EXIT
+    if [ "${INDI_WAS_ACTIVE}" -eq 1 ]; then
+        sudo systemctl start indiwebmanager.service || status=1
+    fi
+    if [ "${APP_WAS_ACTIVE}" -eq 1 ]; then
+        sudo systemctl start mfnavis.service || status=1
+    fi
+    if [ -n "${SERVICE_FILE}" ]; then
+        rm -f "${SERVICE_FILE}"
+    fi
+    exit "${status}"
+}
+trap cleanup EXIT
+
+stop_services_for_install() {
+    if sudo systemctl is-active --quiet mfnavis.service; then
+        APP_WAS_ACTIVE=1
+        sudo systemctl stop mfnavis.service
+    fi
+    if sudo systemctl is-active --quiet indiwebmanager.service; then
+        INDI_WAS_ACTIVE=1
+        sudo systemctl stop indiwebmanager.service
+    fi
+}
+
+check_existing_checkout() {
+    local repo="$1"
+    local version="$2"
+    local top
+    if [ -e "${repo}" ] || [ -L "${repo}" ]; then
+        top="$(git -C "${repo}" rev-parse --show-toplevel 2>/dev/null || true)"
+        if [ ! -d "${repo}" ] || [ -z "${top}" ] || \
+            [ "$(realpath "${top}")" != "$(realpath "${repo}")" ]; then
+            echo "ERROR: ${repo} exists but is not a Git checkout; move it aside manually." >&2
+            exit 1
+        fi
+        if [ "$(git -C "${repo}" rev-parse HEAD)" != \
+            "$(git -C "${repo}" rev-parse "${version}^{commit}")" ]; then
+            echo "ERROR: ${repo} is not at ${version}; choose the intended checkout manually." >&2
+            exit 1
+        fi
+    fi
+}
 
 sanitize_arm64_flags() {
     local flags="${1:-}"
@@ -34,6 +84,23 @@ ANYIO_VERSION="${ANYIO_VERSION:-3.7.1}"
 JOBS="${JOBS:-2}"
 BUILD_ROOT="${BUILD_ROOT:-$HOME/indi-latest}"
 INDI_PATCH_DIR="${INDI_PATCH_DIR:-${SCRIPT_DIR}/patches}"
+if [[ ! "${JOBS}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: JOBS must be a positive integer." >&2
+    exit 2
+fi
+if [[ "${INDI_PATCH_DIR}" != none && ! -d "${INDI_PATCH_DIR}" ]]; then
+    echo "ERROR: INDI_PATCH_DIR does not exist: ${INDI_PATCH_DIR}" >&2
+    exit 1
+fi
+check_existing_checkout "${BUILD_ROOT}/indi" "${INDI_VERSION}"
+check_existing_checkout "${BUILD_ROOT}/indi-3rdparty" "${INDI_3RDPARTY_VERSION}"
+if [[ "${INDI_PATCH_DIR}" == none && ( -e "${BUILD_ROOT}/indi" || -L "${BUILD_ROOT}/indi" ) ]]; then
+    if ! git -C "${BUILD_ROOT}/indi" diff --quiet || \
+        ! git -C "${BUILD_ROOT}/indi" diff --cached --quiet; then
+        echo "ERROR: INDI_PATCH_DIR=none requires an unmodified INDI checkout." >&2
+        exit 1
+    fi
+fi
 export CFLAGS="$(sanitize_arm64_flags "${CFLAGS:-}") -march=armv8-a"
 export CXXFLAGS="$(sanitize_arm64_flags "${CXXFLAGS:-}") -march=armv8-a -Wno-error=stringop-overread -Wno-error=stringop-truncation"
 
@@ -77,14 +144,22 @@ DISABLE_CAMERA_DRIVER_OPTIONS=(
 
 cmake_install_if_available() {
     local target_list
-    target_list="$(mktemp)"
-    cmake --build . --target help >"${target_list}"
-    if grep -Eq '(^|[.][.][.] )install($|[[:space:]])' "${target_list}"; then
+    local required="${1:-required}"
+    target_list="$(mktemp /var/tmp/mfnavis-indi-targets.XXXXXX)"
+    if ! cmake --build . --target help >"${target_list}"; then
+        rm -f "${target_list}"
+        return 1
+    fi
+    if grep -Eq '(^|[[:space:]])install([:[:space:]]|$)' "${target_list}"; then
         rm -f "${target_list}"
         sudo cmake --build . --target install
     else
         rm -f "${target_list}"
-        echo "No CMake install target in $(pwd); skipping install."
+        if [[ "${required}" == required ]]; then
+            echo "ERROR: no CMake install target in $(pwd)." >&2
+            return 1
+        fi
+        echo "No CMake install target in $(pwd); skipping optional install."
     fi
 }
 
@@ -130,7 +205,7 @@ apply_indi_patches() {
     done
 }
 
-echo "PiFinder LX200 OnStepX INDI mount-control installer"
+echo "MFNavis LX200 OnStepX INDI mount-control installer"
 echo "Using BUILD_ROOT=${BUILD_ROOT}"
 echo "INDI_VERSION=${INDI_VERSION}"
 echo "INDI_3RDPARTY_VERSION=${INDI_3RDPARTY_VERSION}"
@@ -153,8 +228,6 @@ sudo apt install -y \
     libudev-dev libdbus-1-dev libglib2.0-dev python3-pip \
     python3-setuptools python-dev-is-python3 chrony
 
-sudo systemctl stop pifinder || true
-
 PIP_BREAK_SYSTEM_PACKAGES=1 sudo python3 -m pip install --break-system-packages \
     jinja2 \
     "fastapi==${FASTAPI_VERSION}" \
@@ -164,8 +237,7 @@ PIP_BREAK_SYSTEM_PACKAGES=1 sudo python3 -m pip install --break-system-packages 
 
 mkdir -p "${BUILD_ROOT}"
 cd "${BUILD_ROOT}"
-if [ ! -d indi/.git ]; then
-    rm -rf indi
+if [ ! -e indi ] && [ ! -L indi ]; then
     git clone --branch "${INDI_VERSION}" --depth 1 https://github.com/indilib/indi.git
 fi
 apply_indi_patches "${BUILD_ROOT}/indi" "${INDI_PATCH_DIR}"
@@ -173,31 +245,34 @@ apply_indi_patches "${BUILD_ROOT}/indi" "${INDI_PATCH_DIR}"
 mkdir -p indi/build
 cd indi/build
 cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_C_FLAGS="${CFLAGS}" -DCMAKE_CXX_FLAGS="${CXXFLAGS}" \
     "${DISABLE_CAMERA_DRIVER_OPTIONS[@]}" \
     ..
 make -j"${JOBS}"
+stop_services_for_install
 cmake_install_if_available
 
 PIP_BREAK_SYSTEM_PACKAGES=1 sudo python3 -m pip install --break-system-packages \
     "git+https://github.com/indilib/pyindi-client.git@${PYINDI_VERSION}#egg=pyindi-client"
 
 cd "${BUILD_ROOT}"
-if [ ! -d indi-3rdparty/.git ]; then
-    rm -rf indi-3rdparty
+if [ ! -e indi-3rdparty ] && [ ! -L indi-3rdparty ]; then
     git clone --branch "${INDI_3RDPARTY_VERSION}" --depth 1 https://github.com/indilib/indi-3rdparty.git
 fi
 
 mkdir -p indi-3rdparty/build-libs
 cd indi-3rdparty/build-libs
 cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DBUILD_LIBS=1 \
+    -DCMAKE_C_FLAGS="${CFLAGS}" -DCMAKE_CXX_FLAGS="${CXXFLAGS}" \
     "${DISABLE_CAMERA_DRIVER_OPTIONS[@]}" \
     ..
 make -j"${JOBS}"
-cmake_install_if_available
+cmake_install_if_available optional
 
 mkdir -p ../build-drivers
 cd ../build-drivers
 cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_FLAGS="${CFLAGS}" -DCMAKE_CXX_FLAGS="${CXXFLAGS}" \
     -DCMAKE_SHARED_LINKER_FLAGS="-ludev" \
     "${DISABLE_CAMERA_DRIVER_OPTIONS[@]}" \
     ..
@@ -207,14 +282,10 @@ cmake_install_if_available
 PIP_BREAK_SYSTEM_PACKAGES=1 sudo python3 -m pip install --break-system-packages \
     "git+https://github.com/jscheidtmann/indiwebmanager.git@control_panel#egg=indiweb"
 
-# Run the INDI Web Manager as the invoking OS user, not root -- mirror the
-# SERVICE_USER fallback used by install_indi_mount_archive.sh so running this
-# script via sudo does not register the service with User=root.
-CURRENT_USER="${SUDO_USER:-$(whoami)}"
-if [ "${CURRENT_USER}" = "root" ] && id pifinder >/dev/null 2>&1; then
-    CURRENT_USER="pifinder"
-fi
-cat >/tmp/indiwebmanager.service <<EOF
+# Use the same resolved install user as the other MFNavis services.
+CURRENT_USER="${PIFINDER_USER}"
+SERVICE_FILE="$(mktemp /var/tmp/mfnavis-indiwebmanager.XXXXXX.service)"
+cat >"${SERVICE_FILE}" <<EOF
 [Unit]
 Description=INDI Web Manager
 After=multi-user.target
@@ -231,11 +302,13 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-sudo cp /tmp/indiwebmanager.service /etc/systemd/system/indiwebmanager.service
+sudo cp "${SERVICE_FILE}" /etc/systemd/system/indiwebmanager.service
+sudo chown root:root /etc/systemd/system/indiwebmanager.service
 sudo chmod 644 /etc/systemd/system/indiwebmanager.service
 sudo systemctl daemon-reload
 sudo systemctl enable indiwebmanager.service
 sudo systemctl restart indiwebmanager.service
+INDI_WAS_ACTIVE=0
 
 if ! sudo grep -q "refclock SHM 0 poll 3 refid gps1" /etc/chrony/chrony.conf; then
     echo "" | sudo tee -a /etc/chrony/chrony.conf >/dev/null
@@ -243,9 +316,12 @@ if ! sudo grep -q "refclock SHM 0 poll 3 refid gps1" /etc/chrony/chrony.conf; th
     echo "refclock SHM 0 poll 3 refid gps1" | sudo tee -a /etc/chrony/chrony.conf >/dev/null
 fi
 sudo systemctl restart chrony
-sudo systemctl start pifinder || true
+if [ "${APP_WAS_ACTIVE}" -eq 1 ]; then
+    sudo systemctl start mfnavis.service
+    APP_WAS_ACTIVE=0
+fi
 
 echo
 echo "INDI mount-control install complete."
-echo "Open INDI Web Manager at: http://pifinder.local:8624"
-echo "Enable PiFinder mount control from Settings > Experimental > Mount Control."
+echo "Open INDI Web Manager at: http://$(hostname).local:8624"
+echo "Enable MFNavis mount control from Settings > Experimental > Mount Control."

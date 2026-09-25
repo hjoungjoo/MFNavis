@@ -59,9 +59,14 @@ configure_time_chain() {
         case " ${current_options} " in
             *" -n "*) ;;
             *)
-                sudo sed -i \
-                    "s|^GPSD_OPTIONS=.*|GPSD_OPTIONS=\"-n ${current_options}\"|" \
-                    "${GPSD_DEFAULTS}"
+                if sudo grep -q '^GPSD_OPTIONS=' "${GPSD_DEFAULTS}"; then
+                    sudo sed -i \
+                        "s|^GPSD_OPTIONS=.*|GPSD_OPTIONS=\"-n ${current_options}\"|" \
+                        "${GPSD_DEFAULTS}"
+                else
+                    printf 'GPSD_OPTIONS="-n %s"\n' "${current_options}" \
+                        | sudo tee -a "${GPSD_DEFAULTS}" >/dev/null
+                fi
                 changed_gpsd=1
                 ;;
         esac

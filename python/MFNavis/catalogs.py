@@ -918,13 +918,17 @@ class CatalogBuilder:
     Merges object table data and catalog_object table data
     """
 
-    def build(self, shared_state, ui_queue=None) -> Catalogs:
+    def build(
+        self, shared_state, ui_queue=None, *, include_dynamic_catalogs: bool = True
+    ) -> Catalogs:
         """
         Build catalogs with priority loading for popular catalogs.
 
         Args:
             shared_state: Shared state object
             ui_queue: Optional queue to signal completion (for main loop integration)
+            include_dynamic_catalogs: Skip planet/comet timers and downloads for
+                offline static-cache generation.
         """
         obs_db: Database = ObservationsDatabase()
 
@@ -988,6 +992,10 @@ class CatalogBuilder:
                 # No deferred objects — write cache immediately since
                 # _on_loader_complete will never fire.
                 catalog_cache.save(list(composite_objects), catalogs_info)
+        if not include_dynamic_catalogs:
+            assert self.check_catalogs_sequences(all_catalogs) is True
+            return all_catalogs
+
         # Initialize planet catalog with whatever date we have for now
         # This will be re-initialized on activation of Catalog ui module
         # if we have GPS lock

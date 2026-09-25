@@ -12,14 +12,19 @@ if [[ -z "${PIFINDER_USER:-}" ]]; then
         PIFINDER_USER="${SUDO_USER}"
     else
         PIFINDER_USER="$(id -un)"
+        if [[ "${PIFINDER_USER}" == "root" ]]; then
+            PIFINDER_USER="$(stat -c '%U' "${PIFINDER_REPO_DIR}")"
+        fi
     fi
 fi
 
 if [[ "${PIFINDER_USER}" == "root" ]]; then
     echo "MFNavis must be installed for a non-root OS user." >&2
-    echo "Set PIFINDER_USER=<user> when running as root." >&2
+    echo "Set PIFINDER_USER=<user> when the checkout is owned by root." >&2
     exit 1
 fi
+
+PIFINDER_GROUP="$(id -gn "${PIFINDER_USER}")"
 
 if [[ -z "${PIFINDER_HOME:-}" ]]; then
     PIFINDER_HOME="$(getent passwd "${PIFINDER_USER}" | cut -d: -f6)"
@@ -43,6 +48,7 @@ MFNAVIS_DATA_DIR="${PIFINDER_DATA_DIR}"
 export MFNAVIS_DATA_DIR
 
 export PIFINDER_USER
+export PIFINDER_GROUP
 export PIFINDER_HOME
 export PIFINDER_REPO_DIR
 export PIFINDER_DATA_DIR
@@ -62,7 +68,7 @@ pifinder_render_config() {
 pifinder_prepare_wpa_supplicant_config() {
     sudo install -d -m 755 /etc/wpa_supplicant
     sudo touch /etc/wpa_supplicant/wpa_supplicant.conf
-    sudo chown "${PIFINDER_USER}:${PIFINDER_USER}" /etc/wpa_supplicant/wpa_supplicant.conf
+    sudo chown "${PIFINDER_USER}:${PIFINDER_GROUP}" /etc/wpa_supplicant/wpa_supplicant.conf
     sudo chmod 600 /etc/wpa_supplicant/wpa_supplicant.conf
 }
 

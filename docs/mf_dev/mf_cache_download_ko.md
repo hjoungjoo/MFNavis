@@ -12,10 +12,10 @@
 
 | 위치 | 내용 | 용도 |
 | --- | --- | --- |
-| `~/PiFinder_data/cache/hip_main.pkl` | Hipparcos 별 카탈로그 파싱 캐시 | 별 지도 초기화 단축 |
-| `~/PiFinder_data/cache/hip_bv.npz` | Hipparcos B-V 색 지수 캐시 | SQM 색 보정 초기화 단축 |
-| `~/PiFinder_data/cache/catalogs/` | 복합 천체 카탈로그 캐시 | 카탈로그 검색·목록 초기화 단축 |
-| `~/PiFinder_data/catalog_images/` | POSS/SDSS 천체 서베이 이미지 | PiFinder 및 웹 카탈로그의 천체 사진 |
+| `~/MFNavis_data/cache/hip_main.pkl` | Hipparcos 별 카탈로그 파싱 캐시 | 별 지도 초기화 단축 |
+| `~/MFNavis_data/cache/hip_bv.npz` | Hipparcos B-V 색 지수 캐시 | SQM 색 보정 초기화 단축 |
+| `~/MFNavis_data/cache/catalogs/` | 복합 천체 카탈로그 캐시 | 카탈로그 검색·목록 초기화 단축 |
+| `~/MFNavis_data/catalog_images/` | POSS/SDSS 천체 서베이 이미지 | PiFinder 및 웹 카탈로그의 천체 사진 |
 
 관측 기록, 장비 설정, Wi-Fi 정보, 사용자 사진 및 로그는 변경하거나
 다운로드하지 않는다. 카메라의 warm-pixel map처럼 실제 장비·촬영 조건에서만
@@ -37,7 +37,7 @@
 저장소 최상위 디렉터리에서 다음 명령을 실행한다.
 
 ```bash
-cd /home/pifinder/PiFinder
+cd ~/MFNavis
 python3 scripts/warm_pifinder_caches.py
 ```
 
@@ -81,9 +81,9 @@ python3 scripts/warm_pifinder_caches.py --skip-runtime
 다른 터미널에서는 다음으로 크기와 파일 수를 확인할 수 있다.
 
 ```bash
-du -sh ~/PiFinder_data/cache ~/PiFinder_data/catalog_images
-find ~/PiFinder_data/catalog_images -name '*_POSS.jpg' | wc -l
-find ~/PiFinder_data/catalog_images -name '*_SDSS.jpg' | wc -l
+du -sh ~/MFNavis_data/cache ~/MFNavis_data/catalog_images
+find ~/MFNavis_data/catalog_images -name '*_POSS.jpg' | wc -l
+find ~/MFNavis_data/catalog_images -name '*_SDSS.jpg' | wc -l
 ```
 
 정상 완료 시 `Cache warm-up complete`가 표시된다. 이후 인터넷을 끊은 뒤
@@ -96,13 +96,12 @@ find ~/PiFinder_data/catalog_images -name '*_SDSS.jpg' | wc -l
 가능해졌을 때 같은 명령을 다시 실행한다. 이미 완성된 이미지 파일은
 `gen_images`가 건너뛰고, 유효한 런타임 캐시는 다시 사용한다.
 
-캐시 명령은 종료 전에 임시 행성·혜성 갱신 타이머를 중지한다. 따라서
-`Cache warm-up complete`가 보이면 셸 프롬프트가 바로 돌아와야 한다.
-
-강제 전원 차단처럼 파일 쓰기 도중 비정상 종료한 경우에는 마지막에 쓰던
-이미지 파일이 손상될 수 있다. 특정 천체 사진만 계속 보이지 않으면 해당
-`*_POSS.jpg` 또는 `*_SDSS.jpg` 파일을 확인한 뒤 삭제하고 캐시 명령을 다시
-실행한다. 사용자 설정·관측 기록은 삭제하지 않는다.
+정적 캐시를 만드는 동안에는 행성·혜성 갱신 타이머와 혜성 자료 다운로드를
+시작하지 않는다. 이미지도 완전히 저장된 뒤에만 최종 JPEG 경로로 옮긴다.
+다운로드 실패가 있으면 명령은 실패 코드로 끝나며, 같은 명령을 다시 실행할 수
+있다. SDSS 범위 밖의 천체는 `unavailable`로 집계하고 실패로 보지 않는다.
+이전 버전에서 남은 손상 이미지는 해당 JPEG만 삭제한 뒤 다시 실행한다.
+사용자 설정·관측 기록은 삭제하지 않는다.
 
 ## 문제 해결
 

@@ -32,9 +32,11 @@ cd "${PIFINDER_HOME}"
 
 sudo bash -c '
 set -e
-trap "rm -f /usr/sbin/policy-rc.d" EXIT
-printf "%s\n" "#!/bin/sh" "exit 101" > /usr/sbin/policy-rc.d
-chmod 755 /usr/sbin/policy-rc.d
+if [ ! -e /usr/sbin/policy-rc.d ] && [ ! -L /usr/sbin/policy-rc.d ]; then
+    printf "%s\n" "#!/bin/sh" "exit 101" > /usr/sbin/policy-rc.d
+    trap "rm -f /usr/sbin/policy-rc.d" EXIT
+    chmod 755 /usr/sbin/policy-rc.d
+fi
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
     git python3-pip python3-venv python3-dev build-essential pkg-config \
@@ -151,7 +153,7 @@ sudo sed -i "s|^DEVICES=.*|DEVICES=\"$(pifinder_gps_device)\"|" /etc/default/gps
 bash "${PIFINDER_REPO_DIR}/scripts/install_gpsd_stable.sh"
 
 # data dirs
-sudo install -d -o "${PIFINDER_USER}" -g "${PIFINDER_USER}" -m 755 \
+sudo install -d -o "${PIFINDER_USER}" -g "${PIFINDER_GROUP}" -m 755 \
     "${PIFINDER_DATA_DIR}" \
     "${PIFINDER_DATA_DIR}/captures" \
     "${PIFINDER_DATA_DIR}/obslists" \
@@ -160,16 +162,23 @@ sudo install -d -o "${PIFINDER_USER}" -g "${PIFINDER_USER}" -m 755 \
     "${PIFINDER_DATA_DIR}/logs" \
     "${PIFINDER_DATA_DIR}/migrations"
 
-# Wifi config
-sudo cp "${PIFINDER_REPO_DIR}"/pi_config_files/dhcpcd.* /etc
-sudo cp "${PIFINDER_REPO_DIR}/pi_config_files/dhcpcd.conf.sta" /etc/dhcpcd.conf
-sudo cp "${PIFINDER_REPO_DIR}/pi_config_files/dnsmasq.conf" /etc/dnsmasq.conf
+# Wi-Fi config: retain the current mode and live network files on reinstall.
+for template in "${PIFINDER_REPO_DIR}"/pi_config_files/dhcpcd.*; do
+    target="/etc/${template##*/}"
+    if [[ ! -f "${target}" ]]; then
+        sudo cp "${template}" "${target}"
+    fi
+done
+if [[ ! -f "${PIFINDER_REPO_DIR}/wifi_status.txt" ]]; then
+    sudo cp "${PIFINDER_REPO_DIR}/pi_config_files/dhcpcd.conf.sta" /etc/dhcpcd.conf
+    sudo cp "${PIFINDER_REPO_DIR}/pi_config_files/dnsmasq.conf" /etc/dnsmasq.conf
+    printf '%s' 'Client' > "${PIFINDER_REPO_DIR}/wifi_status.txt"
+fi
 # Preserve an existing AP password and custom SSID on reinstall.
 if [[ ! -f /etc/hostapd/hostapd.conf ]]; then
     sudo install -d -m 755 /etc/hostapd
     sudo cp "${PIFINDER_REPO_DIR}/pi_config_files/hostapd.conf" /etc/hostapd/hostapd.conf
 fi
-echo -n "Client" > "${PIFINDER_REPO_DIR}/wifi_status.txt"
 sudo systemctl unmask hostapd
 
 # allow the PiFinder service user to adjust network config
@@ -225,7 +234,7 @@ fi
 #    'su' is required because /tmp is world-writable (1777).
 sudo tee /etc/logrotate.d/indiserver >/dev/null <<LOGROTATE_EOF
 /tmp/indiserver.log {
-    su ${PIFINDER_USER} ${PIFINDER_USER}
+    su ${PIFINDER_USER} ${PIFINDER_GROUP}
     size 10M
     rotate 2
     copytruncate

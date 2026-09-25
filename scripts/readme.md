@@ -17,7 +17,7 @@ python3 scripts/warm_pifinder_caches.py --images poss
 ```
 
 The command is safe to stop and re-run: image files already present in
-`~/PiFinder_data/catalog_images` are skipped. Use `--images none` to warm only
+`~/MFNavis_data/catalog_images` are skipped. Use `--images none` to warm only
 the local runtime caches, or `--skip-runtime` to download only images.
 
 The frequencies you can find in the script can be changed for certain cases

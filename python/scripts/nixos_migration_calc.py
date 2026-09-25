@@ -110,7 +110,7 @@ def get_partition_count(disk: str = SD_DISK) -> int:
 
 def get_wifi_mode() -> str:
     """Detect WiFi mode."""
-    wifi_status = Path("/home/pifinder/PiFinder/wifi_status.txt")
+    wifi_status = Path("/home/pifinder/MFNavis/wifi_status.txt")
     try:
         return wifi_status.read_text().strip()
     except OSError:

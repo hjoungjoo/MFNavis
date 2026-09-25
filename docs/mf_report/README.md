@@ -6,3 +6,11 @@
 
 문서별 요약과 날짜는 인덱스를 본다:
 [한국어](../mf_docs_index_ko.md) · [English](../mf_docs_index_en.md).
+
+2026-09-25 이후 홈 자료 경로는 [MFNavis 홈 자료 통합 기록](mfnavis_home_consolidation_20260925_ko.md)의
+대응표를 참조한다. 과거 보고서의 절대 경로는 당시 기록을 유지한다.
+
+설치·INDI·운영 스크립트의 오류와 검증 결과는
+[2026-09-25 스크립트 점검 기록](mfnavis_script_audit_20260925_ko.md)에 정리했다.
+개발용 INDI 소스 빌드와 캐시 다운로드 경로는
+[2026-09-26 추가 점검](mfnavis_extended_script_audit_20260926_ko.md)을 참조한다.

@@ -38,12 +38,12 @@ def main():
     root = Path.home()
     for folder, pattern in [
         (
-            root / "PiFinder_data/captures/mf_replay/20260903_cloud_coordinate_jitter",
+            root / "MFNavis_data/captures/mf_replay/20260903_cloud_coordinate_jitter",
             "raw_*.tiff",
         ),
-        (root / "PiFinder_test_data/cache/cloud", "*.npy"),
-        (root / "PiFinder_test_data/corpora/20260915_fixed_lights", "raw_*.tiff"),
-        (root / "PiFinder_test_data/cache/current", "*.npy"),
+        (root / "MFNavis_data/test_data/cache/cloud", "*.npy"),
+        (root / "MFNavis_data/test_data/corpora/20260915_fixed_lights", "raw_*.tiff"),
+        (root / "MFNavis_data/test_data/cache/current", "*.npy"),
     ]:
         files = sorted(folder.glob(pattern))
         for index in np.linspace(0, len(files) - 1, 6, dtype=int):

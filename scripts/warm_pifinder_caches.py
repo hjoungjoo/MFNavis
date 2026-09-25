@@ -69,17 +69,7 @@ def warm_runtime_caches() -> None:
 
     print("[runtime] Building composite catalog cache...", flush=True)
     builder = CatalogBuilder()
-    catalogs = builder.build(SharedStateObj())
-
-    # CatalogBuilder also adds dynamic planet and comet catalogs. Their
-    # TimerMixin timers are useful in the long-running PiFinder service, but
-    # a cache-warmup command must not leave their non-daemon Timer threads
-    # alive after static catalog generation has finished.
-    for catalog_code in ("PL", "CM"):
-        dynamic_catalog = catalogs.get_catalog_by_code(catalog_code)
-        timer = getattr(dynamic_catalog, "_timer", None)
-        if timer is not None:
-            timer.stop()
+    builder.build(SharedStateObj(), include_dynamic_catalogs=False)
 
     loader = getattr(builder, "_background_loader", None)
     worker = getattr(loader, "_thread", None)
@@ -88,7 +78,10 @@ def warm_runtime_caches() -> None:
             worker.join(timeout=1)
             if worker.is_alive():
                 loaded = len(loader.get_loaded_objects())
-                print(f"[runtime] Catalog cache: {loaded:,} deferred objects loaded", flush=True)
+                print(
+                    f"[runtime] Catalog cache: {loaded:,} deferred objects loaded",
+                    flush=True,
+                )
 
     if catalog_cache.load() is None:
         raise RuntimeError("Catalog cache was not written successfully")
@@ -113,7 +106,9 @@ def warm_catalog_images(image_sources: str, workers: int) -> None:
 
     env = os.environ.copy()
     current_path = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = str(PYTHON_ROOT) + (os.pathsep + current_path if current_path else "")
+    env["PYTHONPATH"] = str(PYTHON_ROOT) + (
+        os.pathsep + current_path if current_path else ""
+    )
     print(
         f"[images] Starting resumable {image_sources.upper()} image cache download...",
         flush=True,
@@ -145,6 +140,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.workers < 1:
         parser.error("--workers must be at least 1")
+    if os.geteuid() == 0:
+        parser.error("run as the MFNavis service user, without sudo")
 
     started = time.monotonic()
     try:

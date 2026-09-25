@@ -30,12 +30,12 @@ INDI 마운트 제어는 실험 기능입니다. 먼저 INDI Telescope Simulator
 드라이버 패치 변경이 필요할 때만 아래의 전체 소스 설치·빌드 방식을 사용하세요.
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 bash scripts/install_indi_mount_archive.sh \
   dist/mf-pifinder-indi-bookworm-arm64-v2.2.3.1-current.tar.gz
 ```
 
-전체 `pifinder_setup.sh` 설치에서는 아카이브가 `dist/`에 있거나
+전체 `mfnavis_setup.sh` 설치에서는 아카이브가 `dist/`에 있거나
 `PIFINDER_INDI_ARCHIVE`로 지정되면 이 방식을 자동으로 사용합니다.
 
 ### 수정용: 전체 소스 설치·빌드
@@ -43,11 +43,11 @@ bash scripts/install_indi_mount_archive.sh \
 PiFinder 체크아웃에서 전용 설치 스크립트를 실행합니다.
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 bash scripts/install_indi_mount_OnstepX.sh
 ```
 
-이 스크립트는 INDI, INDI third-party 드라이버, PyIndi, INDI Web Manager, Chrony GPS 시간 동기화 지원을 설치합니다. 컴파일 중에는 `pifinder` 서비스를 잠시 멈추고, 완료 후 다시 시작합니다.
+이 스크립트는 INDI, INDI third-party 드라이버, PyIndi, INDI Web Manager, Chrony GPS 시간 동기화 지원을 설치합니다. 바이너리 설치 단계에서는 실행 중인 `mfnavis`와 INDI Web Manager 서비스를 멈추고, 성공·실패와 관계없이 원래 실행 중이던 서비스를 다시 시작합니다.
 
 INDI Web Manager는 현재 `FastAPI 0.103.2`, `Starlette 0.27.0`, `Uvicorn 0.23.2`, `AnyIO 3.7.1` 조합으로 고정되어 있습니다. 최신 Starlette 계열에서는 INDI Web Manager의 기존 템플릿 호출 방식과 맞지 않아 Web UI 루트 페이지가 `500 Internal Server Error`를 반환할 수 있습니다.
 
@@ -67,13 +67,18 @@ Pi 4에서는 메모리 여유를 위해 기본 `JOBS=2`를 권장합니다. Pi 
 INDI_PATCH_DIR=none bash scripts/install_indi_mount_OnstepX.sh
 ```
 
+`INDI_PATCH_DIR=none`은 변경되지 않은 INDI 소스 체크아웃에서만 동작한다.
+이전에 OnStepX 패치를 적용한 `~/indi-latest/indi`가 있다면 별도의 빈
+`BUILD_ROOT`를 지정해 새 소스를 받아 시험한다. 설치 대상과 빌드 작업 수는
+시스템 패키지를 변경하기 전에 검사한다.
+
 ### 기본 설치: Pi 4/Pi 5 공용 바이너리 아카이브
 
 일반 설치에는 미리 만든 Bookworm 64-bit/aarch64 아카이브를 사용합니다. 소스
 수정이나 새 패치 검증이 필요한 경우에만 앞 절의 전체 소스 빌드로 전환합니다.
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 bash scripts/install_indi_mount_archive.sh dist/mf-pifinder-indi-bookworm-arm64-v2.2.3.1-current.tar.gz
 ```
 
@@ -82,24 +87,24 @@ Git 저장소에는 큰 아카이브가 `.tar.gz.part-00`, `.part-01` 같은 조
 `install_indi_mount_archive.sh`가 조각을 다시 합치고 `.sha256` checksum을
 검증한 뒤 설치합니다.
 
-전체 PiFinder 설치 스크립트인 `pifinder_setup.sh`에서도 같은 아카이브 설치 경로를 사용할 수 있습니다.
+전체 PiFinder 설치 스크립트인 `mfnavis_setup.sh`에서도 같은 아카이브 설치 경로를 사용할 수 있습니다.
 
 ```bash
 cd ~
-PIFINDER_INDI_ARCHIVE="$HOME/PiFinder/dist/mf-pifinder-indi-bookworm-arm64-v2.2.3.1-current.tar.gz" \
-  bash "$HOME/PiFinder/pifinder_setup.sh"
+PIFINDER_INDI_ARCHIVE="$HOME/MFNavis/dist/mf-pifinder-indi-bookworm-arm64-v2.2.3.1-current.tar.gz" \
+  bash "$HOME/MFNavis/mfnavis_setup.sh"
 ```
 
 `PIFINDER_INSTALL_INDI_ARCHIVE`는 기본값이 `auto`입니다. `dist/mf-pifinder-indi-bookworm-arm64-*.tar.gz` 파일이 있거나 `PIFINDER_INDI_ARCHIVE`가 지정되어 있으면 INDI 지원을 설치하고, 없으면 일반 PiFinder 설치만 진행합니다. 강제로 끄려면 다음처럼 실행합니다.
 
 ```bash
-PIFINDER_INSTALL_INDI_ARCHIVE=false bash "$HOME/PiFinder/pifinder_setup.sh"
+PIFINDER_INSTALL_INDI_ARCHIVE=false bash "$HOME/MFNavis/mfnavis_setup.sh"
 ```
 
 새 바이너리 아카이브를 만들 때는 다음 스크립트를 사용합니다.
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 bash scripts/package_indi_mount_archive.sh
 ```
 
@@ -115,7 +120,7 @@ bash scripts/package_indi_mount_archive.sh
 INDI Web Manager를 엽니다.
 
 ```text
-http://pifinder.local:8624
+http://<hostname>.local:8624
 ```
 
 mDNS 이름이 동작하지 않으면 PiFinder IP 주소를 사용합니다.
@@ -294,16 +299,16 @@ PiFinder 로그에는 `MountControl.Indi` 이름으로 마운트 제어 로그�
 상태 파일은 다음 위치에 기록됩니다.
 
 ```text
-~/PiFinder_data/mount_control_status.json
+~/MFNavis_data/mount_control_status.json
 ```
 
 확인에 유용한 명령은 다음과 같습니다.
 
 ```bash
 systemctl status indiwebmanager.service
-systemctl status pifinder.service
+systemctl status mfnavis.service
 journalctl -u indiwebmanager.service -n 100
-tail -n 100 ~/PiFinder_data/pifinder.log
+tail -n 100 ~/MFNavis_data/pifinder.log
 ```
 
 ## 안전 테스트 순서

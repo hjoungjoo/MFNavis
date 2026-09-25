@@ -1,93 +1,50 @@
-#!/usr/bin/python
-# -*- coding:utf-8 -*-
-# mypy: ignore-errors
-"""
-This script runs to fetch
-images from AWS
-"""
+"""Check whether catalog POSS images are available on the image CDN."""
+
+import sqlite3
+from contextlib import closing
 
 import requests
-import sqlite3
 from tqdm import tqdm
 
-from PiFinder import cat_images
+from PiFinder import utils
 
 
-def get_catalog_objects():
-    conn = sqlite3.connect(
-        "/Users/rich/Projects/Astronomy/PiFinder/astro_data/pifinder_objects.db"
+def get_image_names() -> list[str]:
+    """Read the current catalog database schema without changing the database."""
+    with closing(
+        sqlite3.connect(f"{utils.pifinder_db.resolve().as_uri()}?mode=ro", uri=True)
+    ) as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT image_name FROM object_images WHERE image_name != ''"
+        ).fetchall()
+    return [row[0] for row in rows]
+
+
+def check_object_image(session: requests.Session, image_name: str) -> bool:
+    filename = f"{image_name}_POSS.jpg"
+    url = (
+        "https://ddbeeedxfpnp0.cloudfront.net/catalog_images/"
+        f"{image_name[-1]}/{filename}"
     )
-    conn.row_factory = sqlite3.Row
-    cat_objects = conn.execute(
-        """
-        SELECT * from objects
-        order by catalog desc ,sequence
-    """
-    ).fetchall()
-    return cat_objects
-
-
-def check_object_image(catalog_object):
-    """
-    Check if image exists
-    or fetch it.
-
-    Returns image path
-    """
-    if catalog_object["catalog"] not in ["NGC", "IC"]:
-        # look for any NGC aka
-        conn = sqlite3.connect(
-            "/Users/rich/Projects/Astronomy/PiFinder/astro_data/pifinder_objects.db"
-        )
-        conn.row_factory = sqlite3.Row
-
-        aka_rec = conn.execute(
-            f"""
-            SELECT common_name from names
-            where catalog = "{catalog_object['catalog']}"
-            and sequence = "{catalog_object['sequence']}"
-            and common_name like "NGC%"
-        """
-        ).fetchone()
-        if aka_rec:
-            try:
-                aka_sequence = int(aka_rec["common_name"][3:].strip())
-            except ValueError:
-                aka_sequence = None
-                pass
-
-            if aka_sequence:
-                catalog_object = {"catalog": "NGC", "sequence": aka_sequence}
-
-    object_image_path = cat_images.resolve_image_name(catalog_object, "POSS")
-    # POSS
-    image_name = object_image_path.split("/")[-1]
-    seq_ones = image_name.split("_")[0][-1]
-    s3_url = (
-        f"https://ddbeeedxfpnp0.cloudfront.net/catalog_images/{seq_ones}/{image_name}"
-    )
-    r = requests.head(s3_url)
-    if r.status_code == 200:
-        return True
-    elif r.status_code == 403:
-        return False
-    else:
-        print(s3_url, r.status_code)
+    try:
+        response = session.head(url, timeout=15)
+        return response.status_code == 200
+    except requests.RequestException:
         return False
 
 
-def main():
-    all_objects = get_catalog_objects()
-    print("Checking for missing images")
-    print(f"Checking {len(all_objects)} images....")
-    for catalog_object in tqdm(all_objects):
-        if not check_object_image(catalog_object):
-            print(
-                "Missing: "
-                + catalog_object["catalog"]
-                + str(catalog_object["sequence"])
-            )
+def main() -> int:
+    image_names = get_image_names()
+    print(f"Checking {len(image_names)} catalog images...")
+    missing = 0
+    with requests.Session() as session:
+        for image_name in tqdm(image_names):
+            if not check_object_image(session, image_name):
+                print(f"Unavailable: {image_name}")
+                missing += 1
+    print(f"Audit complete: {missing} unavailable of {len(image_names)}")
+    return 1 if missing else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

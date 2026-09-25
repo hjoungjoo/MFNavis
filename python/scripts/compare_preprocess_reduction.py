@@ -25,7 +25,7 @@ def main():
     sys.modules[spec.name] = reference
     spec.loader.exec_module(reference)
     paths = sorted(
-        (Path.home() / "PiFinder_test_data/corpora/20260915_fixed_lights").glob(
+        (Path.home() / "MFNavis_data/test_data/corpora/20260915_fixed_lights").glob(
             "raw_*.tiff"
         )
     )[30:40]

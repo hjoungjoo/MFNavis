@@ -13,10 +13,10 @@ The command creates or downloads only the following data:
 
 | Location | Content | Purpose |
 | --- | --- | --- |
-| `~/PiFinder_data/cache/hip_main.pkl` | Parsed Hipparcos star catalog | Faster star-field startup |
-| `~/PiFinder_data/cache/hip_bv.npz` | Hipparcos B-V color-index lookup | Faster SQM color-correction startup |
-| `~/PiFinder_data/cache/catalogs/` | Composite-object catalog cache | Faster catalog search and list startup |
-| `~/PiFinder_data/catalog_images/` | POSS/SDSS survey images | Object pictures in PiFinder and the web catalog |
+| `~/MFNavis_data/cache/hip_main.pkl` | Parsed Hipparcos star catalog | Faster star-field startup |
+| `~/MFNavis_data/cache/hip_bv.npz` | Hipparcos B-V color-index lookup | Faster SQM color-correction startup |
+| `~/MFNavis_data/cache/catalogs/` | Composite-object catalog cache | Faster catalog search and list startup |
+| `~/MFNavis_data/catalog_images/` | POSS/SDSS survey images | Object pictures in PiFinder and the web catalog |
 
 It does not change observing records, equipment settings, Wi-Fi credentials,
 user photos, or logs. It also does not pre-create condition-specific data such
@@ -38,7 +38,7 @@ as a camera warm-pixel map.
 From the repository root, run:
 
 ```bash
-cd /home/pifinder/PiFinder
+cd ~/MFNavis
 python3 scripts/warm_pifinder_caches.py
 ```
 
@@ -82,9 +82,9 @@ The command prints each runtime-cache step and the image-download progress.
 In another terminal, inspect the stored size and file counts with:
 
 ```bash
-du -sh ~/PiFinder_data/cache ~/PiFinder_data/catalog_images
-find ~/PiFinder_data/catalog_images -name '*_POSS.jpg' | wc -l
-find ~/PiFinder_data/catalog_images -name '*_SDSS.jpg' | wc -l
+du -sh ~/MFNavis_data/cache ~/MFNavis_data/catalog_images
+find ~/MFNavis_data/catalog_images -name '*_POSS.jpg' | wc -l
+find ~/MFNavis_data/catalog_images -name '*_SDSS.jpg' | wc -l
 ```
 
 `Cache warm-up complete` indicates success. Afterwards, disconnect internet
@@ -97,14 +97,12 @@ Press `Ctrl-C` to stop. When internet access is available again, run the same
 command to continue: `gen_images` skips image files that already exist, and
 valid runtime caches are reused.
 
-The cache command stops its temporary planet/comet refresh timers before it
-exits. After `Cache warm-up complete` appears, the shell prompt should return
-immediately.
-
-An abrupt power loss during a file write can leave the image currently being
-written incomplete. If one object image consistently fails to display, remove
-only that object's `*_POSS.jpg` or `*_SDSS.jpg` file and run the cache command
-again. Do not remove settings or observing records.
+Static cache generation does not start planet/comet timers or download comet
+data. A JPEG is moved to its final path only after the download is complete.
+Transient download failures produce a nonzero exit status; rerun the same command
+to retry. Objects outside SDSS coverage count as `unavailable`, not failed.
+If an older version left a corrupt image, remove only that object's JPEG and
+rerun the command. Settings and observing records are unaffected.
 
 ## Troubleshooting
 

@@ -15,6 +15,8 @@ Usage:
 import argparse
 import os
 import sqlite3
+import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
@@ -46,6 +48,30 @@ SDSS_URL = (
 def resolve_image_path(image_name: str, source: str) -> str:
     last_char = str(image_name)[-1]
     return f"{BASE_IMAGE_PATH}/{last_char}/{image_name}_{source}.jpg"
+
+
+def cached_image_exists(path: str) -> bool:
+    """Treat empty files left by older interrupted runs as missing."""
+    try:
+        return os.path.isfile(path) and os.path.getsize(path) > 0
+    except OSError:
+        return False
+
+
+def save_image_atomically(image: Image.Image, path: str) -> None:
+    """Expose a JPEG only after PIL has finished writing it."""
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(
+        prefix=".mfnavis-image-", suffix=".jpg", dir=directory
+    )
+    os.close(fd)
+    try:
+        image.save(temporary, format="JPEG")
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def check_sdss_image(image: Image.Image) -> bool:
@@ -80,8 +106,7 @@ def fetch_poss(
         img: Image.Image = Image.open(BytesIO(resp.content))
         img = img.convert("L")
         img = ImageOps.autocontrast(img, cutoff=(low_cut, 0))
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        img.save(path)
+        save_image_atomically(img, path)
         return True, ""
     except Exception as e:
         return False, str(e)
@@ -102,8 +127,7 @@ def fetch_sdss(
         if not check_sdss_image(img):
             return False, "out of range"
         img = ImageOps.autocontrast(img)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        img.save(path)
+        save_image_atomically(img, path)
         return True, ""
     except Exception as e:
         return False, str(e)
@@ -123,14 +147,14 @@ def fetch_object(
 
     if do_poss:
         path = resolve_image_path(image_name, "POSS")
-        if force or not os.path.exists(path):
+        if force or not cached_image_exists(path):
             results["POSS"] = fetch_poss(session, ra, dec, image_name)
         else:
             results["POSS"] = (True, "exists")
 
     if do_sdss:
         path = resolve_image_path(image_name, "SDSS")
-        if force or not os.path.exists(path):
+        if force or not cached_image_exists(path):
             results["SDSS"] = fetch_sdss(session, ra, dec, image_name)
         else:
             results["SDSS"] = (True, "exists")
@@ -171,7 +195,7 @@ def create_catalog_image_dirs():
             os.makedirs(d)
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Fetch survey images for MFNavis objects"
     )
@@ -184,6 +208,8 @@ def main():
         "--workers", type=int, default=10, help="Concurrent workers (default: 10)"
     )
     args = parser.parse_args()
+    if args.workers < 1:
+        parser.error("--workers must be at least 1")
 
     do_poss = True
     do_sdss = True
@@ -204,10 +230,10 @@ def main():
     else:
         to_fetch = []
         for ra, dec, name in objects:
-            poss_missing = do_poss and not os.path.exists(
+            poss_missing = do_poss and not cached_image_exists(
                 resolve_image_path(name, "POSS")
             )
-            sdss_missing = do_sdss and not os.path.exists(
+            sdss_missing = do_sdss and not cached_image_exists(
                 resolve_image_path(name, "SDSS")
             )
             if poss_missing or sdss_missing:
@@ -216,7 +242,7 @@ def main():
 
     if not to_fetch:
         print("Nothing to fetch!")
-        return
+        return 0
 
     sources = []
     if do_poss:
@@ -231,9 +257,11 @@ def main():
     failed: List[Tuple[str, str]] = []
     fetched = 0
     skipped = 0
+    unavailable = 0
     t_start = time.time()
 
-    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+    executor = ThreadPoolExecutor(max_workers=args.workers)
+    try:
         futures = {
             executor.submit(
                 fetch_object, session, ra, dec, name, do_poss, do_sdss, args.force
@@ -252,14 +280,26 @@ def main():
                         skipped += 1
                     elif ok:
                         fetched += 1
+                    elif source == "SDSS" and err == "out of range":
+                        # SDSS does not cover the whole sky; an empty cutout
+                        # is expected unavailability, not a failed download.
+                        unavailable += 1
                     else:
                         failed.append((f"{name}_{source}", err))
             except Exception as e:
                 failed.append((name, str(e)))
+    except KeyboardInterrupt:
+        executor.shutdown(wait=False, cancel_futures=True)
+        raise
+    else:
+        executor.shutdown(wait=True)
+    finally:
+        session.close()
 
     elapsed = time.time() - t_start
     print(
-        f"\nDone in {elapsed:.0f}s: {fetched} fetched, {skipped} skipped, {len(failed)} failed"
+        f"\nDone in {elapsed:.0f}s: {fetched} fetched, {skipped} skipped, "
+        f"{unavailable} unavailable, {len(failed)} failed"
     )
 
     if failed:
@@ -269,8 +309,9 @@ def main():
         if len(failed) > 20:
             print(f"  ... and {len(failed) - 20} more")
 
-    session.close()
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

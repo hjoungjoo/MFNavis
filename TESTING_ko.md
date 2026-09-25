@@ -9,9 +9,9 @@
 [통합 관리 안내](docs/DETECTOR_INTEGRATION_ko.md)와
 [라이선스 범위](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/LICENSING.md)를 따른다.
 
-이 checkout은 `test/cedar-free-20260915` 전용이다. 운영 `/home/pifinder/PiFinder`
-및 부팅 서비스 경로는 유지한다. 테스트 코드에서 기본 데이터 경로는
-`/home/pifinder/PiFinder_test_data`, runtime은 `/dev/shm/pifinder_test`다.
+운영 소스는 `/home/pifinder/MFNavis`이고 서비스는 `mfnavis.service`다.
+테스트 코드에서 기본 데이터 경로는
+`/home/pifinder/MFNavis_data/test_data`, runtime은 `/dev/shm/pifinder_test`다.
 
 - [확정 기본값·실측 비교·관측 좌표 저장](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/FIELD_GUIDE_ko.md)
 - [이번 검증 결과](https://github.com/hjoungjoo/mf_detect_star/blob/test/cedar-free-20260915/docs/test_cedar_free_20260915/FIELD_RESULTS_ko.md)
@@ -38,13 +38,13 @@
 ## 오프라인 실행
 
 ```bash
-cd /home/pifinder/PiFinder_test
+cd /home/pifinder/MFNavis
 bash scripts/ensure_tetra3_link.sh .
 bash scripts/setup_mfds.sh
 PYTHONPATH=python python3 python/scripts/replay_star_preprocess_ab.py \
-  /home/pifinder/PiFinder_test_data/corpora/20260915_fixed_lights \
+  /home/pifinder/MFNavis_data/test_data/corpora/20260915_fixed_lights \
   --lens manual --manual-focal 10.3889 \
-  --output /home/pifinder/PiFinder_test_data/results/mf_repeat.csv
+  --output /home/pifinder/MFNavis_data/test_data/results/mf_repeat.csv
 ```
 
 `PIFINDER_DETECTOR=mf`가 기본이다. RAW와 전처리 모두 전체4×4 축소 탐색 후
@@ -77,8 +77,8 @@ sudo scripts/test_runtime.sh restore
 scripts/test_runtime.sh status
 ```
 
-`start`는 `/run/systemd/system/pifinder.service.d/90-detector-test.conf`만
+`start`는 `/run/systemd/system/mfnavis.service.d/90-detector-test.conf`만
 추가한다. `restore`는 이 파일만 제거하고 운영 서비스를 다시 시작한다.
 enable/disable이나 `/etc`·`/lib`의 영구 unit을 변경하지 않는다. 재부팅하면
-runtime override가 사라져 운영 소스가 실행된다. 이 작업에서는 스위치 스크립트를
-구문 검사만 했으며 실제 서비스 전환은 실행하지 않았다.
+runtime override가 사라져 운영 소스가 실행된다. 이번 홈 경로 통합에서는
+스위치 스크립트를 구문 검사만 했으며 테스트 모드로 전환하지 않았다.

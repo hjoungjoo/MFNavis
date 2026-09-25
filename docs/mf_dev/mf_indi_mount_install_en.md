@@ -31,12 +31,12 @@ Use the full source install and build below only when modifying the source or
 changing/testing driver patches.
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 bash scripts/install_indi_mount_archive.sh \
   dist/mf-pifinder-indi-bookworm-arm64-v2.2.3.1-current.tar.gz
 ```
 
-During a full `pifinder_setup.sh` install, this archive path is selected
+During a full `mfnavis_setup.sh` install, this archive path is selected
 automatically when an archive is in `dist/` or `PIFINDER_INDI_ARCHIVE` is set.
 
 ### For changes: full source install and build
@@ -44,11 +44,11 @@ automatically when an archive is in `dist/` or `PIFINDER_INDI_ARCHIVE` is set.
 Run the dedicated installer from the PiFinder checkout:
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 bash scripts/install_indi_mount_OnstepX.sh
 ```
 
-The script installs INDI, INDI third-party drivers, PyIndi, INDI Web Manager, and Chrony GPS time support. It stops the `pifinder` service while compiling and starts it again at the end.
+The script installs INDI, INDI third-party drivers, PyIndi, INDI Web Manager, and Chrony GPS time support. During binary installation it stops the running `mfnavis` and INDI Web Manager services, then restores their prior running state even if installation fails.
 
 INDI Web Manager dependencies are pinned to `FastAPI 0.103.2`, `Starlette 0.27.0`, `Uvicorn 0.23.2`, and `AnyIO 3.7.1`. Newer Starlette releases changed the template response call signature used by this INDI Web Manager branch, which can make the root Web UI return `500 Internal Server Error`.
 
@@ -68,6 +68,11 @@ The script checks out INDI `v2.2.3.1` under `~/indi-latest`, builds it, and auto
 INDI_PATCH_DIR=none bash scripts/install_indi_mount_OnstepX.sh
 ```
 
+`INDI_PATCH_DIR=none` requires a clean INDI checkout. If
+`~/indi-latest/indi` already contains the OnStepX patch, set a separate empty
+`BUILD_ROOT` to test unpatched upstream code. The installer checks the source
+checkout and job count before changing system packages.
+
 ### Default installation: Pi 4/Pi 5 shared binary archive
 
 For normal installs, use the prebuilt Bookworm 64-bit/aarch64 archive. Switch to
@@ -75,7 +80,7 @@ the full source build in the preceding section only when source modifications or
 new patch validation are required:
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 bash scripts/install_indi_mount_archive.sh dist/mf-pifinder-indi-bookworm-arm64-v2.2.3.1-current.tar.gz
 ```
 
@@ -88,20 +93,20 @@ The main PiFinder setup script can use the same archive installer:
 
 ```bash
 cd ~
-PIFINDER_INDI_ARCHIVE="$HOME/PiFinder/dist/mf-pifinder-indi-bookworm-arm64-v2.2.3.1-current.tar.gz" \
-  bash "$HOME/PiFinder/pifinder_setup.sh"
+PIFINDER_INDI_ARCHIVE="$HOME/MFNavis/dist/mf-pifinder-indi-bookworm-arm64-v2.2.3.1-current.tar.gz" \
+  bash "$HOME/MFNavis/mfnavis_setup.sh"
 ```
 
 `PIFINDER_INSTALL_INDI_ARCHIVE` defaults to `auto`. If a `dist/mf-pifinder-indi-bookworm-arm64-*.tar.gz` file exists or `PIFINDER_INDI_ARCHIVE` is set, the setup script installs INDI support. If no archive is found, setup continues with the normal PiFinder install only. To force-disable the archive installer:
 
 ```bash
-PIFINDER_INSTALL_INDI_ARCHIVE=false bash "$HOME/PiFinder/pifinder_setup.sh"
+PIFINDER_INSTALL_INDI_ARCHIVE=false bash "$HOME/MFNavis/mfnavis_setup.sh"
 ```
 
 To create a new binary archive from the currently installed build:
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 bash scripts/package_indi_mount_archive.sh
 ```
 
@@ -117,7 +122,7 @@ A binary archive created after the latest source build includes the patched `LX2
 Open INDI Web Manager:
 
 ```text
-http://pifinder.local:8624
+http://<hostname>.local:8624
 ```
 
 If mDNS does not resolve, use the PiFinder IP address:
@@ -299,16 +304,16 @@ PiFinder logs mount-control messages under `MountControl.Indi`.
 A small status file is written here:
 
 ```text
-~/PiFinder_data/mount_control_status.json
+~/MFNavis_data/mount_control_status.json
 ```
 
 Useful service checks:
 
 ```bash
 systemctl status indiwebmanager.service
-systemctl status pifinder.service
+systemctl status mfnavis.service
 journalctl -u indiwebmanager.service -n 100
-tail -n 100 ~/PiFinder_data/pifinder.log
+tail -n 100 ~/MFNavis_data/pifinder.log
 ```
 
 ## Safe Test Flow
