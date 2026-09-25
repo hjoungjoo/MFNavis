@@ -73,10 +73,12 @@ The home screen shows general PiFinder status and a live view of the PiFinder's 
 a large screen you see a navigation bar along the top.  On a smaller screen the same options
 sit under a 'hamburger' menu in the upper-left.
 
-The home screen needs no password, but most other functions do.  The web interface password
-is the same as the ``pifinder`` user's password.  If you change one, you change the other.
-The default for new images and PiFinders is ``solveit``.  You can change it from the Tools
-page of the web interface.
+The home screen needs no password, but most other functions do. The web interface
+uses the password of the Linux account running the MFNavis service, which is the
+account selected during installation. There is no separate web password. Changing
+it in the web Tools page also changes that account's SSH password. Older PiFinder
+images may use ``solveit`` as the default; a fresh installation uses the password
+set for its Linux account.
 
 The web interface is available in English, German, French, Spanish, and Chinese.  It follows your
 browser's preferred language.  Set the language on your phone or computer, and the web

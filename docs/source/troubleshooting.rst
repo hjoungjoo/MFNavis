@@ -210,8 +210,10 @@ Frequently Asked Questions
    Full details are in :ref:`user_guide:update software`.
 
 **What's the default password for the web interface?**
-   ``solveit``, all lowercase, one word.  You can view the home screen without it.  The other
-   pages require it.  You can change it on the web interface's Tools page.
+   A fresh MFNavis installation uses the password of the Linux account running
+   the MFNavis service; it has no separate web password. Older PiFinder images
+   may use ``solveit``. You can view the home screen without a password and
+   change the account password from the web interface's Tools page.
 
 **How long does the battery last?**
    About ten hours, and that is a floor.  It was measured with the camera solving

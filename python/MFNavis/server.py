@@ -6,6 +6,7 @@ import uuid
 import os
 import argparse
 import sys
+import pwd
 import multiprocessing
 import threading
 from datetime import datetime, timezone
@@ -302,6 +303,9 @@ class Server:
         camera_command_queue=None,
     ):
         self.version_txt = f"{utils.pifinder_dir}/version.txt"
+        # The installed service runs as the chosen OS account, which need not
+        # be named "pifinder". PAM and passwd must target that same account.
+        self.login_user = pwd.getpwuid(os.geteuid()).pw_name
         self.keyboard_queue = keyboard_queue or multiprocessing.Queue()
         self.ui_queue = ui_queue or multiprocessing.Queue()
         self.gps_queue = gps_queue or multiprocessing.Queue()
@@ -541,7 +545,7 @@ class Server:
                 origin_url = request.form.get("origin_url") or session.get(
                     "origin_url", "/"
                 )
-                if sys_utils.verify_password("pifinder", password):
+                if sys_utils.verify_password(self.login_user, password):
                     session["authenticated"] = True
                     session.pop("origin_url", None)
                     return redirect(origin_url)
@@ -985,7 +989,7 @@ class Server:
 
             if new_passworda == new_passwordb:
                 if sys_utils.change_password(
-                    "pifinder", current_password, new_passworda
+                    self.login_user, current_password, new_passworda
                 ):
                     return app.jinja_env.get_template("tools.html").render(
                         title=_("Tools"), status_message=_("Password Changed")
