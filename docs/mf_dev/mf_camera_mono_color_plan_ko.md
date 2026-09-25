@@ -4,6 +4,11 @@
 > 관련: [mf_mono_sqm_colour_guard_20260805_ko.md](../mf_report/mf_mono_sqm_colour_guard_20260805_ko.md)(모노 실측·#560 가드),
 > `docs/mf_dev/mf_sep_fullframe_impl_ko.md` §6.4(위상 실측), ADR 0026(색 기반 zero point)
 
+> **2026-09-26 제품 기본값 변경:** 새 설치에서 IMX462 Color, 수동 렌즈
+> 8.2661 mm, 해당 광학 조합의 하늘 측정 왜곡 계수 `k1=-0.05`를 기본으로
+> 사용한다. 아래의 mono 기본값은 2026-08 초기 설계 기록이다. 기기별 저장
+> 설정과 이미 선택한 카메라 오버레이는 유지되며, 렌즈가 다르면 재측정한다.
+
 ## 1. 배경과 목표
 
 IMX296과 IMX462는 각각 mono/color 두 변형이 존재하지만 실리콘·레지스터

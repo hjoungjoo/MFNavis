@@ -42,6 +42,19 @@ def switch_boot(cam_type: str) -> None:
             boot_out.write(line)
 
 
-if __name__ == "__main__":
-    cam_type = sys.argv[1]
+def ensure_default_boot(cam_type: str = "imx462") -> bool:
+    """Select the product camera only if no sensor overlay is configured."""
+    with open(get_boot_config_path(), "r") as boot_in:
+        if any(line.strip().startswith("dtoverlay=imx") for line in boot_in):
+            return False
     switch_boot(cam_type)
+    return True
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--default":
+        ensure_default_boot(sys.argv[2])
+    elif len(sys.argv) == 2:
+        switch_boot(sys.argv[1])
+    else:
+        raise SystemExit("Usage: switch_camera.py [--default] CAMERA_TYPE")

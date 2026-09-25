@@ -16,6 +16,8 @@ from pathlib import Path
 import pytest
 
 from PiFinder import config
+from PiFinder.mf_wide_calibration import CalibrationProfileStore
+from PiFinder.sqm.camera_profiles import get_camera_profile
 
 
 @pytest.fixture
@@ -30,6 +32,50 @@ def config_dir(tmp_path, monkeypatch):
 
 def _on_disk(config_dir: Path) -> dict:
     return json.loads((config_dir / "config.json").read_text())
+
+
+@pytest.mark.unit
+def test_new_install_uses_measured_imx462_color_optics(config_dir):
+    cfg = config.Config()
+    assert cfg.get_option("camera_variant") == "color"
+    assert cfg.get_option("camera_lens") == "manual"
+    assert cfg.get_option("camera_lens_focal_length_mm") == 8.2661
+
+    active = CalibrationProfileStore(cfg).load_active(
+        "imx462_color", "manual", get_camera_profile("imx462_color")
+    )
+    assert active is not None
+    assert active["coefficients"] == {
+        "k1": -0.05,
+        "k2": 0.0,
+        "k3": 0.0,
+        "p1": 0.0,
+        "p2": 0.0,
+    }
+    assert _on_disk(config_dir) == {}
+
+
+@pytest.mark.unit
+def test_saved_camera_optics_override_new_defaults(config_dir):
+    saved = {
+        "camera_variant": "mono",
+        "camera_lens": "6mm",
+        "camera_lens_focal_length_mm": None,
+        "wide_solver_calibration_store_v1": {},
+    }
+    (config_dir / "config.json").write_text(json.dumps(saved))
+
+    cfg = config.Config()
+    assert cfg.get_option("camera_variant") == "mono"
+    assert cfg.get_option("camera_lens") == "6mm"
+    assert cfg.get_option("camera_lens_focal_length_mm") is None
+    assert (
+        CalibrationProfileStore(cfg).load_active(
+            "imx462_color", "manual", get_camera_profile("imx462_color")
+        )
+        is None
+    )
+    assert _on_disk(config_dir) == saved
 
 
 @pytest.mark.unit

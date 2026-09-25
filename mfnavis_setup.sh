@@ -321,7 +321,10 @@ fi
 # directly; libinput does not deliver joystick events).
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3-evdev \
     || echo "WARNING: could not install python3-evdev; joystick input will be disabled." >&2
-# Note: camera types are added lateron by python/MFNavis/switch_camera.py
+# Use the product IMX462 sensor on a fresh boot config; keep an existing camera
+# overlay when this script is rerun on a device with a deliberate selection.
+sudo env PYTHONPATH="${PIFINDER_REPO_DIR}/python" python3 \
+    -m PiFinder.switch_camera --default imx462
 
 # Keep POSIX shared memory alive across SSH logouts: logind's default
 # RemoveIPC=yes deletes all IPC owned by the pifinder user (including the
