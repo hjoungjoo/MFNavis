@@ -116,7 +116,7 @@ if [ ! -f /migration_meta ]; then
     fail "migration_meta not found in initramfs"
 fi
 . /migration_meta
-# Now we have: TARBALL_PATH, TARBALL_SIZE, PIFINDER_DATA_PATH
+# Now we have: TARBALL_PATH, TARBALL_SIZE, MFNAVIS_DATA_PATH
 
 # Initial RAM check: tarball + fixed overhead must fit. The exact user-data
 # backup size is checked after the old root is mounted, before formatting.
@@ -155,17 +155,17 @@ fi
 
 show 35 "Creating backup"
 
-PIFINDER_DATA_ON_ROOT="${MOUNT_ROOT}${PIFINDER_DATA_PATH}"
+MFNAVIS_DATA_ON_ROOT="${MOUNT_ROOT}${MFNAVIS_DATA_PATH}"
 BACKUP_STAGE="/tmp/backup_stage/PiFinder_data"
 rm -rf /tmp/backup_stage
 mkdir -p "${BACKUP_STAGE}"
 
-if [ -d "${PIFINDER_DATA_ON_ROOT}" ]; then
+if [ -d "${MFNAVIS_DATA_ON_ROOT}" ]; then
     BACKUP_NEED_KB=0
 
     # Root-level files are preserved, except pifinder.log which is truncated
     # while copying so a large log cannot exhaust initramfs RAM.
-    for f in "${PIFINDER_DATA_ON_ROOT}"/*; do
+    for f in "${MFNAVIS_DATA_ON_ROOT}"/*; do
         if [ -f "$f" ]; then
             case "$(basename "$f")" in
                 pifinder.log)
@@ -178,8 +178,8 @@ if [ -d "${PIFINDER_DATA_ON_ROOT}" ]; then
             esac
         fi
     done
-    if [ -d "${PIFINDER_DATA_ON_ROOT}/obslists" ]; then
-        OBSLISTS_KB=$(du -sk "${PIFINDER_DATA_ON_ROOT}/obslists" 2>/dev/null | awk '{print $1}')
+    if [ -d "${MFNAVIS_DATA_ON_ROOT}/obslists" ]; then
+        OBSLISTS_KB=$(du -sk "${MFNAVIS_DATA_ON_ROOT}/obslists" 2>/dev/null | awk '{print $1}')
         BACKUP_NEED_KB=$((BACKUP_NEED_KB + ${OBSLISTS_KB:-0}))
     fi
 
@@ -190,7 +190,7 @@ if [ -d "${PIFINDER_DATA_ON_ROOT}" ]; then
     [ "${MEM_KB}" -lt "${NEEDED_KB}" ] && fail "Insufficient RAM for backup: $((MEM_KB / 1024))MB available, need $((NEEDED_KB / 1024))MB"
 
     # Copy root-level files (observations.db, configs, etc.)
-    for f in "${PIFINDER_DATA_ON_ROOT}"/*; do
+    for f in "${MFNAVIS_DATA_ON_ROOT}"/*; do
         if [ -f "$f" ]; then
             if [ "$(basename "$f")" = "pifinder.log" ]; then
                 tail -n 1000 "$f" > "${BACKUP_STAGE}/pifinder.log" 2>/dev/null || true
@@ -201,8 +201,8 @@ if [ -d "${PIFINDER_DATA_ON_ROOT}" ]; then
     done
 
     # Copy obslists directory
-    if [ -d "${PIFINDER_DATA_ON_ROOT}/obslists" ]; then
-        cp -a "${PIFINDER_DATA_ON_ROOT}/obslists" "${BACKUP_STAGE}/obslists"
+    if [ -d "${MFNAVIS_DATA_ON_ROOT}/obslists" ]; then
+        cp -a "${MFNAVIS_DATA_ON_ROOT}/obslists" "${BACKUP_STAGE}/obslists"
     fi
 fi
 

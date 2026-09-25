@@ -1,9 +1,5 @@
 #!/usr/bin/bash
-# This script installs MFNavis on a prepared Raspberry Pi OS.
-# It clones this fork (hjoungjoo/MFNavis, main branch) instead of the
-# upstream release, and adds the fork's SD-wear, evdev and console-boot steps.
-# The old upstream installer is archived in docs/history/pifinder_setup_legacy.txt.
-# See https://pifinder.readthedocs.io/en/release/software.html for more info.
+# Install or update MFNavis on a prepared Raspberry Pi OS.
 #
 # Install with:
 #   wget -O - https://raw.githubusercontent.com/hjoungjoo/MFNavis/main/mfnavis_setup.sh | bash
@@ -16,19 +12,19 @@ if [[ "$(id -u)" -eq 0 ]]; then
     exit 1
 fi
 
-PIFINDER_USER="${PIFINDER_USER:-${SUDO_USER:-$(id -un)}}"
-if [[ "${PIFINDER_USER}" == "root" ]]; then
-    echo "Run as the target OS user, or set PIFINDER_USER=<user>." >&2
+MFNAVIS_USER="${MFNAVIS_USER:-${SUDO_USER:-$(id -un)}}"
+if [[ "${MFNAVIS_USER}" == "root" ]]; then
+    echo "Run as the target OS user, or set MFNAVIS_USER=<user>." >&2
     exit 1
 fi
 
-PIFINDER_HOME="$(getent passwd "${PIFINDER_USER}" | cut -d: -f6)"
-if [[ -z "${PIFINDER_HOME}" || ! -d "${PIFINDER_HOME}" ]]; then
-    echo "Could not determine home directory for ${PIFINDER_USER}" >&2
+MFNAVIS_HOME="$(getent passwd "${MFNAVIS_USER}" | cut -d: -f6)"
+if [[ -z "${MFNAVIS_HOME}" || ! -d "${MFNAVIS_HOME}" ]]; then
+    echo "Could not determine home directory for ${MFNAVIS_USER}" >&2
     exit 1
 fi
 
-cd "${PIFINDER_HOME}"
+cd "${MFNAVIS_HOME}"
 
 sudo bash -c '
 set -e
@@ -46,48 +42,80 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
     python3-picamera2 rpicam-apps i2c-tools spi-tools
 '
 
-if [[ -d MFNavis/ || -d PiFinder/ ]]; then
-    if [[ -d MFNavis/ ]]; then cd MFNavis/; else cd PiFinder/; fi
-    branch="$(git symbolic-ref --quiet --short HEAD)" || {
-        echo "Detached checkout: select the reviewed deployment branch first." >&2
-        exit 1
-    }
+mfnavis_update_checkout() {
+    local requested="${MFNAVIS_INSTALL_BRANCH:-}"
+    local branch target local_tip
+
     if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
         echo "Tracked files have local changes; refusing setup update." >&2
-        exit 1
+        return 1
     fi
-    # Keep existing installations on the new product repository.
-    case "$(git remote get-url origin)" in
-        https://github.com/hjoungjoo/MF_PiFinder|https://github.com/hjoungjoo/MF_PiFinder.git|git@github.com:hjoungjoo/MF_PiFinder.git)
-            git remote set-url origin https://github.com/hjoungjoo/MFNavis.git
-            ;;
-    esac
-    git fetch --no-tags origin "refs/heads/${branch}"
-    git cat-file -e FETCH_HEAD:deployment/cedar_free.json
-    git merge --ff-only FETCH_HEAD
+
+    if [[ -z "${requested}" ]]; then
+        requested="$(git symbolic-ref --quiet --short HEAD)" || {
+            echo "Detached checkout: set MFNAVIS_INSTALL_BRANCH to main, release, or a release tag." >&2
+            return 1
+        }
+    fi
+    if ! git check-ref-format "refs/heads/${requested}" >/dev/null; then
+        echo "Invalid MFNAVIS_INSTALL_BRANCH: ${requested}" >&2
+        return 1
+    fi
+
+    if git ls-remote --exit-code --heads origin "refs/heads/${requested}" >/dev/null; then
+        branch="${requested}"
+        git fetch --no-tags origin "refs/heads/${branch}:refs/remotes/origin/${branch}"
+    elif git ls-remote --exit-code --tags --refs origin "refs/tags/${requested}" >/dev/null; then
+        branch=""
+        git fetch --no-tags origin "refs/tags/${requested}"
+    else
+        echo "Branch or release tag not found on origin: ${requested}" >&2
+        return 1
+    fi
+
+    target="$(git rev-parse 'FETCH_HEAD^{commit}')"
+    git cat-file -e "${target}:deployment/cedar_free.json"
+    if ! git merge-base --is-ancestor HEAD "${target}"; then
+        echo "The selected version is not a fast-forward from this installation; refusing to replace local history." >&2
+        return 1
+    fi
+
+    if [[ -z "${branch}" ]]; then
+        git switch --detach "${target}"
+    elif [[ "$(git symbolic-ref --quiet --short HEAD || true)" == "${branch}" ]]; then
+        git merge --ff-only "${target}"
+    elif git show-ref --verify --quiet "refs/heads/${branch}"; then
+        local_tip="$(git rev-parse "refs/heads/${branch}")"
+        if ! git merge-base --is-ancestor "${local_tip}" "${target}"; then
+            echo "Local ${branch} has commits outside the selected version; refusing to replace it." >&2
+            return 1
+        fi
+        git switch "${branch}"
+        git merge --ff-only "${target}"
+    else
+        git switch -c "${branch}" --track "origin/${branch}"
+    fi
+}
+
+if [[ -d MFNavis/ ]]; then
+    cd MFNavis/
+    mfnavis_update_checkout
 else
-    git clone --recursive --branch "${PIFINDER_INSTALL_BRANCH:-main}" https://github.com/hjoungjoo/MFNavis.git MFNavis
+    git clone --recursive --branch "${MFNAVIS_INSTALL_BRANCH:-main}" https://github.com/hjoungjoo/MFNavis.git MFNavis
 fi
 
-PIFINDER_REPO_DIR="$(pwd -P)"
-if [[ ! -f "${PIFINDER_REPO_DIR}/mfnavis_paths.sh" ]]; then
-    PIFINDER_REPO_DIR="${PIFINDER_HOME}/MFNavis"
-fi
-# Migrate an existing standard installation before rendering new unit paths.
-sudo python3 "${PIFINDER_REPO_DIR}/scripts/migrate_product_paths.py" --home "${PIFINDER_HOME}" --apply
-PIFINDER_REPO_DIR="${PIFINDER_HOME}/MFNavis"
-cd "${PIFINDER_REPO_DIR}"
-source "${PIFINDER_REPO_DIR}/mfnavis_paths.sh"
+MFNAVIS_REPO_DIR="${MFNAVIS_HOME}/MFNavis"
+cd "${MFNAVIS_REPO_DIR}"
+source "${MFNAVIS_REPO_DIR}/mfnavis_paths.sh"
 
-cd "${PIFINDER_REPO_DIR}"
-python3 "${PIFINDER_REPO_DIR}/scripts/check_cedar_free.py" --repo "${PIFINDER_REPO_DIR}"
+python3 "${MFNAVIS_REPO_DIR}/scripts/check_cedar_free.py" --repo "${MFNAVIS_REPO_DIR}"
 
-find_pifinder_indi_archive() {
+find_mfnavis_indi_archive() {
     local archives=()
     local part_archives=()
     shopt -s nullglob
-    archives=("${PIFINDER_REPO_DIR}"/dist/mf-pifinder-indi-bookworm-arm64-*.tar.gz)
-    part_archives=("${PIFINDER_REPO_DIR}"/dist/mf-pifinder-indi-bookworm-arm64-*.tar.gz.part-00)
+    archives=("${MFNAVIS_REPO_DIR}"/dist/mfnavis-indi-bookworm-arm64-*.tar.gz)
+    part_archives=("${MFNAVIS_REPO_DIR}"/dist/mfnavis-indi-bookworm-arm64-*.tar.gz.part-00)
     shopt -u nullglob
 
     if [[ "${#archives[@]}" -gt 0 ]]; then
@@ -100,26 +128,26 @@ find_pifinder_indi_archive() {
 }
 
 install_optional_indi_archive() {
-    local mode="${PIFINDER_INSTALL_INDI_ARCHIVE:-auto}"
-    local archive="${PIFINDER_INDI_ARCHIVE:-}"
+    local mode="${MFNAVIS_INSTALL_INDI_ARCHIVE:-auto}"
+    local archive="${MFNAVIS_INDI_ARCHIVE:-}"
 
     mode="${mode,,}"
     if [[ -z "${archive}" ]]; then
-        archive="$(find_pifinder_indi_archive || true)"
+        archive="$(find_mfnavis_indi_archive || true)"
     fi
 
     case "${mode}" in
         1|true|yes|on|archive)
             if [[ -z "${archive}" ]]; then
-                echo "PIFINDER_INSTALL_INDI_ARCHIVE is enabled, but no INDI archive was found." >&2
-                echo "Set PIFINDER_INDI_ARCHIVE=/path/to/mf-pifinder-indi-bookworm-arm64.tar.gz." >&2
+                echo "MFNAVIS_INSTALL_INDI_ARCHIVE is enabled, but no INDI archive was found." >&2
+                echo "Set MFNAVIS_INDI_ARCHIVE=/path/to/mfnavis-indi-bookworm-arm64.tar.gz." >&2
                 exit 1
             fi
             ;;
         auto|"")
             if [[ -z "${archive}" ]]; then
                 echo "No INDI binary archive found; skipping optional INDI mount support."
-                echo "To install it during setup, put the archive in ${PIFINDER_REPO_DIR}/dist or set PIFINDER_INDI_ARCHIVE."
+                echo "To install it during setup, put the archive in ${MFNAVIS_REPO_DIR}/dist or set MFNAVIS_INDI_ARCHIVE."
                 return 0
             fi
             ;;
@@ -128,7 +156,7 @@ install_optional_indi_archive() {
             return 0
             ;;
         *)
-            echo "Invalid PIFINDER_INSTALL_INDI_ARCHIVE value: ${mode}" >&2
+            echo "Invalid MFNAVIS_INSTALL_INDI_ARCHIVE value: ${mode}" >&2
             echo "Use auto, true, or false." >&2
             exit 1
             ;;
@@ -140,52 +168,52 @@ install_optional_indi_archive() {
     fi
 
     echo "Installing optional INDI mount support from ${archive}"
-    bash "${PIFINDER_REPO_DIR}/scripts/install_indi_mount_archive.sh" "${archive}"
+    bash "${MFNAVIS_REPO_DIR}/scripts/install_indi_mount_archive.sh" "${archive}"
 }
 
-bash "${PIFINDER_REPO_DIR}/scripts/ensure_tetra3_link.sh" "${PIFINDER_REPO_DIR}"
-bash "${PIFINDER_REPO_DIR}/scripts/setup_mfds.sh"
+bash "${MFNAVIS_REPO_DIR}/scripts/ensure_tetra3_link.sh" "${MFNAVIS_REPO_DIR}"
+bash "${MFNAVIS_REPO_DIR}/scripts/setup_mfds.sh"
 sudo python3 -m pip install --break-system-packages -r python/requirements.txt
 
 # Setup GPSD
-sudo cp "${PIFINDER_REPO_DIR}/pi_config_files/gpsd.conf" /etc/default/gpsd
-sudo sed -i "s|^DEVICES=.*|DEVICES=\"$(pifinder_gps_device)\"|" /etc/default/gpsd
-bash "${PIFINDER_REPO_DIR}/scripts/install_gpsd_stable.sh"
+sudo cp "${MFNAVIS_REPO_DIR}/pi_config_files/gpsd.conf" /etc/default/gpsd
+sudo sed -i "s|^DEVICES=.*|DEVICES=\"$(mfnavis_gps_device)\"|" /etc/default/gpsd
+bash "${MFNAVIS_REPO_DIR}/scripts/install_gpsd_stable.sh"
 
 # data dirs
-sudo install -d -o "${PIFINDER_USER}" -g "${PIFINDER_GROUP}" -m 755 \
-    "${PIFINDER_DATA_DIR}" \
-    "${PIFINDER_DATA_DIR}/captures" \
-    "${PIFINDER_DATA_DIR}/obslists" \
-    "${PIFINDER_DATA_DIR}/screenshots" \
-    "${PIFINDER_DATA_DIR}/solver_debug_dumps" \
-    "${PIFINDER_DATA_DIR}/logs" \
-    "${PIFINDER_DATA_DIR}/migrations"
+sudo install -d -o "${MFNAVIS_USER}" -g "${MFNAVIS_GROUP}" -m 755 \
+    "${MFNAVIS_DATA_DIR}" \
+    "${MFNAVIS_DATA_DIR}/captures" \
+    "${MFNAVIS_DATA_DIR}/obslists" \
+    "${MFNAVIS_DATA_DIR}/screenshots" \
+    "${MFNAVIS_DATA_DIR}/solver_debug_dumps" \
+    "${MFNAVIS_DATA_DIR}/logs" \
+    "${MFNAVIS_DATA_DIR}/migrations"
 
 # Wi-Fi config: retain the current mode and live network files on reinstall.
-for template in "${PIFINDER_REPO_DIR}"/pi_config_files/dhcpcd.*; do
+for template in "${MFNAVIS_REPO_DIR}"/pi_config_files/dhcpcd.*; do
     target="/etc/${template##*/}"
     if [[ ! -f "${target}" ]]; then
         sudo cp "${template}" "${target}"
     fi
 done
-if [[ ! -f "${PIFINDER_REPO_DIR}/wifi_status.txt" ]]; then
-    sudo cp "${PIFINDER_REPO_DIR}/pi_config_files/dhcpcd.conf.sta" /etc/dhcpcd.conf
-    sudo cp "${PIFINDER_REPO_DIR}/pi_config_files/dnsmasq.conf" /etc/dnsmasq.conf
-    printf '%s' 'Client' > "${PIFINDER_REPO_DIR}/wifi_status.txt"
+if [[ ! -f "${MFNAVIS_REPO_DIR}/wifi_status.txt" ]]; then
+    sudo cp "${MFNAVIS_REPO_DIR}/pi_config_files/dhcpcd.conf.sta" /etc/dhcpcd.conf
+    sudo cp "${MFNAVIS_REPO_DIR}/pi_config_files/dnsmasq.conf" /etc/dnsmasq.conf
+    printf '%s' 'Client' > "${MFNAVIS_REPO_DIR}/wifi_status.txt"
 fi
 # Preserve an existing AP password and custom SSID on reinstall.
 if [[ ! -f /etc/hostapd/hostapd.conf ]]; then
     sudo install -d -m 755 /etc/hostapd
-    sudo cp "${PIFINDER_REPO_DIR}/pi_config_files/hostapd.conf" /etc/hostapd/hostapd.conf
+    sudo cp "${MFNAVIS_REPO_DIR}/pi_config_files/hostapd.conf" /etc/hostapd/hostapd.conf
 fi
 sudo systemctl unmask hostapd
 
-# allow the PiFinder service user to adjust network config
-pifinder_prepare_wpa_supplicant_config
-pifinder_prepare_apsta_nat_config
-pifinder_prepare_sta_band_config
-sudo python3 "${PIFINDER_REPO_DIR}/scripts/import_initial_wifi_networks.py"
+# Allow the MFNavis service user to adjust network config.
+mfnavis_prepare_wpa_supplicant_config
+mfnavis_prepare_apsta_nat_config
+mfnavis_prepare_sta_band_config
+sudo python3 "${MFNAVIS_REPO_DIR}/scripts/import_initial_wifi_networks.py"
 
 # mDNS reliability (reaching <hostname>.local from phones)
 # 1) brcmfmac WiFi power save drops multicast frames while the radio dozes, so
@@ -209,7 +237,7 @@ if [[ -f /etc/avahi/avahi-daemon.conf ]]; then
 fi
 
 # Disable the supported wireless keyboard's power key, including on hotplug.
-bash "${PIFINDER_REPO_DIR}/scripts/install_keyboard_power_ignore.sh"
+bash "${MFNAVIS_REPO_DIR}/scripts/install_keyboard_power_ignore.sh"
 
 # Bluetooth HID keyboards
 if [[ -f /etc/bluetooth/input.conf ]]; then
@@ -234,7 +262,7 @@ fi
 #    'su' is required because /tmp is world-writable (1777).
 sudo tee /etc/logrotate.d/indiserver >/dev/null <<LOGROTATE_EOF
 /tmp/indiserver.log {
-    su ${PIFINDER_USER} ${PIFINDER_GROUP}
+    su ${MFNAVIS_USER} ${MFNAVIS_GROUP}
     size 10M
     rotate 2
     copytruncate
@@ -245,32 +273,32 @@ sudo tee /etc/logrotate.d/indiserver >/dev/null <<LOGROTATE_EOF
 LOGROTATE_EOF
 # 3) journald is volatile (RAM); cap it below the default 15%-of-/run.
 sudo mkdir -p /etc/systemd/journald.conf.d
-sudo tee /etc/systemd/journald.conf.d/pifinder-ram-cap.conf >/dev/null <<'JOURNALD_EOF'
+sudo tee /etc/systemd/journald.conf.d/mfnavis-ram-cap.conf >/dev/null <<'JOURNALD_EOF'
 [Journal]
 RuntimeMaxUse=32M
 JOURNALD_EOF
 
 # Samba config
-pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/smb.conf" /etc/samba/smb.conf
+mfnavis_render_config "${MFNAVIS_REPO_DIR}/pi_config_files/smb.conf" /etc/samba/smb.conf
 
 # Hipparcos catalog
-HIP_MAIN_DAT="${PIFINDER_REPO_DIR}/astro_data/hip_main.dat"
+HIP_MAIN_DAT="${MFNAVIS_REPO_DIR}/astro_data/hip_main.dat"
 if [[ ! -e $HIP_MAIN_DAT ]]; then
     wget -O $HIP_MAIN_DAT https://cdsarc.cds.unistra.fr/ftp/cats/I/239/hip_main.dat
 fi
 
 # Enable interfaces
-BOOT_CONFIG="$(pifinder_boot_config_path)"
+BOOT_CONFIG="$(mfnavis_boot_config_path)"
 # Drop any previously-written keypad PWM overlay so we only ever keep the one
-# that matches this board (Pi 1-4 vs Pi 5 / RP1 -- see pifinder_pwm_overlay).
+# that matches this board (Pi 1-4 vs Pi 5 / RP1 -- see mfnavis_pwm_overlay).
 sudo sed -i \
     -e '/^dtoverlay=pwm,/d' \
     -e '/^dtoverlay=pwm-2chan,/d' \
     "${BOOT_CONFIG}"
 for line in \
     "dtparam=spi=on" \
-    "$(pifinder_pwm_overlay)" \
-    "$(pifinder_uart_overlay)"
+    "$(mfnavis_pwm_overlay)" \
+    "$(mfnavis_uart_overlay)"
 do
     grep -qxF "${line}" "${BOOT_CONFIG}" || echo "${line}" | sudo tee -a "${BOOT_CONFIG}"
 done
@@ -285,7 +313,7 @@ done
 # (GPIO2/GPIO3 -> /dev/i2c-3) instead, and disable the hardware i2c_arm block
 # so it does not fight the software bus for the pins.  Keep the two paths
 # mutually exclusive by removing the other path's lines first.
-if [[ "$(pifinder_board_profile)" == "pi5_class" ]]; then
+if [[ "$(mfnavis_board_profile)" == "pi5_class" ]]; then
     sudo sed -i \
         -e '/^dtoverlay=i2c-gpio/d' \
         "${BOOT_CONFIG}"
@@ -304,45 +332,45 @@ else
     grep -qxF "${I2C_GPIO_OVERLAY}" "${BOOT_CONFIG}" \
         || echo "${I2C_GPIO_OVERLAY}" | sudo tee -a "${BOOT_CONFIG}"
 fi
-if [[ "$(pifinder_uart_overlay)" == "dtoverlay=uart2-pi5" ]]; then
+if [[ "$(mfnavis_uart_overlay)" == "dtoverlay=uart2-pi5" ]]; then
     sudo sed -i 's/^dtoverlay=uart3/#dtoverlay=uart3/' "${BOOT_CONFIG}"
 fi
 
-# GPIO library for the keypad matrix (PiFinder/keyboard_pi.py imports RPi.GPIO).
+# GPIO library for the keypad matrix (MFNavis/keyboard_pi.py imports RPi.GPIO).
 # The classic C-extension RPi.GPIO (python3-rpi.gpio) talks to the SoC directly
 # and does not work on the Pi 5 / CM5, whose GPIOs hang off the RP1 controller.
 # python3-rpi-lgpio provides the same RPi.GPIO API on top of lgpio and does work
 # there, so install it on Pi 5-class boards (apt replaces python3-rpi.gpio).
-if [[ "$(pifinder_board_profile)" == "pi5_class" ]]; then
+if [[ "$(mfnavis_board_profile)" == "pi5_class" ]]; then
     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3-rpi-lgpio \
         || echo "WARNING: could not install python3-rpi-lgpio; keypad GPIO may not work on Pi 5." >&2
 fi
-# Joystick/gamepad button input (PiFinder/joystick_input.py reads evdev
+# Joystick/gamepad button input (MFNavis/joystick_input.py reads evdev
 # directly; libinput does not deliver joystick events).
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3-evdev \
     || echo "WARNING: could not install python3-evdev; joystick input will be disabled." >&2
 # Use the product IMX462 sensor on a fresh boot config; keep an existing camera
 # overlay when this script is rerun on a device with a deliberate selection.
-sudo env PYTHONPATH="${PIFINDER_REPO_DIR}/python" python3 \
-    -m PiFinder.switch_camera --default imx462
+sudo env PYTHONPATH="${MFNAVIS_REPO_DIR}/python" python3 \
+    -m MFNavis.switch_camera --default imx462
 
 # Keep POSIX shared memory alive across SSH logouts: logind's default
-# RemoveIPC=yes deletes all IPC owned by the pifinder user (including the
-# solver's cedar-detect /dev/shm segment) the moment that user's last login
-# session ends — the PiFinder services run as pifinder but hold no login
+# RemoveIPC=yes deletes all IPC owned by the MFNavis user (including the
+# solver's /dev/shm segment) the moment that user's last login
+# session ends — the MFNavis services hold no login
 # session of their own, so a plain SSH logout used to degrade solving.
 # The solver also survives this in software (PFCedarDetectClient._del_shmem),
 # but this keeps the fast shared-memory handoff in place.
 sudo mkdir -p /etc/systemd/logind.conf.d
-printf '[Login]\nRemoveIPC=no\n' | sudo tee /etc/systemd/logind.conf.d/pifinder-removeipc.conf
+printf '[Login]\nRemoveIPC=no\n' | sudo tee /etc/systemd/logind.conf.d/mfnavis-removeipc.conf
 
 # Disable unwanted services
 sudo systemctl disable ModemManager 2>/dev/null || true
 sudo systemctl disable dhcpcd dnsmasq hostapd 2>/dev/null || true
 # CUPS printing stack ships enabled on desktop Raspberry Pi OS but is unused by
-# PiFinder; its background daemons compete for CPU and SD-card I/O on the Pi.
+# MFNavis; its background daemons compete for CPU and SD-card I/O on the Pi.
 sudo systemctl disable cups cups.socket cups-browsed 2>/dev/null || true
-# Boot to console (with autologin) instead of the desktop: PiFinder runs
+# Boot to console (with autologin) instead of the desktop: MFNavis runs
 # headless, and the Wayland taskbar (wf-panel-pi) busy-loops near 100% CPU
 # when no monitor is attached. B2 = console autologin (takes effect on reboot).
 if command -v raspi-config >/dev/null 2>&1; then
@@ -352,19 +380,17 @@ else
 fi
 
 # Enable service
-# Migrate legacy units before installing canonical templates to avoid duplicate services.
-sudo python3 "${PIFINDER_REPO_DIR}/scripts/apply_product_branding.py" --apply
-pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/mfnavis.service" /lib/systemd/system/mfnavis.service
-pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/mfnavis_splash.service" /lib/systemd/system/mfnavis_splash.service
-pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/mfnavis_apsta_prepare.service" /lib/systemd/system/mfnavis_apsta_prepare.service
-pifinder_render_config "${PIFINDER_REPO_DIR}/pi_config_files/mfnavis_apsta_monitor.service" /lib/systemd/system/mfnavis_apsta_monitor.service
+mfnavis_render_config "${MFNAVIS_REPO_DIR}/pi_config_files/mfnavis.service" /lib/systemd/system/mfnavis.service
+mfnavis_render_config "${MFNAVIS_REPO_DIR}/pi_config_files/mfnavis_splash.service" /lib/systemd/system/mfnavis_splash.service
+mfnavis_render_config "${MFNAVIS_REPO_DIR}/pi_config_files/mfnavis_apsta_prepare.service" /lib/systemd/system/mfnavis_apsta_prepare.service
+mfnavis_render_config "${MFNAVIS_REPO_DIR}/pi_config_files/mfnavis_apsta_monitor.service" /lib/systemd/system/mfnavis_apsta_monitor.service
 sudo systemctl daemon-reload
 sudo systemctl enable mfnavis
 sudo systemctl enable mfnavis_splash
 
 for group in input video render dialout gpio i2c spi; do
     if getent group "${group}" >/dev/null; then
-        sudo usermod -aG "${group}" "${PIFINDER_USER}"
+        sudo usermod -aG "${group}" "${MFNAVIS_USER}"
     fi
 done
 

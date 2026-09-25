@@ -198,7 +198,7 @@ class MultiprocLogging:
             logging.config.dictConfig(config)
 
         root = logging.getLogger()
-        if os.environ.get("PIFINDER_DEBUG_NO_FILE_LOGS"):
+        if os.environ.get("MFNAVIS_DEBUG_NO_FILE_LOGS"):
             root.setLevel(logging.DEBUG)
 
         h = logging.handlers.QueueHandler(queue)

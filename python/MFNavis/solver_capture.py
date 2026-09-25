@@ -254,7 +254,7 @@ def _environment(cfg, source_directory=None):
                     "MF_DETECT_",
                     "PIFINDER_DETECTOR",
                     "PIFINDER_TEST_PROFILE",
-                    "PIFINDER_PREPROCESS_MODE",
+                    "MFNAVIS_PREPROCESS_MODE",
                     "TETRA3_SEARCH_OPTIMIZED",
                 )
             )

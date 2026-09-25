@@ -126,14 +126,12 @@ def test_restore_rejects_escape_before_writing(tmp_path):
     assert not (tmp_path / "data/config.json").exists()
 
 
-def test_data_default_and_legacy_fallback(tmp_path, monkeypatch):
-    for name in ["PIFINDER_DATA_DIR", "MFNAVIS_DATA_DIR"]:
-        monkeypatch.delenv(name, raising=False)
+def test_data_default_and_override(tmp_path, monkeypatch):
+    monkeypatch.delenv("MFNAVIS_DATA_DIR", raising=False)
     assert utils.resolve_data_dir(tmp_path) == tmp_path / "MFNavis_data"
     (tmp_path / "PiFinder_data").mkdir()
-    assert utils.resolve_data_dir(tmp_path) == tmp_path / "PiFinder_data"
+    assert utils.resolve_data_dir(tmp_path) == tmp_path / "MFNavis_data"
     (tmp_path / "MFNavis_data").mkdir()
     assert utils.resolve_data_dir(tmp_path) == tmp_path / "MFNavis_data"
-    monkeypatch.setenv("PIFINDER_DATA_DIR", str(tmp_path / "legacy-override"))
     monkeypatch.setenv("MFNAVIS_DATA_DIR", str(tmp_path / "product-override"))
     assert utils.resolve_data_dir(tmp_path) == tmp_path / "product-override"

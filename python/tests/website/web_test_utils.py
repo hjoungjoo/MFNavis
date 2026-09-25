@@ -14,7 +14,7 @@ def get_homepage_url():
     """
     Helper function to get the homepage URL from environment variable or default
     """
-    return os.environ.get("PIFINDER_HOMEPAGE", "http://localhost")
+    return os.environ.get("MFNAVIS_HOMEPAGE", "http://localhost")
 
 
 def login_to_remote(driver):
@@ -193,7 +193,7 @@ def navigate_to_page(driver, page_path):
     """
     Generic helper function to navigate to any page on the web interface
     Handles both desktop and mobile navigation patterns
-    Uses PIFINDER_HOMEPAGE environment variable or defaults to localhost:8080
+    Uses MFNAVIS_HOMEPAGE environment variable or defaults to localhost:8080
     """
     driver.get(get_homepage_url())
 

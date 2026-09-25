@@ -95,7 +95,7 @@ jobs:
         continue-on-error: true
         working-directory: python
         env:
-          PIFINDER_HOMEPAGE: http://localhost:8080
+          MFNAVIS_HOMEPAGE: http://localhost:8080
         run: |
           source .venv/bin/activate
           pytest -ra -m web --local -v
@@ -106,7 +106,7 @@ jobs:
         continue-on-error: true
         working-directory: python
         env:
-          PIFINDER_HOMEPAGE: http://localhost:8080
+          MFNAVIS_HOMEPAGE: http://localhost:8080
         run: |
           source .venv/bin/activate
           pytest -ra -m web --local -v --lf

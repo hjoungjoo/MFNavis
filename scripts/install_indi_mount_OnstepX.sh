@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# PiFinder LX200 OnStepX INDI mount-control installer.
+# MFNavis LX200 OnStepX INDI mount-control installer.
 #
-# Builds INDI core + 3rd-party drivers from source with the bundled PiFinder
+# Builds INDI core + 3rd-party drivers from source with the bundled MFNavis
 # INDI patch set (LX200 OnStepX Backlash 0..3600 and GUIDE_RATE readback
 # fixes), then installs pyindi-client and the INDI Web Manager service.
 #
@@ -17,8 +17,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PIFINDER_REPO_DIR="${REPO_ROOT}"
-source "${REPO_ROOT}/pifinder_paths.sh"
+MFNAVIS_REPO_DIR="${REPO_ROOT}"
+source "${REPO_ROOT}/mfnavis_paths.sh"
 APP_WAS_ACTIVE=0
 INDI_WAS_ACTIVE=0
 SERVICE_FILE=""
@@ -188,12 +188,12 @@ apply_indi_patches() {
     shopt -u nullglob
 
     if [ "${#patches[@]}" -eq 0 ]; then
-        echo "No PiFinder INDI patches for ${INDI_VERSION} in ${patch_dir}; continuing."
+        echo "No MFNavis INDI patches for ${INDI_VERSION} in ${patch_dir}; continuing."
         return 0
     fi
 
     for patch_file in "${patches[@]}"; do
-        echo "Applying PiFinder INDI patch: ${patch_file}"
+        echo "Applying MFNavis INDI patch: ${patch_file}"
         if git -C "${repo_dir}" apply --check "${patch_file}"; then
             git -C "${repo_dir}" apply "${patch_file}"
         elif git -C "${repo_dir}" apply --reverse --check "${patch_file}"; then
@@ -283,7 +283,7 @@ PIP_BREAK_SYSTEM_PACKAGES=1 sudo python3 -m pip install --break-system-packages 
     "git+https://github.com/jscheidtmann/indiwebmanager.git@control_panel#egg=indiweb"
 
 # Use the same resolved install user as the other MFNavis services.
-CURRENT_USER="${PIFINDER_USER}"
+CURRENT_USER="${MFNAVIS_USER}"
 SERVICE_FILE="$(mktemp /var/tmp/mfnavis-indiwebmanager.XXXXXX.service)"
 cat >"${SERVICE_FILE}" <<EOF
 [Unit]

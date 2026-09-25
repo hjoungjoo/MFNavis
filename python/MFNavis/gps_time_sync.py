@@ -40,7 +40,7 @@ DATA_DIR = utils.data_dir
 # to spare the SD card -- the same treatment as the other volatile status
 # files (pointing / mount / GoTo). REQUEST_FILE and HELPER_STATUS_FILE are
 # deliberately kept on the SD data dir: they are low-frequency AND shared with
-# the privileged helper that runs as root (pifinder_gps_time_sync.service).
+# the privileged helper that runs as root (mfnavis_gps_time_sync.service).
 # Keeping them under the pifinder-owned home dir avoids a /dev/shm/pifinder
 # directory-ownership race (whoever creates the tmpfs dir first owns it, and a
 # root-owned 0755 dir would block the pifinder user from writing REQUEST_FILE).
@@ -49,7 +49,7 @@ REQUEST_FILE = DATA_DIR / "gps_time_sync_request.json"
 HELPER_STATUS_FILE = DATA_DIR / "gps_time_sync_helper_status.json"
 # Written the first time chronyd reports a synchronized clock this boot. Lives
 # on tmpfs so a reboot (which restores a stale fake-hwclock time) clears it,
-# while a mere pifinder.service restart keeps it. The mount time-sync gate and
+# while a mere mfnavis.service restart keeps it. The mount time-sync gate and
 # the LCD warning read this marker (docs/mf_report/mf_field_test_20260724_analysis_ko.md,
 # item A4).
 CLOCK_TRUST_FILE = utils.runtime_dir / "clock_trusted.json"

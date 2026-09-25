@@ -2,8 +2,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PIFINDER_REPO_DIR="${REPO_ROOT}"
-source "${REPO_ROOT}/pifinder_paths.sh"
+MFNAVIS_REPO_DIR="${REPO_ROOT}"
+source "${REPO_ROOT}/mfnavis_paths.sh"
 ARCHIVE="${1:-}"
 FASTAPI_VERSION="${FASTAPI_VERSION:-0.103.2}"
 STARLETTE_VERSION="${STARLETTE_VERSION:-0.27.0}"
@@ -11,7 +11,7 @@ UVICORN_VERSION="${UVICORN_VERSION:-0.23.2}"
 ANYIO_VERSION="${ANYIO_VERSION:-3.7.1}"
 
 usage() {
-    echo "Usage: $0 <mf-pifinder-indi-bookworm-arm64.tar.gz>" >&2
+    echo "Usage: $0 <mfnavis-indi-bookworm-arm64.tar.gz>" >&2
     echo "       If the archive is split, pass the .tar.gz path and keep .tar.gz.part-* next to it." >&2
 }
 
@@ -83,7 +83,7 @@ if [ -r /etc/os-release ]; then
     fi
 fi
 
-SERVICE_USER="${PIFINDER_USER}"
+SERVICE_USER="${MFNAVIS_USER}"
 
 tar -C "${INDI_TMPDIR}" -xzf "${ARCHIVE}"
 

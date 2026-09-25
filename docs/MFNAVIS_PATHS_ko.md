@@ -1,6 +1,6 @@
 # MFNavis 제품 경로 (m2.6.11)
 
-리눅스 로그인 계정 `pifinder`와 홈 `/home/pifinder`는 그대로 사용한다.
+설치 계정과 홈 경로는 장비마다 다를 수 있으며, 아래 기본 경로는 해당 계정의 홈을 기준으로 한다.
 
 | 용도 | 기본 경로 |
 | --- | --- |
@@ -11,8 +11,8 @@
 | AP/STA 설정 | `/etc/mfnavis_apsta_nat.conf`, `/etc/mfnavis_sta_band.conf` |
 
 신규 설치는 `mfnavis_setup.sh`, 코드 업데이트는 `mfnavis_update.sh`를 사용한다.
-기존 기기의 경로 변경은 별도의 시스템 작업이며, 코드 전용 업데이트가 자동으로
-수행하지 않는다. 설치 스크립트와 명시적인 `mfnavis_post_update.sh`는 이 작업을 포함한다.
+MFNavis 설치·업데이트 스크립트는 `~/MFNavis`만 대상으로 한다. 아래 경로 이전
+도구는 과거 제품 설치본의 수동 이전을 위한 기록이며, 현재 설치 흐름에서는 실행하지 않는다.
 
 ```bash
 python3 scripts/migrate_product_paths.py --home /home/pifinder
@@ -31,9 +31,8 @@ sudo python3 scripts/migrate_product_paths.py --home /home/pifinder --apply
 이 기록은 사용자 데이터의 별도 백업을 대신하지 않는다.
 
 `MFNAVIS_DATA_DIR` / `MFNAVIS_RUNTIME_DIR`로 경로를 지정할 수 있다.
-기존 `PIFINDER_DATA_DIR` / `PIFINDER_RUNTIME_DIR`도 지원하며 새 이름이 우선한다.
-사용자 지정 디렉터리는 이동하지 않는다. 기존 데이터 디렉터리만 있는 경우 앱은
-그 경로를 사용해 설정이 초기화되는 것을 방지한다.
+사용자 지정 디렉터리는 이동하지 않는다. 기본 데이터 경로는
+`~/MFNavis_data`이다.
 
 새 ZIP 백업은 홈 경로를 포함하지 않는다. 이전 `PiFinder_data` 또는 `MFNavis_data`
 경로를 담은 백업도 현재 데이터 디렉터리로 복원한다. MFDS 저장소·패키지·잠금 파일과

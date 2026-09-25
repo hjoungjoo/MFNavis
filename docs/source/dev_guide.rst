@@ -436,7 +436,7 @@ The respective browsers need to be installed on your machine. Recognized browser
 Note that when running the tests on Safari, you need to enable "Allow Remote Automation" in the Develop menu of Safari. In addition Safari
 does not support the "headless" mode, so you will see the browser window when running the tests and you cannot use other windows while the tests are running.
 
-If you want to run the tests against a real PiFinder, set the ``PIFINDER_HOMEPAGE`` environment variable to the URL of your PiFinder instance or 
+If you want to run the tests against a real PiFinder, set the ``MFNAVIS_HOMEPAGE`` environment variable to the URL of your PiFinder instance or
 pass the URL directly as a command line parameter with ``--url``. The PiFinder instance needs to be in the same WiFi as your machine, so that it is 
 reachable via the network.
 
@@ -460,18 +460,18 @@ Running against a locally running instance at localhost:8080:
     export SELENIUM_GRID_URL=<your selenium grid url which ends in /wd/hub> # Optional, default is http://localhost:4444/wd/hub
     nox -s web_tests
 
-If you want to test against a real PiFinder, set the ``PIFINDER_HOMEPAGE`` environment variable to the URL of your PiFinder instance:
+If you want to test against a real PiFinder, set the ``MFNAVIS_HOMEPAGE`` environment variable to the URL of your PiFinder instance:
 
 .. code-block:: bash
 
     cd ~/PiFinder/python
     . .venv/bin/activate # Optionally active your virtual environment
     export SELENIUM_GRID_URL=<your selenium grid url which ends in /wd/hub> # Optional, default is http://localhost:4444/wd/hub
-    export PIFINDER_HOMEPAGE=http://pifinder.local # Change to the URL of your PiFinder, which needs to be in the same WiFi
+    export MFNAVIS_HOMEPAGE=http://pifinder.local # Change to the URL of your PiFinder, which needs to be in the same WiFi
     nox -s web_tests
 
 If you run the tests with-out a working Selenium Grid instance, the tests will all be skipped. 
-You can also run individual tests with PyTest directly, use ``SELENIUM_GRID_URL=... PIFINDER_HOMEPAGE=... pytest tests/website/test_file.py``.
+You can also run individual tests with PyTest directly, use ``SELENIUM_GRID_URL=... MFNAVIS_HOMEPAGE=... pytest tests/website/test_file.py``.
 
 Note that due to the tests depending on the response times of the PiFinder web server and the Selenium Grid server, there may be occasional timeouts or failures.
 If you encounter such issues, simply re-run the tests. We need to strike a balance between test speed and reliability, and this may require some tuning in the future.

@@ -11,12 +11,12 @@ from pathlib import Path
 
 WPA_PATH = Path(
     os.environ.get(
-        "PIFINDER_WPA_SUPPLICANT_CONF", "/etc/wpa_supplicant/wpa_supplicant.conf"
+        "MFNAVIS_WPA_SUPPLICANT_CONF", "/etc/wpa_supplicant/wpa_supplicant.conf"
     )
 )
 NM_DIR = Path(
     os.environ.get(
-        "PIFINDER_NM_CONNECTION_DIR", "/etc/NetworkManager/system-connections"
+        "MFNAVIS_NM_CONNECTION_DIR", "/etc/NetworkManager/system-connections"
     )
 )
 BOOT_WPA_PATHS = [

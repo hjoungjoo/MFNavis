@@ -165,7 +165,7 @@ launches come up in a few seconds. If it times out:
 ## Notes
 
 - Repo location is auto-detected (this skill lives under the repo). Override
-  with `--repo /path/to/PiFinder` or the `PIFINDER_REPO` env var.
+  with `--repo /path/to/PiFinder` or the `MFNAVIS_REPO` env var.
 - This skill requires two small pieces of in-repo support that ship with it:
   the `headless` display driver and the `POST /api/stop` endpoint
   (`python/PiFinder/api_extensions.py`). They're already in this branch.

@@ -69,20 +69,6 @@ def update(repo):
         if git(repo, "status", "--porcelain", "--untracked-files=no"):
             raise RuntimeError("Tracked files have local changes; refusing update")
         before = git(repo, "rev-parse", "HEAD")
-        origin = git(repo, "remote", "get-url", "origin")
-        if origin in {
-            "https://github.com/hjoungjoo/MF_PiFinder",
-            "https://github.com/hjoungjoo/MF_PiFinder.git",
-            "git@github.com:hjoungjoo/MF_PiFinder.git",
-        }:
-            run(
-                repo,
-                "git",
-                "remote",
-                "set-url",
-                "origin",
-                "https://github.com/hjoungjoo/MFNavis.git",
-            )
         run(repo, "git", "fetch", "--no-tags", "origin", f"refs/heads/{branch}")
         target = git(repo, "rev-parse", "FETCH_HEAD")
         run(repo, "git", "merge-base", "--is-ancestor", before, target)
@@ -164,11 +150,11 @@ def update(repo):
                 repo,
                 "bash",
                 "-e",
-                "pifinder_post_update.sh",
+                "mfnavis_post_update.sh",
                 env={
                     **os.environ,
-                    "PIFINDER_CODE_UPDATE": "1",
-                    "PIFINDER_REPO_DIR": str(repo),
+                    "MFNAVIS_CODE_UPDATE": "1",
+                    "MFNAVIS_REPO_DIR": str(repo),
                 },
             )
         except BaseException:

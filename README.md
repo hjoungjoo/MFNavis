@@ -1,6 +1,6 @@
 # MFNavis
 
-Canonical repository: **https://github.com/hjoungjoo/MFNavis**. The previous MF_PiFinder repository is historical. New installs use ~/MFNavis and ~/MFNavis_data; old paths are compatibility aliases.
+Repository: **https://github.com/hjoungjoo/MFNavis**. Installation uses `~/MFNavis` and `~/MFNavis_data`.
 
 Product by **MagicFly**, sold and distributed by **FNPD 한국**.
 Derived from PiFinder; historical upstream documentation is retained separately.
@@ -54,20 +54,20 @@ installation is needed.
 
 The command automatically looks up the latest published release on GitHub and
 installs that tag. No version entry is needed. If the lookup fails, installation
-stops. These commands are for a new installation with no existing `~/MFNavis`.
+stops. Use these commands for a new installation or an existing release update.
 
 ```bash
-PF_RELEASE_TAG="$(python3 -c 'import json, urllib.request; print(json.load(urllib.request.urlopen("https://api.github.com/repos/hjoungjoo/MFNavis/releases/latest"))["tag_name"])')" &&
-[ -n "$PF_RELEASE_TAG" ] &&
-wget -O /tmp/mfnavis-setup.sh "https://raw.githubusercontent.com/hjoungjoo/MFNavis/${PF_RELEASE_TAG}/mfnavis_setup.sh" &&
-PIFINDER_INSTALL_BRANCH="$PF_RELEASE_TAG" bash /tmp/mfnavis-setup.sh
+MFNAVIS_RELEASE_TAG="$(python3 -c 'import json, urllib.request; print(json.load(urllib.request.urlopen("https://api.github.com/repos/hjoungjoo/MFNavis/releases/latest"))["tag_name"])')" &&
+[ -n "$MFNAVIS_RELEASE_TAG" ] &&
+wget -O /tmp/mfnavis-setup.sh "https://raw.githubusercontent.com/hjoungjoo/MFNavis/${MFNAVIS_RELEASE_TAG}/mfnavis_setup.sh" &&
+MFNAVIS_INSTALL_BRANCH="$MFNAVIS_RELEASE_TAG" bash /tmp/mfnavis-setup.sh
 ```
 
 **Development version (main):**
 
 ```bash
 wget -O /tmp/mfnavis-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavis/main/mfnavis_setup.sh &&
-PIFINDER_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh
+MFNAVIS_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh
 ```
 
 After the script reports successful completion, reboot:
@@ -76,23 +76,49 @@ After the script reports successful completion, reboot:
 sudo reboot
 ```
 
+#### Update an existing installation to the latest main or release
+
+Connect over SSH as the installation's OS user, check the checkout, and back
+up `~/MFNavis_data` and any local changes first. The setup script reapplies
+dependencies and service configuration as well as updating the code.
+
+**Update to the latest `main`:**
+
+```bash
+git -C ~/MFNavis status -sb
+wget -O /tmp/mfnavis-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavis/main/mfnavis_setup.sh &&
+MFNAVIS_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh &&
+sudo reboot
+```
+
+**Update to the latest published release:** rerun the **Published release**
+commands above, then `sudo reboot`. This selects the latest published GitHub
+tag, not the `release` branch. Switching an existing installation to a tag
+requires that release to contain the updated setup script with checkout
+switching support.
+
+An existing tagged release checkout can switch to `main` or a newer release
+tag when the target is a fast-forward from the installed commit. Setup stops
+if tracked files have local changes or the target would replace local history;
+inspect the checkout with `git -C ~/MFNavis status -sb` in that case. If you
+use a custom data directory, pass `MFNAVIS_DATA_DIR=/absolute/path` to the
+update command as well.
+
 #### Installation paths and existing checkouts
 
 | Situation | Behavior / action |
 | --- | --- |
 | User `pifinder` | Code: `/home/pifinder/MFNavis`; data: `/home/pifinder/MFNavis_data`. |
 | Another OS user | The same commands use that user's home: `~/MFNavis` and `~/MFNavis_data`. Use that user's account for subsequent commands. |
-| Custom code directory, such as `~/MFNavis_main` | The setup script always targets `MFNavis` in the selected user's home, even when launched elsewhere; setting `PIFINDER_REPO_DIR` does not override this. Use the standard location for a new installation. |
-| Custom data directory | Pass `PIFINDER_DATA_DIR=/absolute/path` with the installation command. Use the same value for later updates and cache commands. This does not move existing data. |
-| `~/MFNavis` already exists | Setup updates its **current branch** with a fast-forward merge; `PIFINDER_INSTALL_BRANCH` only selects a version when cloning a new directory. Local tracked changes cause setup to stop. |
-| Existing tagged release checkout | A fresh tag install succeeds, but rerunning setup on its detached HEAD stops. Do not use these fresh-install commands to switch an existing checkout between a release and `main`. |
+| Custom code directory, such as `~/MFNavis_main` | The setup script always targets `MFNavis` in the selected user's home, even when launched elsewhere; setting `MFNAVIS_REPO_DIR` does not override this. Use the standard location for a new installation. |
+| Custom data directory | Pass `MFNAVIS_DATA_DIR=/absolute/path` with the installation command. Use the same value for later updates and cache commands. This does not move existing data. |
+| `~/MFNavis` already exists | Setup fast-forwards to the branch or tag selected by `MFNAVIS_INSTALL_BRANCH`. Without it, setup updates the current branch; a tagged checkout requires an explicit target. |
+| Existing tagged release checkout | Use the latest `main` command to switch to that branch or the published-release command to switch to a newer tag. |
 
-For an existing deployment, first check `git -C ~/MFNavis status -sb` and
-back up `~/MFNavis_data` and any local changes. A branch checkout must be on
-the intended branch before updating. After updating an existing installation's
-code, run `bash mfnavis_post_update.sh` from its repository root to apply
-runtime updates, including automatic MFDS installation. This is an update hook,
-not a substitute for first-time OS and service setup.
+`mfnavis_update.sh` updates **code only** on the current branch. It cannot
+update a tagged checkout and refuses dependency, service-template, or OS
+configuration changes. Use the full setup commands above to update `main` or
+a release.
 
 See the [MFDS binary installation guide](./docs/MFDS_BINARY_DISTRIBUTION_ko.md)
 for package details. INDI mount support is optional: setup installs it only
@@ -125,7 +151,7 @@ Use `--images none` to prepare runtime caches without downloading images.
 The terminal shows progress; `Cache warm-up complete` indicates completion.
 You can stop with `Ctrl-C` and rerun the same command to resume; existing images
 are skipped. Keep the SSH session open while downloading. For a custom data
-location, prefix the command with `PIFINDER_DATA_DIR=/absolute/path`.
+location, prefix the command with `MFNAVIS_DATA_DIR=/absolute/path`.
 
 [Offline cache guide](./docs/mf_dev/mf_cache_download_en.md) |
 [한국어](./docs/mf_dev/mf_cache_download_ko.md)

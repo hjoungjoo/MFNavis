@@ -74,30 +74,30 @@ POINTING_STATUS_MAX_AGE_SECONDS = 5.0
 # time this service sees no-motion the mount has already been physically stopped
 # ~4-5 s. 1.0 s therefore just absorbs command-pickup latency and single-sample
 # glitches while trimming per-iteration latency versus the old 2.0 s.
-PIFINDER_FINAL_GOTO_SETTLE_SECONDS = 1.0
+MFNAVIS_FINAL_GOTO_SETTLE_SECONDS = 1.0
 # Fallback cap on sync + GoTo iterations when indi_pifinder_goto_max_gotos is
 # missing from config.
-PIFINDER_DEFAULT_MAX_GOTOS = 10
+MFNAVIS_DEFAULT_MAX_GOTOS = 10
 # Log slow progress, but retain the target and continue with fresh solves.
-PIFINDER_MIN_ERROR_IMPROVEMENT_ARCMIN = 1.0
-PIFINDER_CORRECTION_RETRY_SECONDS = 10.0
+MFNAVIS_MIN_ERROR_IMPROVEMENT_ARCMIN = 1.0
+MFNAVIS_CORRECTION_RETRY_SECONDS = 10.0
 # A 1x sidereal, 2.5 s capped guide pulse moves at most about 0.625 arcmin per
 # axis.  With a 3 s fresh-solve cadence and the 90 s pulse-align timeout, an
 # initial error above 15 arcmin cannot reliably reach the 6 arcmin target.
 # Keep larger errors in the sync+GoTo loop instead of handing an impossible
 # correction to the fine pulse stage.
-PIFINDER_PULSE_ALIGN_MAX_ERROR_ARCMIN = 15.0
+MFNAVIS_PULSE_ALIGN_MAX_ERROR_ARCMIN = 15.0
 # Retry the GoTo stage after this long with usable solves but no correction
 # activity (mount-control pulses every 3 s off a fresh solve).
-PIFINDER_PULSE_ALIGN_TIMEOUT_SECONDS = 90.0
+MFNAVIS_PULSE_ALIGN_TIMEOUT_SECONDS = 90.0
 # After a GoTo settles, wait up to this long for a high-quality plate-solve
 # coordinate before measuring the arrival error. IMU estimates right after a
 # slew can be degrees off, which poisons both the error measurement and the
 # next sync anchor (observed 2026-08-02: attempt error 127' -> 400' off a
 # medium-quality estimate). A timeout must not authorize an estimated anchor.
-PIFINDER_SOLVE_ANCHOR_WAIT_SECONDS = 12.0
+MFNAVIS_SOLVE_ANCHOR_WAIT_SECONDS = 12.0
 # Status-file freshness does not bound the age of the underlying exposure.
-PIFINDER_SOLVE_ANCHOR_MAX_AGE_SECONDS = 12.0
+MFNAVIS_SOLVE_ANCHOR_MAX_AGE_SECONDS = 12.0
 TRACKING_GUIDE_MAX_RECOVERY_GOTOS = 5
 # Once the tracking target sinks below this altitude the guide must never move
 # the mount toward it (overnight targets set below the horizon; a recovery slew
@@ -490,7 +490,7 @@ class IndiGotoGuideService:
                 self._reset_tracking_recovery()
                 self.tracking_target_ra = self.tracking_target_dec = None
                 self.initial_goto_deadline = (
-                    time.monotonic() + PIFINDER_SOLVE_ANCHOR_WAIT_SECONDS
+                    time.monotonic() + MFNAVIS_SOLVE_ANCHOR_WAIT_SECONDS
                 )
                 self.last_action = "waiting for initial solve anchor"
             logger.info("MFNavis GoTo blocked: %s", self.wait_reason)
@@ -671,7 +671,7 @@ class IndiGotoGuideService:
             self.last_action = "waiting for solve at manual position"
             if (
                 now - self.manual_retarget_idle_since
-                >= PIFINDER_SOLVE_ANCHOR_WAIT_SECONDS
+                >= MFNAVIS_SOLVE_ANCHOR_WAIT_SECONDS
             ):
                 self.error_notifier.emit(
                     "manual_target_waiting_solve",
@@ -750,11 +750,11 @@ class IndiGotoGuideService:
         try:
             value = int(
                 self.config_values.get(
-                    "indi_pifinder_goto_max_gotos", PIFINDER_DEFAULT_MAX_GOTOS
+                    "indi_pifinder_goto_max_gotos", MFNAVIS_DEFAULT_MAX_GOTOS
                 )
             )
         except (TypeError, ValueError):
-            value = PIFINDER_DEFAULT_MAX_GOTOS
+            value = MFNAVIS_DEFAULT_MAX_GOTOS
         return max(1, value)
 
     def _final_accuracy_arcmin(self) -> float:
@@ -777,10 +777,10 @@ class IndiGotoGuideService:
                 * 60.0
             )
         except (TypeError, ValueError):
-            configured = PIFINDER_PULSE_ALIGN_MAX_ERROR_ARCMIN
+            configured = MFNAVIS_PULSE_ALIGN_MAX_ERROR_ARCMIN
         return min(
             max(self._final_accuracy_arcmin(), configured),
-            PIFINDER_PULSE_ALIGN_MAX_ERROR_ARCMIN,
+            MFNAVIS_PULSE_ALIGN_MAX_ERROR_ARCMIN,
         )
 
     def _is_recent_solve(self, current: dict[str, Any]) -> bool:
@@ -790,7 +790,7 @@ class IndiGotoGuideService:
             current.get("source") == "solve"
             and current.get("quality") == "high"
             and timestamp is not None
-            and 0.0 <= time.time() - timestamp <= PIFINDER_SOLVE_ANCHOR_MAX_AGE_SECONDS
+            and 0.0 <= time.time() - timestamp <= MFNAVIS_SOLVE_ANCHOR_MAX_AGE_SECONDS
         )
 
     def _is_fresh_arrival_solve(self, current: dict[str, Any]) -> bool:
@@ -971,7 +971,7 @@ class IndiGotoGuideService:
         # stopped. Include pulses that completed between service ticks.
         if observation_after > time.time() - (now - self.pulse_align_started_at):
             self.pulse_align_started_at = now
-        if now - self.pulse_align_started_at > PIFINDER_PULSE_ALIGN_TIMEOUT_SECONDS:
+        if now - self.pulse_align_started_at > MFNAVIS_PULSE_ALIGN_TIMEOUT_SECONDS:
             self._wait_to_retry_goto("pulse alignment stalled")
             return
 
@@ -1020,7 +1020,7 @@ class IndiGotoGuideService:
 
         Completion is decided by the mount motion flags plus a settle window
         (see _mount_summary_reports_motion): the GoTo is done once the mount
-        reports no motion for PIFINDER_FINAL_GOTO_SETTLE_SECONDS, and only after
+        reports no motion for MFNAVIS_FINAL_GOTO_SETTLE_SECONDS, and only after
         the same minimum settle since the command was sent. The arrival error is
         then measured from PointingCoordinateService and drives the branch:
         below the final accuracy -> final sync; within the near threshold ->
@@ -1042,7 +1042,7 @@ class IndiGotoGuideService:
             return
 
         now = time.monotonic()
-        if now - self.final_goto_sent_at < PIFINDER_FINAL_GOTO_SETTLE_SECONDS:
+        if now - self.final_goto_sent_at < MFNAVIS_FINAL_GOTO_SETTLE_SECONDS:
             return
 
         if self._mount_summary_reports_motion(mount_status):
@@ -1053,7 +1053,7 @@ class IndiGotoGuideService:
             self.final_goto_idle_since = now
             self.solve_anchor_required_after_wall = time.time()
             return
-        if now - self.final_goto_idle_since < PIFINDER_FINAL_GOTO_SETTLE_SECONDS:
+        if now - self.final_goto_idle_since < MFNAVIS_FINAL_GOTO_SETTLE_SECONDS:
             return
 
         pointing = self._refresh_pointing_status()
@@ -1103,7 +1103,7 @@ class IndiGotoGuideService:
         if (
             self.previous_goto_error_arcmin is not None
             and self.last_error_arcmin
-            >= self.previous_goto_error_arcmin - PIFINDER_MIN_ERROR_IMPROVEMENT_ARCMIN
+            >= self.previous_goto_error_arcmin - MFNAVIS_MIN_ERROR_IMPROVEMENT_ARCMIN
         ):
             logger.info("GoTo error did not improve; continuing with fresh solve")
 
@@ -1118,7 +1118,7 @@ class IndiGotoGuideService:
         self.final_goto_sent_at = time.monotonic()
         self.final_goto_idle_since = self.final_goto_sent_at
         self.solve_anchor_required_after_wall = (
-            time.time() + PIFINDER_CORRECTION_RETRY_SECONDS
+            time.time() + MFNAVIS_CORRECTION_RETRY_SECONDS
         )
         self.solve_anchor_wait_since = 0.0
         self.service_state = "running"
@@ -1489,7 +1489,7 @@ class IndiGotoGuideService:
                     self.recovery_anchor_wait_since = now
                 if (
                     now - self.recovery_anchor_wait_since
-                    < PIFINDER_SOLVE_ANCHOR_WAIT_SECONDS
+                    < MFNAVIS_SOLVE_ANCHOR_WAIT_SECONDS
                 ):
                     self.tracking_guide_state = "settling"
                     self._disable_tracking_guide("recovery waiting for solve anchor")
@@ -1499,7 +1499,7 @@ class IndiGotoGuideService:
                     logger.warning(
                         "No fresh solve anchor within %.0fs before recovery goto; "
                         "holding correction instead of using %s/%s coordinate",
-                        PIFINDER_SOLVE_ANCHOR_WAIT_SECONDS,
+                        MFNAVIS_SOLVE_ANCHOR_WAIT_SECONDS,
                         current.get("source"),
                         current.get("quality"),
                     )
@@ -1658,9 +1658,7 @@ class IndiGotoGuideService:
             self.tracking_guide_state = "settling"
             now = time.monotonic()
             if not self.tracking_recovery_retry_at:
-                self.tracking_recovery_retry_at = (
-                    now + PIFINDER_CORRECTION_RETRY_SECONDS
-                )
+                self.tracking_recovery_retry_at = now + MFNAVIS_CORRECTION_RETRY_SECONDS
             if now < self.tracking_recovery_retry_at:
                 return
             self.tracking_recovery_attempts = 0
@@ -1711,7 +1709,7 @@ class IndiGotoGuideService:
         now = time.monotonic()
         if (
             now - self.tracking_recovery_goto_sent_at
-            < PIFINDER_FINAL_GOTO_SETTLE_SECONDS
+            < MFNAVIS_FINAL_GOTO_SETTLE_SECONDS
         ):
             self.tracking_guide_last_action = "recovery goto settling"
             return
@@ -1724,7 +1722,7 @@ class IndiGotoGuideService:
             return
         if (
             now - self.tracking_recovery_goto_idle_since
-            < PIFINDER_FINAL_GOTO_SETTLE_SECONDS
+            < MFNAVIS_FINAL_GOTO_SETTLE_SECONDS
         ):
             return
         # Recovery GoTo finished; re-baseline and re-measure on the next tick.
@@ -2037,7 +2035,7 @@ class IndiGotoGuideService:
             ),
             "indi_pifinder_goto_max_gotos": int(
                 cfg.get_option(
-                    "indi_pifinder_goto_max_gotos", PIFINDER_DEFAULT_MAX_GOTOS
+                    "indi_pifinder_goto_max_gotos", MFNAVIS_DEFAULT_MAX_GOTOS
                 )
             ),
             "indi_goto_refine_accuracy_arcmin": float(

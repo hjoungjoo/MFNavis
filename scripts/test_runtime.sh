@@ -14,7 +14,7 @@ case "${1:-status}" in
     case "$transport" in process|ctypes) ;; *) echo 'transport must be process or ctypes' >&2; exit 2;; esac
     profile_lines=$(PYTHONPATH="$repo_dir/python" python3 -m MFNavis.detector_profiles "$profile" --runtime --mode "$mode" --transport "$transport" --systemd)
     test "$EUID" -eq 0 || { echo 'Run with sudo only when service switching is requested.' >&2; exit 1; }
-    PIFINDER_REPO_DIR="${repo_dir}"
+    MFNAVIS_REPO_DIR="${repo_dir}"
     source "${repo_dir}/mfnavis_paths.sh"
     test -f "$repo_dir/python/MFNavis/star_detect.py"
     if [[ "$profile" != sep ]]; then
@@ -24,14 +24,14 @@ case "${1:-status}" in
         test -f "$repo_dir/python/MFDS/build/libmf_detect_star.so"
       fi
     fi
-    install -d -o "${PIFINDER_USER}" -g "${PIFINDER_GROUP}" \
-      "${PIFINDER_DATA_DIR}/test_data"
+    install -d -o "${MFNAVIS_USER}" -g "${MFNAVIS_GROUP}" \
+      "${MFNAVIS_DATA_DIR}/test_data"
     mkdir -p "$override_dir"
     cat > "$override_file" <<EOF
 [Service]
 WorkingDirectory=$repo_dir/python
-Environment="MFNAVIS_DATA_DIR=${PIFINDER_DATA_DIR}/test_data"
-Environment=PIFINDER_RUNTIME_DIR=/dev/shm/pifinder_test
+Environment="MFNAVIS_DATA_DIR=${MFNAVIS_DATA_DIR}/test_data"
+Environment=MFNAVIS_RUNTIME_DIR=/dev/shm/mfnavis_test
 $profile_lines
 Environment=MF_DETECT_SERVER=$repo_dir/python/MFDS/build/mf_detect_star_server
 Environment=MF_DETECT_LIBRARY=$repo_dir/python/MFDS/build/libmf_detect_star.so

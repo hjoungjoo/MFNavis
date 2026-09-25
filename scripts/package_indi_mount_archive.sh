@@ -118,7 +118,7 @@ check_arm64_compatibility() {
 
     : > "${report}"
     {
-        echo "PiFinder INDI archive compatibility report"
+        echo "MFNavis INDI archive compatibility report"
         echo "Generated: $(date -Is)"
         echo "Host machine: $(uname -m)"
         echo
@@ -184,7 +184,7 @@ for path in \
 done
 
 {
-    echo "archive_format=mf-pifinder-indi-binary-v1"
+    echo "archive_format=mfnavis-indi-binary-v1"
     echo "created_at=$(date -Is)"
     echo "host=$(hostname)"
     echo "machine=$(uname -m)"
@@ -210,7 +210,7 @@ if [ -f "${INDI_3RDPARTY_LIBS_MANIFEST}" ]; then
         "${METADATA}/indi-3rdparty-libs-install_manifest.txt"
 fi
 
-ARCHIVE_NAME="${ARCHIVE_NAME:-mf-pifinder-indi-bookworm-arm64-$(date +%Y%m%d-%H%M%S).tar.gz}"
+ARCHIVE_NAME="${ARCHIVE_NAME:-mfnavis-indi-bookworm-arm64-$(date +%Y%m%d-%H%M%S).tar.gz}"
 ARCHIVE_PATH="${OUT_DIR}/${ARCHIVE_NAME}"
 
 tar --owner=0 --group=0 --numeric-owner -C "${STAGING}" -czf "${ARCHIVE_PATH}" .

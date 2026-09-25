@@ -1417,7 +1417,7 @@ if __name__ == "__main__":
 
     debug_no_file_logs = "--debug-no-file-logs" in sys.argv
     if debug_no_file_logs:
-        os.environ["PIFINDER_DEBUG_NO_FILE_LOGS"] = "1"
+        os.environ["MFNAVIS_DEBUG_NO_FILE_LOGS"] = "1"
 
     print("Bootstrap logging configuration ...")
     logging.basicConfig(format="%(asctime)s BASIC %(name)s: %(levelname)s %(message)s")

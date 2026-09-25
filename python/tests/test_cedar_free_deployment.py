@@ -89,10 +89,12 @@ def repository(tmp_path):
     (repo / "scripts").mkdir()
     for name in ("check_cedar_free.py", "transactional_update.py", "install_mfds.py"):
         shutil.copy(ROOT / "scripts" / name, repo / "scripts")
-    shutil.copy(ROOT / "pifinder_update.sh", repo)
+    shutil.copy(ROOT / "mfnavis_update.sh", repo)
     (repo / "scripts/ensure_tetra3_link.sh").write_text(":\n")
     (repo / "mfnavis_paths.sh").write_text(":\n")
-    (repo / "pifinder_post_update.sh").write_text("echo called > post-called\n")
+    (repo / "mfnavis_post_update.sh").write_text(
+        'printf "%s:%s" "$MFNAVIS_CODE_UPDATE" "$MFNAVIS_REPO_DIR" > post-called\n'
+    )
     write_package(repo, tmp_path)
     git(repo, "add", ".")
     git(repo, "commit", "-m", "Binary release candidate")
@@ -164,7 +166,7 @@ def update_clone(repository, tmp_path):
 
 def run_update(repo):
     return subprocess.run(
-        ["bash", str(repo / "pifinder_update.sh")],
+        ["bash", str(repo / "mfnavis_update.sh")],
         capture_output=True,
         text=True,
         env={**os.environ, "GIT_ALLOW_PROTOCOL": "file"},
@@ -178,7 +180,7 @@ def test_update_preserves_branch_and_fast_forwards(repository, update_clone):
     assert result.returncode == 0, result.stderr
     assert git(update_clone, "branch", "--show-current") == "test/binary-release"
     assert (update_clone / "new-version").read_text() == "reviewed"
-    assert (update_clone / "post-called").exists()
+    assert (update_clone / "post-called").read_text() == f"1:{update_clone}"
 
 
 def test_update_rejects_cedar_before_checkout_or_post_update(repository, update_clone):
@@ -211,7 +213,7 @@ def test_failed_update_restores_source_and_native_build(
     hook = (
         "scripts/prepare_code_update.sh"
         if phase == "prepare"
-        else "pifinder_post_update.sh"
+        else "mfnavis_post_update.sh"
     )
     with (repository / hook).open("a") as stream:
         stream.write("exit 17\n")
@@ -240,7 +242,7 @@ def test_interrupted_activation_keeps_journal_and_can_be_recovered(
 ):
     before = git(update_clone, "rev-parse", "HEAD")
     (repository / "seed").write_text("candidate")
-    (repository / "pifinder_post_update.sh").write_text('kill -KILL "$PPID"\n')
+    (repository / "mfnavis_post_update.sh").write_text('kill -KILL "$PPID"\n')
     commit(repository)
     assert run_update(update_clone).returncode != 0
     assert (update_clone / ".git/update-transaction/journal.json").exists()

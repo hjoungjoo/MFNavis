@@ -4,14 +4,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PIFINDER_REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+MFNAVIS_REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 if [[ "${EUID}" -ne 0 ]]; then
     exec sudo bash "${SCRIPT_DIR}/install_keyboard_power_ignore.sh" "$@"
 fi
 
 HWDB_NAME="90-pifinder-keyboard-power-ignore.hwdb"
-install -D -m 644 "${PIFINDER_REPO_DIR}/pi_config_files/${HWDB_NAME}" \
+install -D -m 644 "${MFNAVIS_REPO_DIR}/pi_config_files/${HWDB_NAME}" \
     "/etc/udev/hwdb.d/${HWDB_NAME}"
 systemd-hwdb update
 

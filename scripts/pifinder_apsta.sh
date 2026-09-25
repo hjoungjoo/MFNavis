@@ -9,19 +9,19 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PIFINDER_REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+MFNAVIS_REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-STA_IFACE="${PIFINDER_STA_IFACE:-wlan0}"
-AP_IFACE="${PIFINDER_AP_IFACE:-uap0}"
-AP_IP_CIDR="${PIFINDER_AP_IP_CIDR:-}"
-DEFAULT_CHANNEL="${PIFINDER_AP_DEFAULT_CHANNEL:-7}"
-CHANNEL_WAIT_SECONDS="${PIFINDER_APSTA_CHANNEL_WAIT_SECONDS:-15}"
-STATUS_FILE="${PIFINDER_REPO_DIR}/wifi_status.txt"
-HOSTAPD_CONF="${PIFINDER_HOSTAPD_CONF:-/etc/hostapd/hostapd.conf}"
-DNSMASQ_CONF="${PIFINDER_DNSMASQ_CONF:-/etc/dnsmasq.conf}"
-APSTA_DHCPCD_CONF="${PIFINDER_APSTA_DHCPCD_CONF:-/etc/dhcpcd.conf.apsta}"
-APSTA_NAT_CONF="${PIFINDER_APSTA_NAT_CONF:-/etc/mfnavis_apsta_nat.conf}"
-NFT_TABLE="${PIFINDER_APSTA_NFT_TABLE:-pifinder_apsta}"
+STA_IFACE="${MFNAVIS_STA_IFACE:-wlan0}"
+AP_IFACE="${MFNAVIS_AP_IFACE:-uap0}"
+AP_IP_CIDR="${MFNAVIS_AP_IP_CIDR:-}"
+DEFAULT_CHANNEL="${MFNAVIS_AP_DEFAULT_CHANNEL:-7}"
+CHANNEL_WAIT_SECONDS="${MFNAVIS_APSTA_CHANNEL_WAIT_SECONDS:-15}"
+STATUS_FILE="${MFNAVIS_REPO_DIR}/wifi_status.txt"
+HOSTAPD_CONF="${MFNAVIS_HOSTAPD_CONF:-/etc/hostapd/hostapd.conf}"
+DNSMASQ_CONF="${MFNAVIS_DNSMASQ_CONF:-/etc/dnsmasq.conf}"
+APSTA_DHCPCD_CONF="${MFNAVIS_APSTA_DHCPCD_CONF:-/etc/dhcpcd.conf.apsta}"
+APSTA_NAT_CONF="${MFNAVIS_APSTA_NAT_CONF:-/etc/mfnavis_apsta_nat.conf}"
+NFT_TABLE="${MFNAVIS_APSTA_NFT_TABLE:-pifinder_apsta}"
 
 IW_BIN="${IW_BIN:-$(command -v iw || true)}"
 IP_BIN="${IP_BIN:-$(command -v ip || true)}"
@@ -194,7 +194,7 @@ configure_ap_ip() {
 }
 
 internet_sharing_enabled() {
-    grep -qx "PIFINDER_APSTA_SHARE_INTERNET=1" "${APSTA_NAT_CONF}" 2>/dev/null
+    grep -qx 'MFNAVIS_APSTA_SHARE_INTERNET=1' "${APSTA_NAT_CONF}" 2>/dev/null
 }
 
 sta_has_default_route() {

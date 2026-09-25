@@ -36,8 +36,8 @@ _trap_err() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PIFINDER_HOME="/home/pifinder"
-TARBALL="${PIFINDER_HOME}/pifinder-nixos-migration.tar.zst"
+MFNAVIS_HOME="/home/pifinder"
+TARBALL="${MFNAVIS_HOME}/pifinder-nixos-migration.tar.zst"
 BOOT_PARTITION="/boot"
 INITRAMFS_DIR="/tmp/nixos_initramfs"
 PROGRESS_BIN="${SCRIPT_DIR}/migration_progress"
@@ -213,7 +213,7 @@ chmod +x "${INITRAMFS_DIR}/init"
 cat > "${INITRAMFS_DIR}/migration_meta" <<METAEOF
 TARBALL_PATH=${TARBALL}
 TARBALL_SIZE=${TARBALL_SIZE}
-PIFINDER_DATA_PATH=${PIFINDER_HOME}/PiFinder_data
+MFNAVIS_DATA_PATH=${MFNAVIS_HOME}/PiFinder_data
 DISPLAY_CLASS=${DISPLAY_CLASS}
 DISPLAY_RESOLUTION=${DISPLAY_RESOLUTION}
 METAEOF

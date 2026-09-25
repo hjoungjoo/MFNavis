@@ -16,8 +16,8 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/../pifinder_paths.sh"
-LOG_FILE="${MF_WIFI_RECOVER_LOG:-${PIFINDER_DATA_DIR}/wifi_recover.log}"
+source "${SCRIPT_DIR}/../mfnavis_paths.sh"
+LOG_FILE="${MF_WIFI_RECOVER_LOG:-${MFNAVIS_DATA_DIR}/wifi_recover.log}"
 STA_IFACE="wlan0"
 AP_IFACE="uap0"
 # Units above the driver, in stop order. prepare is a oneshot that recreates

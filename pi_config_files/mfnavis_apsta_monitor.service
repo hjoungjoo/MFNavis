@@ -4,10 +4,9 @@ After=hostapd.service dnsmasq.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/bash __PIFINDER_REPO_DIR__/scripts/mfnavis_apsta.sh monitor
+ExecStart=/usr/bin/bash __MFNAVIS_REPO_DIR__/scripts/mfnavis_apsta.sh monitor
 Restart=always
 RestartSec=5
 
 [Install]
-Alias=pifinder_apsta_monitor.service
 WantedBy=multi-user.target

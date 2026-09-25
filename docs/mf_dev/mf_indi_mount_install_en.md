@@ -1,8 +1,8 @@
-# MF PiFinder INDI Mount Control
+# MFNavis INDI Mount Control
 
 This document covers the optional INDI mount-control work for Raspberry Pi 4 and Raspberry Pi 5 Bookworm 64-bit builds.
 
-The feature is disabled by default. Normal PiFinder installs do not import PyIndi or start the INDI mount-control process unless `mount_control` is enabled in the PiFinder config.
+The feature is disabled by default. Normal MFNavis installs do not import PyIndi or start the INDI mount-control process unless `mount_control` is enabled in the MFNavis config.
 
 The installer has been validated on a Raspberry Pi 4 Model B running Bookworm 64-bit. Raspberry Pi 5 and CM5 use the same Bookworm 64-bit packages and aarch64 build path, and the script does not contain Pi 4-only paths or model-specific branches.
 
@@ -14,8 +14,8 @@ The first integrated scope includes:
 
 - INDI server connection through PyIndi
 - telescope/mount device detection
-- location and UTC time sync from PiFinder
-- mount sync from PiFinder plate-solved RA/Dec
+- location and UTC time sync from MFNavis
+- mount sync from MFNavis plate-solved RA/Dec
 - GoTo for the object currently shown in Object Details
 - stop command
 - small manual RA/Dec offset moves
@@ -25,23 +25,23 @@ Automatic target refinement, drift compensation, and alignment-subsystem managem
 ## Install INDI Support
 
 The default installation path is the **shared Pi 4/Pi 5 binary archive**. The
-Bookworm 64-bit/aarch64 archive shipped with PiFinder installs the validated
-INDI core, third-party drivers, PyIndi, and PiFinder OnStepX patch set together.
+Bookworm 64-bit/aarch64 archive shipped with MFNavis installs the validated
+INDI core, third-party drivers, PyIndi, and MFNavis OnStepX patch set together.
 Use the full source install and build below only when modifying the source or
 changing/testing driver patches.
 
 ```bash
 cd ~/MFNavis
 bash scripts/install_indi_mount_archive.sh \
-  dist/mf-pifinder-indi-bookworm-arm64-v2.2.3.1-current.tar.gz
+  dist/mfnavis-indi-bookworm-arm64-v2.2.3.1-current.tar.gz
 ```
 
 During a full `mfnavis_setup.sh` install, this archive path is selected
-automatically when an archive is in `dist/` or `PIFINDER_INDI_ARCHIVE` is set.
+automatically when an archive is in `dist/` or `MFNAVIS_INDI_ARCHIVE` is set.
 
 ### For changes: full source install and build
 
-Run the dedicated installer from the PiFinder checkout:
+Run the dedicated installer from the MFNavis checkout:
 
 ```bash
 cd ~/MFNavis
@@ -60,9 +60,9 @@ JOBS=4 bash scripts/install_indi_mount_OnstepX.sh
 
 `JOBS=2` is the conservative default for Raspberry Pi 4 memory use. On Raspberry Pi 5 or CM5, `JOBS=3` or `JOBS=4` can reduce build time if cooling and power are stable. `INDI_VERSION` / `INDI_3RDPARTY_VERSION` can also be overridden the same way.
 
-The script checks out INDI `v2.2.3.1` under `~/indi-latest`, builds it, and automatically applies `scripts/patches/indi-v2.2.3.1-onstepx.patch`. The patch leaves the upstream `LX200 OnStep` driver unchanged and adds a separate `LX200 OnStepX` device and executable link. The OnStepX patch also carries the PiFinder Backlash range/readback fixes and writable `GUIDE_RATE` handling for driver compatibility.
+The script checks out INDI `v2.2.3.1` under `~/indi-latest`, builds it, and automatically applies `scripts/patches/indi-v2.2.3.1-onstepx.patch`. The patch leaves the upstream `LX200 OnStep` driver unchanged and adds a separate `LX200 OnStepX` device and executable link. The OnStepX patch also carries the MFNavis Backlash range/readback fixes and writable `GUIDE_RATE` handling for driver compatibility.
 
-`install_indi_mount_OnstepX.sh` strips `-march=native`, `-mcpu=*`, and `-mtune=*`, then uses `-march=armv8-a` so a build made on Raspberry Pi 5 stays compatible with Raspberry Pi 4. To test pure upstream INDI without the bundled PiFinder patch:
+`install_indi_mount_OnstepX.sh` strips `-march=native`, `-mcpu=*`, and `-mtune=*`, then uses `-march=armv8-a` so a build made on Raspberry Pi 5 stays compatible with Raspberry Pi 4. To test pure upstream INDI without the bundled MFNavis patch:
 
 ```bash
 INDI_PATCH_DIR=none bash scripts/install_indi_mount_OnstepX.sh
@@ -81,7 +81,7 @@ new patch validation are required:
 
 ```bash
 cd ~/MFNavis
-bash scripts/install_indi_mount_archive.sh dist/mf-pifinder-indi-bookworm-arm64-v2.2.3.1-current.tar.gz
+bash scripts/install_indi_mount_archive.sh dist/mfnavis-indi-bookworm-arm64-v2.2.3.1-current.tar.gz
 ```
 
 The Git repository may store large archives as split files named
@@ -89,18 +89,18 @@ The Git repository may store large archives as split files named
 command above; `install_indi_mount_archive.sh` rebuilds the archive from the
 parts and verifies the `.sha256` checksum before installation.
 
-The main PiFinder setup script can use the same archive installer:
+The main MFNavis setup script can use the same archive installer:
 
 ```bash
 cd ~
-PIFINDER_INDI_ARCHIVE="$HOME/MFNavis/dist/mf-pifinder-indi-bookworm-arm64-v2.2.3.1-current.tar.gz" \
+MFNAVIS_INDI_ARCHIVE="$HOME/MFNavis/dist/mfnavis-indi-bookworm-arm64-v2.2.3.1-current.tar.gz" \
   bash "$HOME/MFNavis/mfnavis_setup.sh"
 ```
 
-`PIFINDER_INSTALL_INDI_ARCHIVE` defaults to `auto`. If a `dist/mf-pifinder-indi-bookworm-arm64-*.tar.gz` file exists or `PIFINDER_INDI_ARCHIVE` is set, the setup script installs INDI support. If no archive is found, setup continues with the normal PiFinder install only. To force-disable the archive installer:
+`MFNAVIS_INSTALL_INDI_ARCHIVE` defaults to `auto`. If a `dist/mfnavis-indi-bookworm-arm64-*.tar.gz` file exists or `MFNAVIS_INDI_ARCHIVE` is set, the setup script installs INDI support. If no archive is found, setup continues with the normal MFNavis install only. To force-disable the archive installer:
 
 ```bash
-PIFINDER_INSTALL_INDI_ARCHIVE=false bash "$HOME/MFNavis/mfnavis_setup.sh"
+MFNAVIS_INSTALL_INDI_ARCHIVE=false bash "$HOME/MFNavis/mfnavis_setup.sh"
 ```
 
 To create a new binary archive from the currently installed build:
@@ -125,7 +125,7 @@ Open INDI Web Manager:
 http://<hostname>.local:8624
 ```
 
-If mDNS does not resolve, use the PiFinder IP address:
+If mDNS does not resolve, use the MFNavis IP address:
 
 ```text
 http://<pifinder-ip>:8624
@@ -133,7 +133,7 @@ http://<pifinder-ip>:8624
 
 Create a profile, choose the correct telescope driver, enable Auto Start and Auto Connect if desired, then start the profile. Common drivers include EQMod, LX200, iOptron, Celestron, and Telescope Simulator.
 
-When the active INDI profile uses `LX200 OnStepX`, its connection settings can be configured from the PiFinder web UI:
+When the active INDI profile uses `LX200 OnStepX`, its connection settings can be configured from the MFNavis web UI:
 
 ```text
 INDI > LX200 OnStepX Driver Connection
@@ -146,7 +146,7 @@ offers `9600`, `19200`, `38400`, `57600`, `115200`, `230400`, and `460800`
 baud. Aliases that resolve to the same physical serial device are collapsed
 into one entry, preferring the stable `/dev/serial/by-id/...` path when
 available. Selecting `Auto (Find connected OnStep)` also switches Communication
-Speed to Auto. Only when Apply is pressed, PiFinder removes the configured GPS
+Speed to Auto. Only when Apply is pressed, MFNavis removes the configured GPS
 and duplicate aliases from local candidates, then probes supported baud rates
 with the read-only `:GVP#`/`:GVN#` queries. A concrete stable port and detected
 baud are applied only when exactly one OnStep is verified; zero or multiple
@@ -159,21 +159,21 @@ a host/IP and TCP port manually when the device is not listed. The default
 OnStep network TCP port is `9999`.
 
 The effective OnStep transport is resolved in this order: live INDI
-properties, the INDI-saved XML, then the last verified PiFinder mirror. At
-startup, a valid live/XML value updates only the PiFinder mirror; it does not
-roll back or reapply a working driver configuration. The PiFinder mirror is
+properties, the INDI-saved XML, then the last verified MFNavis mirror. At
+startup, a valid live/XML value updates only the MFNavis mirror; it does not
+roll back or reapply a working driver configuration. The MFNavis mirror is
 applied once only when both live and XML settings are incomplete, followed by
 live readback verification. If every source is incomplete, automatic connect
 stops with `config_invalid` instead of trying guessed defaults.
 
-A Web save updates PiFinder's transport/server settings in one atomic write
+A Web save updates MFNavis's transport/server settings in one atomic write
 only after INDI reconnect, live readback, and `CONFIG_SAVE` have all
 succeeded. Failure preserves the previous mirror. Reconciliation status is
 written to the tmpfs `mount_control_status.json` file.
 
-## PiFinder INDI Web Menu
+## MFNavis INDI Web Menu
 
-The PiFinder web UI now has a dedicated `INDI` top-level menu. This page links to INDI Web Manager and reads the active driver name from the running INDI profile. OnStepX-specific setup and control sections are shown only when that active driver is `LX200 OnStepX`.
+The MFNavis web UI now has a dedicated `INDI` top-level menu. This page links to INDI Web Manager and reads the active driver name from the running INDI profile. OnStepX-specific setup and control sections are shown only when that active driver is `LX200 OnStepX`.
 
 ### Current INDI Driver State
 
@@ -181,18 +181,18 @@ This section shows the active INDI profile, active driver, and available driver 
 
 ### Location And Time
 
-The `Location and Time` section is shown for `LX200 OnStepX` and sends PiFinder's current location and UTC time to OnStep.
+The `Location and Time` section is shown for `LX200 OnStepX` and sends MFNavis's current location and UTC time to OnStep.
 
-- If PiFinder has a GPS lock, it uses the GPS/loaded location.
-- If there is no GPS lock, it shows `GPS Lock: Not locked` and uses the default location from PiFinder `Locations` as `Location to Send`.
+- If MFNavis has a GPS lock, it uses the GPS/loaded location.
+- If there is no GPS lock, it shows `GPS Lock: Not locked` and uses the default location from MFNavis `Locations` as `Location to Send`.
 - The UTC time field keeps ticking while the page is open.
-- `Reload Current Values` refreshes the PiFinder location/time and the displayed OnStep location/time without leaving the page.
-- When `Send Location and Time` is pressed, the server recalculates PiFinder system UTC at the moment the request is received and sends that value to OnStep. The final transmitted time is therefore based on PiFinder, not on the phone or browser clock.
+- `Reload Current Values` refreshes the MFNavis location/time and the displayed OnStep location/time without leaving the page.
+- When `Send Location and Time` is pressed, the server recalculates MFNavis system UTC at the moment the request is received and sends that value to OnStep. The final transmitted time is therefore based on MFNavis, not on the phone or browser clock.
 - The web request starts a bounded background sync so the page remains responsive even while a driver is slow or unavailable. The state area is refreshed automatically after the request completes; it reports the result and reads back the driver values.
 - A newly locked GPS location is applied automatically. Later GPS changes are filtered to avoid mount updates from jitter (more than 500 m, checked no more than once per minute). Loading a location or setting it as the default in `Locations` is an explicit selection and applies the chosen coordinates immediately.
-- LX200 OnStepX is the MF PiFinder custom INDI driver. Location/time sync uses full INDI `GEOGRAPHIC_COORD` and `TIME_UTC` vector updates, and the driver converts those values to OnStep LX200 commands internally.
-- Avoid partial `indi_setprop` CLI writes for these vectors. PiFinder uses PyIndi full-vector updates.
-- In a UTC+9 environment such as Korea, PiFinder sends INDI `TIME_UTC.OFFSET=+9.00`, and the driver converts it to the OnStep `:SG-09:00#` convention.
+- LX200 OnStepX is the MFNavis custom INDI driver. Location/time sync uses full INDI `GEOGRAPHIC_COORD` and `TIME_UTC` vector updates, and the driver converts those values to OnStep LX200 commands internally.
+- Avoid partial `indi_setprop` CLI writes for these vectors. MFNavis uses PyIndi full-vector updates.
+- In a UTC+9 environment such as Korea, MFNavis sends INDI `TIME_UTC.OFFSET=+9.00`, and the driver converts it to the OnStep `:SG-09:00#` convention.
 
 ### Mount Control
 
@@ -200,7 +200,7 @@ The `Mount Control` section is shown for `LX200 OnStepX` and provides simple ini
 
 - Home and Park are displayed as separate states. OnStep can report `At Home`
   while still being `Unparked`; the OnStep Web UI disables the Park button for
-  both `At Home` and `Parked`, so PiFinder also shows the raw `:GU#` mount
+  both `At Home` and `Parked`, so MFNavis also shows the raw `:GU#` mount
   status for diagnostics.
 - `At Home`, `Return Home`, `Park`, `Unpark`, and `Set-Park` commands are available.
 - Slew Rate uses OnStep's native 0-9 scale: `Off`, `1/2`, `1`, `2`, `4`, `8`, `20`, `48`, `1/2 MAX`, `MAX`.
@@ -216,11 +216,11 @@ The `Settings > INDI Setting` menu includes OnStepX maintenance controls.
 other configuration menus under `Settings`.)
 
 - `Multi Align` is driven by one shared session controller used by the Web UI,
-  LCD UI, and SkySafari bridge. At start, PiFinder sends its location/time to
-  the mount, syncs the mount to PiFinder's current pointing, and verifies the
+  LCD UI, and SkySafari bridge. At start, MFNavis sends its location/time to
+  the mount, syncs the mount to MFNavis's current pointing, and verifies the
   readback. Native OnStepX `:A<n>#` start is deferred because it resets the
   mount home/frame, and stale native align state is cleared with direct
-  `:SX09,0#` before the PiFinder-managed flow continues. See
+  `:SX09,0#` before the MFNavis-managed flow continues. See
   `docs/mf_dev/mf_multipoint_align_flow_en.md` for the detailed flow.
 - `Backlash` reads and writes the INDI driver properties
   `Backlash.Backlash RA` and `Backlash.Backlash DEC`, which map to OnStep
@@ -250,20 +250,20 @@ other configuration menus under `Settings`.)
 - Automatic measurement does not reset Backlash to zero and does not apply the
   calculated value automatically. Results are shown as recommendations only; the
   user reviews the input values and presses `Save Backlash` to write them. On
-  completion, PiFinder restores the original tracking state when it was enabled
+  completion, MFNavis restores the original tracking state when it was enabled
   before the test.
 
-## Enable PiFinder Control
+## Enable MFNavis Control
 
-On the PiFinder UI:
+On the MFNavis UI:
 
 ```text
 Tools > Experimental > Mount Control > On
 ```
 
-Changing this option restarts PiFinder so the optional `MountControl` process can start or stop cleanly.
+Changing this option restarts MFNavis so the optional `MountControl` process can start or stop cleanly.
 
-The Mount Control process no longer connects to INDI immediately at PiFinder startup. It initializes the INDI connection when a mount command is sent from Object Details, such as `1`, Sync, or GoTo.
+The Mount Control process no longer connects to INDI immediately at MFNavis startup. It initializes the INDI connection when a mount command is sent from Object Details, such as `1`, Sync, or GoTo.
 
 Advanced config keys in `default_config.json`:
 
@@ -285,13 +285,13 @@ When Mount Control is enabled, numeric keys on the Object Details screen send mo
 | Key | Action |
 | --- | --- |
 | 0 | Stop mount |
-| 1 | Initialize INDI connection and sync if PiFinder has a solve |
+| 1 | Initialize INDI connection and sync if MFNavis has a solve |
 | 2 | Move south by the current step size |
 | 3 | Decrease step size |
 | 4 | Move west by the current step size |
 | 5 | GoTo the displayed object |
 | 6 | Move east by the current step size |
-| 7 | Sync mount to the current PiFinder solved position |
+| 7 | Sync mount to the current MFNavis solved position |
 | 8 | Move north by the current step size |
 | 9 | Increase step size |
 
@@ -299,7 +299,7 @@ Manual movement is implemented as a small RA/Dec GoTo offset from the current mo
 
 ## Logs And Status
 
-PiFinder logs mount-control messages under `MountControl.Indi`.
+MFNavis logs mount-control messages under `MountControl.Indi`.
 
 A small status file is written here:
 
@@ -320,10 +320,10 @@ tail -n 100 ~/MFNavis_data/pifinder.log
 
 1. Install INDI support.
 2. Start the Telescope Simulator in INDI Web Manager.
-3. Enable PiFinder Mount Control.
+3. Enable MFNavis Mount Control.
 4. Open any Object Details screen.
 5. Press `1` to initialize.
-6. After PiFinder has a solve, press `7` to sync.
+6. After MFNavis has a solve, press `7` to sync.
 7. Press `5` to send GoTo.
 8. Press `0` to verify stop behavior.
 

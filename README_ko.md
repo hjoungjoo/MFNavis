@@ -1,6 +1,6 @@
 # MFNavis
 
-현재 정식 저장소는 **https://github.com/hjoungjoo/MFNavis** 입니다. 기존 MF_PiFinder 저장소는 과거 기록으로 보존하며, 새 설치는 ~/MFNavis와 ~/MFNavis_data를 사용하며 기존 경로는 호환 별칭으로 유지합니다.
+정식 저장소는 **https://github.com/hjoungjoo/MFNavis** 입니다. 설치 경로는 `~/MFNavis`, 데이터 경로는 `~/MFNavis_data`입니다.
 
 제품 **MFNavis** · 판매·배포 **FNPD 한국** · 제작·수정 **MagicFly**.
 [제3자 고지](THIRD_PARTY_NOTICES.md) · [판매 및 대응소스 제공 기준](docs/MFNAVIS_RELEASE_ko.md).
@@ -50,20 +50,20 @@ Raspberry Pi Imager로 Pi 4/Pi 5/CM5의 부팅 저장장치에
 
 GitHub에서 최신 공개 릴리즈 태그를 자동 조회하여 해당 버전을 설치합니다.
 버전 번호를 입력할 필요가 없으며, 조회에 실패하면 설치를 중단합니다.
-`~/MFNavis`가 없는 새 설치에서 실행하는 명령입니다.
+새 설치 또는 기존 릴리즈 업데이트에서 실행하는 명령입니다.
 
 ```bash
-PF_RELEASE_TAG="$(python3 -c 'import json, urllib.request; print(json.load(urllib.request.urlopen("https://api.github.com/repos/hjoungjoo/MFNavis/releases/latest"))["tag_name"])')" &&
-[ -n "$PF_RELEASE_TAG" ] &&
-wget -O /tmp/mfnavis-setup.sh "https://raw.githubusercontent.com/hjoungjoo/MFNavis/${PF_RELEASE_TAG}/mfnavis_setup.sh" &&
-PIFINDER_INSTALL_BRANCH="$PF_RELEASE_TAG" bash /tmp/mfnavis-setup.sh
+MFNAVIS_RELEASE_TAG="$(python3 -c 'import json, urllib.request; print(json.load(urllib.request.urlopen("https://api.github.com/repos/hjoungjoo/MFNavis/releases/latest"))["tag_name"])')" &&
+[ -n "$MFNAVIS_RELEASE_TAG" ] &&
+wget -O /tmp/mfnavis-setup.sh "https://raw.githubusercontent.com/hjoungjoo/MFNavis/${MFNAVIS_RELEASE_TAG}/mfnavis_setup.sh" &&
+MFNAVIS_INSTALL_BRANCH="$MFNAVIS_RELEASE_TAG" bash /tmp/mfnavis-setup.sh
 ```
 
 **개발 버전(main) 설치:**
 
 ```bash
 wget -O /tmp/mfnavis-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavis/main/mfnavis_setup.sh &&
-PIFINDER_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh
+MFNAVIS_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh
 ```
 
 설치 완료 메시지를 확인한 뒤 재부팅합니다.
@@ -72,22 +72,47 @@ PIFINDER_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh
 sudo reboot
 ```
 
+#### 기존 설치를 최신 main 또는 릴리즈로 업데이트
+
+장치의 설치 대상 사용자 계정으로 SSH 접속하여 먼저 상태를 확인하고,
+`~/MFNavis_data`와 로컬 수정 사항을 백업하세요. 아래 설치 스크립트는
+코드뿐 아니라 의존 패키지와 서비스 설정도 다시 적용합니다.
+
+**최신 `main`으로 업데이트:**
+
+```bash
+git -C ~/MFNavis status -sb
+wget -O /tmp/mfnavis-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavis/main/mfnavis_setup.sh &&
+MFNAVIS_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh &&
+sudo reboot
+```
+
+**최신 공개 릴리즈로 업데이트:** 위의 **공개 릴리즈 설치** 명령을 다시
+실행하고, 완료되면 `sudo reboot`합니다. `release` 브랜치가 아닌 GitHub의
+최신 공개 릴리즈 태그를 선택합니다. 기존 설치에서 태그를 전환하려면 대상
+릴리즈에 이 체크아웃 전환 기능이 포함된 설치 스크립트가 있어야 합니다.
+
+기존 설치가 릴리즈 태그의 detached HEAD여도 `main` 또는 새 릴리즈 태그를
+명시하면 전환할 수 있습니다. 추적 파일에 로컬 수정이 있거나 대상 버전이
+현재 설치에서 fast-forward되지 않으면 스크립트가 중단합니다. 이 경우
+`git -C ~/MFNavis status -sb`로 상태를 확인하고 수동으로 해결하세요.
+별도 데이터 경로를 사용한다면 업데이트 명령에도
+`MFNAVIS_DATA_DIR=/절대/경로`를 지정하세요.
+
 #### 설치 경로와 기존 설치에 따른 차이
 
 | 상황 | 동작 및 안내 |
 | --- | --- |
 | 사용자명이 `pifinder` | 코드: `/home/pifinder/MFNavis`, 데이터: `/home/pifinder/MFNavis_data`. |
 | 다른 사용자명 | 같은 명령으로 해당 사용자 홈의 `~/MFNavis`, `~/MFNavis_data`에 설치합니다. 이후 명령도 같은 사용자로 실행하세요. |
-| `~/MFNavis_main` 등 별도 코드 경로 | 설치 스크립트는 어디서 실행해도 대상 사용자 홈의 `MFNavis`를 사용합니다. `PIFINDER_REPO_DIR`로 바꿀 수 없으므로 새 설치에는 기본 경로를 사용하세요. |
-| 별도 데이터 경로 | 설치 명령 앞에 `PIFINDER_DATA_DIR=/절대/경로`를 지정합니다. 이후 업데이트와 캐시 명령에도 같은 값을 지정해야 합니다. 기존 데이터는 자동 이동하지 않습니다. |
-| `~/MFNavis`가 이미 있음 | 설치 스크립트는 **현재 브랜치**를 fast-forward 갱신합니다. `PIFINDER_INSTALL_BRANCH`는 새로 복제할 때만 적용됩니다. 추적 파일에 로컬 수정이 있으면 중단합니다. |
-| 태그로 설치한 기존 릴리즈 | 새 태그 설치는 가능하지만, 이후 detached HEAD 상태에서 설치 스크립트를 재실행하면 중단합니다. 위 새 설치 명령으로 기존 릴리즈와 `main`을 전환하지 마세요. |
+| `~/MFNavis_main` 등 별도 코드 경로 | 설치 스크립트는 어디서 실행해도 대상 사용자 홈의 `MFNavis`를 사용합니다. `MFNAVIS_REPO_DIR`로 바꿀 수 없으므로 새 설치에는 기본 경로를 사용하세요. |
+| 별도 데이터 경로 | 설치 명령 앞에 `MFNAVIS_DATA_DIR=/절대/경로`를 지정합니다. 이후 업데이트와 캐시 명령에도 같은 값을 지정해야 합니다. 기존 데이터는 자동 이동하지 않습니다. |
+| `~/MFNavis`가 이미 있음 | `MFNAVIS_INSTALL_BRANCH`로 지정한 브랜치 또는 태그로 fast-forward 갱신합니다. 생략하면 현재 브랜치를 갱신하며, 태그 checkout에서는 대상을 반드시 지정해야 합니다. |
+| 태그로 설치한 기존 릴리즈 | 위 최신 `main` 명령으로 브랜치에 전환하거나 공개 릴리즈 명령으로 더 새로운 태그에 전환합니다. |
 
-기존 장치는 먼저 `git -C ~/MFNavis status -sb`로 상태를 확인하고
-`~/MFNavis_data`와 로컬 수정 사항을 백업하세요. 브랜치 설치는 의도한 브랜치인지
-확인한 뒤 갱신합니다. 기존 설치의 코드 갱신 후에는 해당 저장소 최상위에서
-`bash mfnavis_post_update.sh`를 실행해 MFDS 자동 설치를 포함한 런타임 변경을
-적용합니다. 이 스크립트는 업데이트용이며 최초 OS·서비스 설치를 대신하지 않습니다.
+`mfnavis_update.sh`는 현재 브랜치의 **코드만** 갱신하는 별도 경로입니다.
+태그 설치에서는 사용할 수 없고, 의존 패키지·서비스 템플릿·OS 설정이 바뀌면
+안전상 중단합니다. 위의 `main`·릴리즈 갱신에는 전체 설치 스크립트를 사용하세요.
 
 패키지 구성은 [MFDS 바이너리 설치 안내](./docs/MFDS_BINARY_DISTRIBUTION_ko.md)를 참고하세요.
 INDI 마운트 지원은 선택 사항으로, 설치 스크립트가 INDI 아카이브를 찾거나 지정받은
@@ -118,7 +143,7 @@ python3 scripts/warm_pifinder_caches.py --images poss
 진행 상황은 터미널에 표시되며 `Cache warm-up complete`가 나오면 완료입니다.
 `Ctrl-C`로 중단한 뒤 같은 명령을 다시 실행하면 기존 이미지를 건너뛰고 이어받습니다.
 다운로드 중에는 SSH 세션을 유지하세요. 데이터 경로를 바꿨다면 명령 앞에
-`PIFINDER_DATA_DIR=/절대/경로`를 지정하세요.
+`MFNAVIS_DATA_DIR=/절대/경로`를 지정하세요.
 
 용량·진행 확인과 문제 해결은 [캐시 다운로드 가이드](./docs/mf_dev/mf_cache_download_ko.md)를 참고하세요.
 

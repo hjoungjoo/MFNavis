@@ -82,7 +82,7 @@ def test_pulse_align_threshold_is_capped_to_reachable_error(monkeypatch):
 
     assert (
         service._pulse_align_threshold_arcmin()
-        == iggs.PIFINDER_PULSE_ALIGN_MAX_ERROR_ARCMIN
+        == iggs.MFNAVIS_PULSE_ALIGN_MAX_ERROR_ARCMIN
     )
 
 
@@ -863,7 +863,7 @@ def test_recovery_does_not_use_untrusted_anchor_after_timeout(monkeypatch, sampl
         service._tick_tracking_guide()
     assert service.tracking_guide_state == "settling"
 
-    clock[0] += iggs.PIFINDER_SOLVE_ANCHOR_WAIT_SECONDS + 1.0
+    clock[0] += iggs.MFNAVIS_SOLVE_ANCHOR_WAIT_SECONDS + 1.0
     service._tick_tracking_guide()
     assert service.tracking_guide_state == "waiting_coordinate"
     assert service.tracking_guide_last_action == "recovery waiting: no fresh solve"
@@ -957,7 +957,7 @@ def test_manual_target_wait_reports_missing_solve_without_resuming_old_target(
     service._begin_manual_retarget()
     service._pointing["current"]["timestamp"] = 900.0
     service._tick_manual_retarget()
-    clock[0] += iggs.PIFINDER_SOLVE_ANCHOR_WAIT_SECONDS + 5
+    clock[0] += iggs.MFNAVIS_SOLVE_ANCHOR_WAIT_SECONDS + 5
     service._tick_manual_retarget()
     service._tick_manual_retarget()
     assert alerts.qsize() == 1
@@ -1007,7 +1007,7 @@ def test_active_correction_survives_pulse_align_timeout(monkeypatch, motion):
     service = _make_service(monkeypatch, clock)
     service.active_target_ra, service.active_target_dec = 100.0, 20.0
     service._begin_pulse_align()
-    clock[0] += iggs.PIFINDER_PULSE_ALIGN_TIMEOUT_SECONDS + 1
+    clock[0] += iggs.MFNAVIS_PULSE_ALIGN_TIMEOUT_SECONDS + 1
     status = {"available": True}
     if motion == "manual":
         status.update(mount_motion_active=True, manual_motion_origin="guide_correction")
@@ -1024,7 +1024,7 @@ def test_pulse_align_stalled_with_good_solves_retains_target_for_retry(monkeypat
     service = _make_service(monkeypatch, clock)
     service.active_target_ra, service.active_target_dec = 100.0, 20.0
     service._begin_pulse_align()
-    clock[0] += iggs.PIFINDER_PULSE_ALIGN_TIMEOUT_SECONDS + 1
+    clock[0] += iggs.MFNAVIS_PULSE_ALIGN_TIMEOUT_SECONDS + 1
     service._tick_pulse_align()
     assert service.phase == "pifinder_goto"
     assert service.service_state == "running"
@@ -1066,7 +1066,7 @@ def test_goto_batch_waits_for_new_solve_then_retries_unless_cancelled(
     assert service.service_state == "running"
     assert service.mountcontrol_queue.commands == []
     assert service.active_target_dec == 20.0
-    clock[0] += iggs.PIFINDER_CORRECTION_RETRY_SECONDS + 1
+    clock[0] += iggs.MFNAVIS_CORRECTION_RETRY_SECONDS + 1
     service._pointing["current"]["timestamp"] = 1000.0
     service._tick_state_machine()
     assert service.mountcontrol_queue.commands == []
@@ -1093,7 +1093,7 @@ def test_tracking_recovery_retries_after_batch_without_losing_target(monkeypatch
     assert service.tracking_guide_state == "settling"
     assert service.tracking_target_dec == 20.0
     assert not service.mountcontrol_queue.commands
-    clock[0] += iggs.PIFINDER_CORRECTION_RETRY_SECONDS - 1
+    clock[0] += iggs.MFNAVIS_CORRECTION_RETRY_SECONDS - 1
     service._tick_tracking_guide()
     assert not service.mountcontrol_queue.commands
     clock[0] += 2
@@ -1114,7 +1114,7 @@ def test_divergent_pulse_alignment_recovers_without_reentering_pulse_stage(monke
     assert service.pulse_alignment_unreliable
     assert service.phase == "pifinder_goto"
     assert service.active_target_dec == 21.9
-    clock[0] += iggs.PIFINDER_CORRECTION_RETRY_SECONDS + 1
+    clock[0] += iggs.MFNAVIS_CORRECTION_RETRY_SECONDS + 1
     service._tick_goto_wait()
     assert service.last_error_arcmin == pytest.approx(6.0)
     assert service.mountcontrol_queue.commands[-1]["type"] == "sync_and_goto"

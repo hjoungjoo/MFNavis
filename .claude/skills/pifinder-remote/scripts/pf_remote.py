@@ -49,7 +49,7 @@ from pathlib import Path
 
 STATE_PATH = Path(tempfile.gettempdir()) / "pf_remote_state.json"
 LOG_DIR = Path(tempfile.gettempdir())
-PIFINDER_LOG = LOG_DIR / "pf_remote_pifinder.log"
+MFNAVIS_LOG = LOG_DIR / "pf_remote_pifinder.log"
 CEDAR_LOG = LOG_DIR / "pf_remote_cedar.log"
 
 DEFAULT_PORT = 8080
@@ -64,8 +64,8 @@ def find_repo(explicit=None):
     candidates = []
     if explicit:
         candidates.append(Path(explicit))
-    if os.environ.get("PIFINDER_REPO"):
-        candidates.append(Path(os.environ["PIFINDER_REPO"]))
+    if os.environ.get("MFNAVIS_REPO"):
+        candidates.append(Path(os.environ["MFNAVIS_REPO"]))
     # This skill is project-scoped, so the repo root is normally a few levels up
     # from the script. Also walk up from the script and the cwd as a fallback.
     here = Path(__file__).resolve()
@@ -82,7 +82,7 @@ def find_repo(explicit=None):
             return c
     raise SystemExit(
         "Could not find the PiFinder repo (no python/PiFinder/main.py). "
-        "Pass --repo /path/to/PiFinder or set PIFINDER_REPO."
+        "Pass --repo /path/to/PiFinder or set MFNAVIS_REPO."
     )
 
 
@@ -265,7 +265,7 @@ def cmd_launch(args):
         return 1
 
     cedar_log = open(CEDAR_LOG, "wb")
-    pf_log = open(PIFINDER_LOG, "wb")
+    pf_log = open(MFNAVIS_LOG, "wb")
 
     cedar_proc = subprocess.Popen(
         [str(cedar), "-p", str(CEDAR_PORT)],
@@ -313,7 +313,7 @@ def cmd_launch(args):
     if not ok:
         print(
             f"API did not come up within {args.timeout}s. "
-            f"Check logs: {PIFINDER_LOG}\nLast error: {info}",
+            f"Check logs: {MFNAVIS_LOG}\nLast error: {info}",
             file=sys.stderr,
         )
         if not pid_alive(pf_proc.pid):
@@ -454,7 +454,7 @@ def cmd_kill(args):
 
 
 def cmd_logs(args):
-    for path in (PIFINDER_LOG, CEDAR_LOG):
+    for path in (MFNAVIS_LOG, CEDAR_LOG):
         print(f"===== {path} =====")
         try:
             lines = path.read_text(errors="replace").splitlines()

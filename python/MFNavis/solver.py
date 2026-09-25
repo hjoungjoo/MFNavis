@@ -1431,7 +1431,7 @@ def solver(
     skip_slow_raw_fallbacks_wanted = bool(
         _sep_cfg.get_option("solver_preprocess_skip_slow_raw_fallbacks", False)
     )
-    scheduling_mode = os.environ.get("PIFINDER_PREPROCESS_MODE") or _sep_cfg.get_option(
+    scheduling_mode = os.environ.get("MFNAVIS_PREPROCESS_MODE") or _sep_cfg.get_option(
         "solver_preprocess_mode"
     )
     if scheduling_mode is None:

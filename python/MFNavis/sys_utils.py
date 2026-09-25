@@ -57,8 +57,8 @@ DHCPD_AP_CONF_PATH = "/etc/dhcpcd.conf.ap"
 DHCPD_APSTA_CONF_PATH = "/etc/dhcpcd.conf.apsta"
 DHCPD_ACTIVE_CONF_PATH = "/etc/dhcpcd.conf"
 DNSMASQ_CONF_PATH = "/etc/dnsmasq.conf"
-PIFINDER_APSTA_NAT_CONF_PATH = "/etc/mfnavis_apsta_nat.conf"
-PIFINDER_STA_BAND_CONF_PATH = "/etc/mfnavis_sta_band.conf"
+MFNAVIS_APSTA_NAT_CONF_PATH = "/etc/mfnavis_apsta_nat.conf"
+MFNAVIS_STA_BAND_CONF_PATH = "/etc/mfnavis_sta_band.conf"
 DNSMASQ_LEASES_PATH = "/var/lib/misc/dnsmasq.leases"
 DEFAULT_AP_IP = "10.10.10.1"
 AP_SECURITY_OPEN = "OPEN"
@@ -2568,9 +2568,9 @@ class Network:
 
     def get_sta_band_preference(self):
         try:
-            with open(PIFINDER_STA_BAND_CONF_PATH, "r") as conf:
+            with open(MFNAVIS_STA_BAND_CONF_PATH, "r") as conf:
                 for line in conf:
-                    if line.startswith("PIFINDER_STA_BAND="):
+                    if line.startswith("MFNAVIS_STA_BAND="):
                         return Network._normalize_sta_band_preference(
                             line.split("=", 1)[1]
                         )
@@ -2594,8 +2594,8 @@ class Network:
 
     def set_sta_band_preference(self, preference):
         preference = Network._normalize_sta_band_preference(preference)
-        contents = "# MFNavis STA band preference\n" f"PIFINDER_STA_BAND={preference}\n"
-        Network._write_root_file(PIFINDER_STA_BAND_CONF_PATH, contents)
+        contents = "# MFNavis STA band preference\n" f"MFNAVIS_STA_BAND={preference}\n"
+        Network._write_root_file(MFNAVIS_STA_BAND_CONF_PATH, contents)
         self._apply_sta_band_preference(preference)
         self.populate_wifi_networks()
         # Saved-only; the NM sync + reconfigure happen in apply_sta_changes().
@@ -3216,13 +3216,13 @@ class Network:
     @staticmethod
     def _parse_apsta_nat_config(contents: str) -> bool:
         for line in contents.splitlines():
-            if line.strip() == "PIFINDER_APSTA_SHARE_INTERNET=1":
+            if line.strip() == "MFNAVIS_APSTA_SHARE_INTERNET=1":
                 return True
         return False
 
     def get_apsta_internet_sharing(self):
         try:
-            with open(PIFINDER_APSTA_NAT_CONF_PATH, "r") as conf:
+            with open(MFNAVIS_APSTA_NAT_CONF_PATH, "r") as conf:
                 return Network._parse_apsta_nat_config(conf.read())
         except FileNotFoundError:
             return False
@@ -3234,9 +3234,9 @@ class Network:
         enabled_value = "1" if enabled else "0"
         contents = (
             "# MFNavis AP+STA internet sharing setting\n"
-            f"PIFINDER_APSTA_SHARE_INTERNET={enabled_value}\n"
+            f"MFNAVIS_APSTA_SHARE_INTERNET={enabled_value}\n"
         )
-        Network._write_root_file(PIFINDER_APSTA_NAT_CONF_PATH, contents)
+        Network._write_root_file(MFNAVIS_APSTA_NAT_CONF_PATH, contents)
 
     def get_host_name(self):
         return socket.gethostname()

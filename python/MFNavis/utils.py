@@ -19,13 +19,12 @@ tetra3_dir = pifinder_dir / "python/MFNavis/tetra3/tetra3"
 
 
 def resolve_data_dir(home=None):
-    """Prefer product paths, retaining an unmigrated installation's data."""
+    """Resolve the MFNavis data directory, honoring an explicit override."""
     home = Path.home() if home is None else Path(home)
-    explicit = os.environ.get("MFNAVIS_DATA_DIR") or os.environ.get("PIFINDER_DATA_DIR")
+    explicit = os.environ.get("MFNAVIS_DATA_DIR")
     if explicit:
         return Path(explicit)
-    canonical, legacy = home / "MFNavis_data", home / "PiFinder_data"
-    return canonical if canonical.exists() or not legacy.exists() else legacy
+    return home / "MFNavis_data"
 
 
 data_dir = resolve_data_dir()
@@ -46,11 +45,7 @@ def _resolve_runtime_dir() -> Path:
     """
     shm = Path("/dev/shm")
     if shm.is_dir() and os.access(shm, os.W_OK):
-        return Path(
-            os.environ.get("MFNAVIS_RUNTIME_DIR")
-            or os.environ.get("PIFINDER_RUNTIME_DIR")
-            or str(shm / "mfnavis")
-        )
+        return Path(os.environ.get("MFNAVIS_RUNTIME_DIR") or str(shm / "mfnavis"))
     return data_dir
 
 
@@ -233,7 +228,7 @@ def serialize_solution(solution) -> str:
 
 def get_sys_utils():
     # Check if we should use fake sys_utils for local development
-    use_fake = os.environ.get("PIFINDER_USE_FAKE_SYS_UTILS", "").lower() in (
+    use_fake = os.environ.get("MFNAVIS_USE_FAKE_SYS_UTILS", "").lower() in (
         "1",
         "true",
         "yes",

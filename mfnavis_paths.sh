@@ -3,94 +3,104 @@
 
 set -e
 
-if [[ -z "${PIFINDER_REPO_DIR:-}" ]]; then
-    PIFINDER_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "${MFNAVIS_REPO_DIR:-}" ]]; then
+    MFNAVIS_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
-if [[ -z "${PIFINDER_USER:-}" ]]; then
+if [[ -z "${MFNAVIS_USER:-}" ]]; then
     if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
-        PIFINDER_USER="${SUDO_USER}"
+        MFNAVIS_USER="${SUDO_USER}"
     else
-        PIFINDER_USER="$(id -un)"
-        if [[ "${PIFINDER_USER}" == "root" ]]; then
-            PIFINDER_USER="$(stat -c '%U' "${PIFINDER_REPO_DIR}")"
+        MFNAVIS_USER="$(id -un)"
+        if [[ "${MFNAVIS_USER}" == "root" ]]; then
+            MFNAVIS_USER="$(stat -c '%U' "${MFNAVIS_REPO_DIR}")"
         fi
     fi
 fi
 
-if [[ "${PIFINDER_USER}" == "root" ]]; then
+if [[ "${MFNAVIS_USER}" == "root" ]]; then
     echo "MFNavis must be installed for a non-root OS user." >&2
-    echo "Set PIFINDER_USER=<user> when the checkout is owned by root." >&2
+    echo "Set MFNAVIS_USER=<user> when the checkout is owned by root." >&2
     exit 1
 fi
 
-PIFINDER_GROUP="$(id -gn "${PIFINDER_USER}")"
+MFNAVIS_GROUP="$(id -gn "${MFNAVIS_USER}")"
 
-if [[ -z "${PIFINDER_HOME:-}" ]]; then
-    PIFINDER_HOME="$(getent passwd "${PIFINDER_USER}" | cut -d: -f6)"
+if [[ -z "${MFNAVIS_HOME:-}" ]]; then
+    MFNAVIS_HOME="$(getent passwd "${MFNAVIS_USER}" | cut -d: -f6)"
 fi
 
-if [[ -z "${PIFINDER_HOME}" || ! -d "${PIFINDER_HOME}" ]]; then
-    echo "Could not determine home directory for ${PIFINDER_USER}" >&2
+if [[ -z "${MFNAVIS_HOME}" || ! -d "${MFNAVIS_HOME}" ]]; then
+    echo "Could not determine home directory for ${MFNAVIS_USER}" >&2
     exit 1
 fi
 
-if [[ -n "${MFNAVIS_DATA_DIR:-}" ]]; then
-    PIFINDER_DATA_DIR="${MFNAVIS_DATA_DIR}"
-elif [[ -z "${PIFINDER_DATA_DIR:-}" ]]; then
-    if [[ -d "${PIFINDER_HOME}/MFNavis_data" || ! -d "${PIFINDER_HOME}/PiFinder_data" ]]; then
-        PIFINDER_DATA_DIR="${PIFINDER_HOME}/MFNavis_data"
-    else
-        PIFINDER_DATA_DIR="${PIFINDER_HOME}/PiFinder_data"
-    fi
+if [[ -z "${MFNAVIS_DATA_DIR:-}" ]]; then
+    MFNAVIS_DATA_DIR="${MFNAVIS_HOME}/MFNavis_data"
 fi
-MFNAVIS_DATA_DIR="${PIFINDER_DATA_DIR}"
+
+export MFNAVIS_USER
+export MFNAVIS_GROUP
+export MFNAVIS_HOME
+export MFNAVIS_REPO_DIR
 export MFNAVIS_DATA_DIR
 
-export PIFINDER_USER
-export PIFINDER_GROUP
-export PIFINDER_HOME
-export PIFINDER_REPO_DIR
-export PIFINDER_DATA_DIR
-
-pifinder_render_config() {
+mfnavis_render_config() {
     local source_file="$1"
     local target_file="$2"
 
     sudo sed \
-        -e "s|__PIFINDER_USER__|${PIFINDER_USER}|g" \
-        -e "s|__PIFINDER_HOME__|${PIFINDER_HOME}|g" \
-        -e "s|__PIFINDER_REPO_DIR__|${PIFINDER_REPO_DIR}|g" \
-        -e "s|__PIFINDER_DATA_DIR__|${PIFINDER_DATA_DIR}|g" \
+        -e "s|__MFNAVIS_USER__|${MFNAVIS_USER}|g" \
+        -e "s|__MFNAVIS_HOME__|${MFNAVIS_HOME}|g" \
+        -e "s|__MFNAVIS_REPO_DIR__|${MFNAVIS_REPO_DIR}|g" \
+        -e "s|__MFNAVIS_DATA_DIR__|${MFNAVIS_DATA_DIR}|g" \
         "${source_file}" | sudo tee "${target_file}" >/dev/null
 }
 
-pifinder_prepare_wpa_supplicant_config() {
+mfnavis_prepare_wpa_supplicant_config() {
     sudo install -d -m 755 /etc/wpa_supplicant
     sudo touch /etc/wpa_supplicant/wpa_supplicant.conf
-    sudo chown "${PIFINDER_USER}:${PIFINDER_GROUP}" /etc/wpa_supplicant/wpa_supplicant.conf
+    sudo chown "${MFNAVIS_USER}:${MFNAVIS_GROUP}" /etc/wpa_supplicant/wpa_supplicant.conf
     sudo chmod 600 /etc/wpa_supplicant/wpa_supplicant.conf
 }
 
-pifinder_prepare_apsta_nat_config() {
-    if [[ ! -f /etc/mfnavis_apsta_nat.conf ]]; then
+mfnavis_prepare_apsta_nat_config() {
+    local config_path="${1:-/etc/mfnavis_apsta_nat.conf}"
+    if [[ ! -f "${config_path}" ]]; then
         printf "%s\n" \
             "# MFNavis AP+STA internet sharing setting" \
-            "PIFINDER_APSTA_SHARE_INTERNET=0" | sudo tee /etc/mfnavis_apsta_nat.conf >/dev/null
+            "MFNAVIS_APSTA_SHARE_INTERNET=0" | sudo tee "${config_path}" >/dev/null
+    # Earlier MFNavis installs used this key in the same config file.
+    elif sudo grep -q '^PIFINDER_APSTA_SHARE_INTERNET=' "${config_path}"; then
+        if sudo grep -q '^MFNAVIS_APSTA_SHARE_INTERNET=' "${config_path}"; then
+            sudo sed -i '/^PIFINDER_APSTA_SHARE_INTERNET=/d' "${config_path}"
+        else
+            sudo sed -i 's/^PIFINDER_APSTA_SHARE_INTERNET=/MFNAVIS_APSTA_SHARE_INTERNET=/' \
+                "${config_path}"
+        fi
     fi
-    sudo chmod 644 /etc/mfnavis_apsta_nat.conf
+    sudo chmod 644 "${config_path}"
 }
 
-pifinder_prepare_sta_band_config() {
-    if [[ ! -f /etc/mfnavis_sta_band.conf ]]; then
+mfnavis_prepare_sta_band_config() {
+    local config_path="${1:-/etc/mfnavis_sta_band.conf}"
+    if [[ ! -f "${config_path}" ]]; then
         printf "%s\n" \
             "# MFNavis STA band preference" \
-            "PIFINDER_STA_BAND=auto" | sudo tee /etc/mfnavis_sta_band.conf >/dev/null
+            "MFNAVIS_STA_BAND=auto" | sudo tee "${config_path}" >/dev/null
+    # Earlier MFNavis installs used this key in the same config file.
+    elif sudo grep -q '^PIFINDER_STA_BAND=' "${config_path}"; then
+        if sudo grep -q '^MFNAVIS_STA_BAND=' "${config_path}"; then
+            sudo sed -i '/^PIFINDER_STA_BAND=/d' "${config_path}"
+        else
+            sudo sed -i 's/^PIFINDER_STA_BAND=/MFNAVIS_STA_BAND=/' \
+                "${config_path}"
+        fi
     fi
-    sudo chmod 644 /etc/mfnavis_sta_band.conf
+    sudo chmod 644 "${config_path}"
 }
 
-pifinder_boot_config_path() {
+mfnavis_boot_config_path() {
     if [[ -e /boot/firmware/config.txt ]]; then
         printf "%s\n" "/boot/firmware/config.txt"
     else
@@ -98,17 +108,17 @@ pifinder_boot_config_path() {
     fi
 }
 
-pifinder_board_model() {
+mfnavis_board_model() {
     if [[ -r /proc/device-tree/model ]]; then
         tr -d '\0' </proc/device-tree/model
     fi
 }
 
-pifinder_board_profile() {
+mfnavis_board_profile() {
     local model="${1:-}"
 
     if [[ -z "${model}" ]]; then
-        model="$(pifinder_board_model)"
+        model="$(mfnavis_board_model)"
     fi
 
     case "${model}" in
@@ -124,8 +134,8 @@ pifinder_board_profile() {
     esac
 }
 
-pifinder_uart_overlay() {
-    case "$(pifinder_board_profile)" in
+mfnavis_uart_overlay() {
+    case "$(mfnavis_board_profile)" in
         pi5_class)
             printf "%s\n" "dtoverlay=uart2-pi5"
             ;;
@@ -143,8 +153,8 @@ pifinder_uart_overlay() {
 # NOTE(pi5): the RP1 pin function selector (func2=4) is a best-effort default
 # and should be confirmed on Pi 5 hardware together with pwm_chip=2 in
 # python/MFNavis/board_config.py.
-pifinder_pwm_overlay() {
-    case "$(pifinder_board_profile)" in
+mfnavis_pwm_overlay() {
+    case "$(mfnavis_board_profile)" in
         pi5_class)
             printf "%s\n" "dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4"
             ;;
@@ -154,8 +164,8 @@ pifinder_pwm_overlay() {
     esac
 }
 
-pifinder_gps_device() {
-    case "$(pifinder_board_profile)" in
+mfnavis_gps_device() {
+    case "$(mfnavis_board_profile)" in
         pi5_class)
             printf "%s\n" "/dev/ttyAMA2"
             ;;

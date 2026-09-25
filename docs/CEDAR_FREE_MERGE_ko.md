@@ -10,7 +10,7 @@ Cedar 미포함 소스를 유지하도록 경로를 고정하고, 검토되지 �
 
 ## 준비한 동작
 
-- 신규 설치 기본은 병합된 `main`이다. 검증 설치는 `PIFINDER_INSTALL_BRANCH`로
+- 신규 설치 기본은 병합된 `main`이다. 검증 설치는 `MFNAVIS_INSTALL_BRANCH`로
   명시한다. 설치는 Cedar-free marker/파일 목록을 검사하고 pinned MF를 빌드한다.
 - 기존 설치/갱신은 설치된 브랜치를 유지한다. detached HEAD와 추적 파일의
   로컬 변경은 거부하며, fast-forward만 허용한다. `release`로 자동 이동하지 않는다.

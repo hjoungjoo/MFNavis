@@ -26,4 +26,4 @@ def pytest_addoption(parser):
 def pytest_configure(config):
     url = config.getoption("--url", default=None)
     if url:
-        os.environ["PIFINDER_HOMEPAGE"] = url
+        os.environ["MFNAVIS_HOMEPAGE"] = url

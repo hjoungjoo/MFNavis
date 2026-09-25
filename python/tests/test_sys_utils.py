@@ -1145,11 +1145,18 @@ try:
     def test_apsta_nat_config_parse_defaults_off():
         assert not sys_utils.Network._parse_apsta_nat_config("")
         assert not sys_utils.Network._parse_apsta_nat_config(
-            "PIFINDER_APSTA_SHARE_INTERNET=0\n"
+            "MFNAVIS_APSTA_SHARE_INTERNET=0\n"
         )
         assert sys_utils.Network._parse_apsta_nat_config(
-            "PIFINDER_APSTA_SHARE_INTERNET=1\n"
+            "MFNAVIS_APSTA_SHARE_INTERNET=1\n"
         )
+
+    @pytest.mark.unit
+    def test_sta_band_preference_reads_mfnavis_setting(tmp_path, monkeypatch):
+        config = tmp_path / "mfnavis_sta_band.conf"
+        config.write_text("MFNAVIS_STA_BAND=5\n")
+        monkeypatch.setattr(sys_utils, "MFNAVIS_STA_BAND_CONF_PATH", str(config))
+        assert sys_utils.Network.get_sta_band_preference(None) == "5"
 
     @pytest.mark.unit
     def test_sta_band_preference_rewrites_scan_freq():
