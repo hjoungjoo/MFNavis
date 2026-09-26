@@ -106,6 +106,13 @@ Static cache generation does not start planet/comet timers or download comet
 data. A JPEG is moved to its final path only after the download is complete.
 Transient download failures produce a nonzero exit status; rerun the same command
 to retry. Objects outside SDSS coverage count as `unavailable`, not failed.
+The SDSS cutout API's `404` response with `image/jpeg` content means the
+coordinate is outside the survey footprint. Those responses and blank cutouts
+are recorded beside the JPEG path in `.unavailable.json` files, so subsequent
+runs avoid requesting the same unavailable cutout again. The record is reused
+only for the same coordinate, survey URL, and cutout settings; the image
+generator's `--force` option bypasses it. HTML `404` responses, server errors,
+and timeouts remain failures that can be retried.
 If an older version left a corrupt image, remove only that object's JPEG and
 rerun the command. Settings and observing records are unaffected.
 

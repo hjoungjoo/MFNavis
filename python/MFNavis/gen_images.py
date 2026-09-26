@@ -13,6 +13,7 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import sqlite3
 import sys
@@ -74,6 +75,39 @@ def save_image_atomically(image: Image.Image, path: str) -> None:
             os.unlink(temporary)
 
 
+def sdss_unavailable_cached(ra: float, dec: float, image_name: str) -> bool:
+    """Reuse coverage results only for the same coordinate and cutout settings."""
+    path = resolve_image_path(image_name, "SDSS") + ".unavailable.json"
+    try:
+        with open(path) as stream:
+            info = json.load(stream)
+        return isinstance(info, dict) and info == {
+            "url": SDSS_URL.format(ra=ra, dec=dec),
+            "reason": "out of range",
+        }
+    except (OSError, ValueError):
+        return False
+
+
+def _cache_sdss_unavailable(ra: float, dec: float, image_name: str) -> None:
+    path = resolve_image_path(image_name, "SDSS") + ".unavailable.json"
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(
+        prefix=".mfnavis-image-", suffix=".json", dir=directory
+    )
+    try:
+        with os.fdopen(fd, "w") as stream:
+            json.dump(
+                {"url": SDSS_URL.format(ra=ra, dec=dec), "reason": "out of range"},
+                stream,
+            )
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def check_sdss_image(image: Image.Image) -> bool:
     """Check SDSS image for defects (blank/out-of-range)."""
     blank = True
@@ -120,11 +154,18 @@ def fetch_sdss(
     url = SDSS_URL.format(ra=ra, dec=dec)
     try:
         resp = session.get(url, timeout=60)
+        content_type = resp.headers.get("Content-Type", "").split(";", 1)[0].lower()
+        if resp.status_code == 404 and content_type.strip() == "image/jpeg":
+            # SciServer's image API returns a JPEG with HTTP 404 outside the
+            # survey footprint. HTML 404s still indicate a service/URL failure.
+            _cache_sdss_unavailable(ra, dec, image_name)
+            return False, "out of range"
         if resp.status_code != 200:
             return False, f"HTTP {resp.status_code}"
         img: Image.Image = Image.open(BytesIO(resp.content))
         img = img.convert("L")
         if not check_sdss_image(img):
+            _cache_sdss_unavailable(ra, dec, image_name)
             return False, "out of range"
         img = ImageOps.autocontrast(img)
         save_image_atomically(img, path)
@@ -154,10 +195,12 @@ def fetch_object(
 
     if do_sdss:
         path = resolve_image_path(image_name, "SDSS")
-        if force or not cached_image_exists(path):
-            results["SDSS"] = fetch_sdss(session, ra, dec, image_name)
-        else:
+        if not force and cached_image_exists(path):
             results["SDSS"] = (True, "exists")
+        elif not force and sdss_unavailable_cached(ra, dec, image_name):
+            results["SDSS"] = (False, "out of range")
+        else:
+            results["SDSS"] = fetch_sdss(session, ra, dec, image_name)
 
     return image_name, results
 

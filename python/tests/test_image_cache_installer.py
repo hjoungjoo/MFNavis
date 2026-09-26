@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import sys
+from types import SimpleNamespace
 
 from PIL import Image
 import pytest
@@ -163,6 +164,112 @@ def test_sdss_outside_survey_is_not_a_transient_failure(tmp_path, monkeypatch, c
     monkeypatch.setattr(sys, "argv", ["gen_images", "--sdss", "--workers", "1"])
     assert gen_images.main() == 0
     assert "1 unavailable, 0 failed" in capsys.readouterr().out
+
+
+def _sdss_session(status, content_type, content=b"cutout"):
+    response = gen_images.requests.Response()
+    response.status_code = status
+    response.headers["Content-Type"] = content_type
+    response._content = content
+    return SimpleNamespace(get=lambda *_args, **_kwargs: response)
+
+
+@pytest.mark.parametrize("content_type", ["image/jpeg", "Image/JPEG; charset=utf-8"])
+def test_sdss_footprint_404_is_cached_and_resumable(
+    tmp_path, monkeypatch, content_type
+):
+    monkeypatch.setattr(gen_images, "BASE_IMAGE_PATH", str(tmp_path))
+    session = _sdss_session(404, content_type)
+    assert gen_images.fetch_sdss(session, 2.14, -33.86, "NGC10") == (
+        False,
+        "out of range",
+    )
+    assert gen_images.sdss_unavailable_cached(2.14, -33.86, "NGC10")
+    assert not Path(gen_images.resolve_image_path("NGC10", "SDSS")).exists()
+    monkeypatch.setattr(
+        gen_images, "get_objects_to_fetch", lambda: [(2.14, -33.86, "NGC10")]
+    )
+    monkeypatch.setattr(
+        gen_images.requests.Session,
+        "get",
+        lambda *_args, **_kwargs: pytest.fail("coverage result must be reused"),
+    )
+    monkeypatch.setattr(sys, "argv", ["gen_images", "--sdss", "--workers", "1"])
+    assert gen_images.main() == 0
+
+
+@pytest.mark.parametrize(
+    "status,content_type",
+    [
+        (404, "text/html"),
+        (404, "application/json"),
+        (500, "image/jpeg"),
+        (429, "text/plain"),
+    ],
+)
+def test_sdss_service_errors_remain_retryable(
+    tmp_path, monkeypatch, status, content_type
+):
+    monkeypatch.setattr(gen_images, "BASE_IMAGE_PATH", str(tmp_path))
+    assert gen_images.fetch_sdss(
+        _sdss_session(status, content_type), 2.14, -33.86, "NGC10"
+    ) == (False, f"HTTP {status}")
+    assert not gen_images.sdss_unavailable_cached(2.14, -33.86, "NGC10")
+    assert not list(tmp_path.rglob("*.unavailable.json"))
+
+
+def test_sdss_timeout_is_not_cached_as_unavailable(tmp_path, monkeypatch):
+    monkeypatch.setattr(gen_images, "BASE_IMAGE_PATH", str(tmp_path))
+
+    def timeout(*_args, **_kwargs):
+        raise gen_images.requests.Timeout("timed out")
+
+    assert gen_images.fetch_sdss(
+        SimpleNamespace(get=timeout), 2.14, -33.86, "NGC10"
+    ) == (False, "timed out")
+    assert not list(tmp_path.rglob("*.unavailable.json"))
+
+
+def test_sdss_force_rechecks_cached_unavailability(tmp_path, monkeypatch):
+    monkeypatch.setattr(gen_images, "BASE_IMAGE_PATH", str(tmp_path))
+    gen_images.fetch_sdss(_sdss_session(404, "image/jpeg"), 2.14, -33.86, "NGC10")
+    image = BytesIO()
+    Image.new("L", (256, 256), 128).save(image, format="JPEG")
+    _name, results = gen_images.fetch_object(
+        _sdss_session(200, "image/jpeg", image.getvalue()),
+        2.14,
+        -33.86,
+        "NGC10",
+        False,
+        True,
+        True,
+    )
+    assert results["SDSS"] == (True, "")
+    assert gen_images.cached_image_exists(
+        gen_images.resolve_image_path("NGC10", "SDSS")
+    )
+
+
+@pytest.mark.parametrize("change", ["coordinate", "survey", "corrupt"])
+def test_sdss_coverage_cache_is_validated(tmp_path, monkeypatch, change):
+    monkeypatch.setattr(gen_images, "BASE_IMAGE_PATH", str(tmp_path))
+    gen_images.fetch_sdss(_sdss_session(404, "image/jpeg"), 2.14, -33.86, "NGC10")
+    ra = 2.14
+    if change == "coordinate":
+        ra = 3.0
+    elif change == "survey":
+        monkeypatch.setattr(
+            gen_images, "SDSS_URL", gen_images.SDSS_URL.replace("dr18", "dr19")
+        )
+    else:
+        marker = Path(
+            gen_images.resolve_image_path("NGC10", "SDSS") + ".unavailable.json"
+        )
+        marker.write_text("{")
+    _name, results = gen_images.fetch_object(
+        _sdss_session(500, "text/plain"), ra, -33.86, "NGC10", False, True, False
+    )
+    assert results["SDSS"] == (False, "HTTP 500")
 
 
 def test_legacy_downloader_rejects_non_jpeg(tmp_path):
