@@ -859,7 +859,7 @@ try:
             raise AssertionError("edits must not touch nmcli/wpa_cli")
 
         monkeypatch.setattr(sys_utils.Network, "_nmcli", staticmethod(forbidden))
-        monkeypatch.setattr(sys_utils, "wpa_cli", forbidden)
+        monkeypatch.setattr(sys_utils.sh, "sudo", forbidden)
 
         network = sys_utils.Network.__new__(sys_utils.Network)
         network._wifi_mode = sys_utils.WIFI_MODE_CLIENT
@@ -1358,7 +1358,12 @@ try:
         monkeypatch.setattr(sys_utils, "bt_pairing_needs_wifi_pause", lambda: True)
         monkeypatch.setattr(sys_utils, "_capture_wlan_connection", lambda: None)
         monkeypatch.setattr(
-            sys_utils.subprocess, "run", lambda cmd, **k: run_cmds.append(cmd)
+            sys_utils.threading, "Timer", lambda *a: SimpleNamespace(start=lambda: None)
+        )
+        monkeypatch.setattr(
+            sys_utils.subprocess,
+            "run",
+            lambda cmd, **k: (run_cmds.append(cmd) or SimpleNamespace(returncode=0)),
         )
         monkeypatch.setattr(
             sys_utils.subprocess, "Popen", lambda cmd, **k: popen_cmds.append(cmd)
@@ -1385,9 +1390,14 @@ try:
         # a detached watchdog is armed that restores wifi after the timeout
         assert len(popen_cmds) == 1
         watchdog = popen_cmds[0]
-        assert watchdog[:4] == ["sudo", "-n", "setsid", "bash"]
-        assert "sleep 42" in watchdog[-1]
-        assert "radio wifi on" in watchdog[-1]
+        assert watchdog == [
+            "sudo",
+            "-n",
+            "/usr/bin/setsid",
+            "/usr/bin/bash",
+            "/usr/local/lib/mfnavis/restore_wifi.sh",
+            "42",
+        ]
 
     @pytest.mark.unit
     def test_pause_wifi_skipped_when_no_2_4ghz_link(monkeypatch):
@@ -1461,9 +1471,12 @@ try:
         sys_utils.resume_wifi_after_bt_pairing()
         assert len(run_cmds) == 1
         restore = run_cmds[0]
-        assert restore[:4] == ["sudo", "-n", "bash", "-c"]
-        assert "radio wifi on" in restore[-1]
-        assert f"set {sys_utils.BT_PAIRING_AP_INTERFACE} up" in restore[-1]
+        assert restore == [
+            "sudo",
+            "-n",
+            "/usr/bin/bash",
+            "/usr/local/lib/mfnavis/restore_wifi.sh",
+        ]
 
     @pytest.mark.unit
     def test_clean_bluetoothctl_output_strips_readline_markers():

@@ -16,6 +16,7 @@ MFNavis는 PiFinder에서 파생된 제품이다. PiFinder는 원 프로젝트�
 | MFDS legacy MIT | 원문상의 PiFinder contributors | [MIT 원문](LICENSES/MIT-MFDS-legacy.txt); 이전 허락 유지 |
 | Tetra3 및 포함된 파생 solver | `python/PiFinder/tetra3/VENDORED.md`와 각 원본 파일의 작성자 | [Apache-2.0](LICENSES/Apache-2.0-Tetra3.txt); 원본 attribution 유지 |
 | SEP 1.4.1 | [SEP authors](LICENSES/SEP-AUTHORS.md); 포함된 SExtractor 코드의 원래 저작자 | LGPL-3.0-or-later: [LGPLv3](LICENSES/LGPL-3.0.txt) + GPLv3; 수정·교체 가능한 배포와 대응소스 제공 |
+| 혜성 일괄 궤도 계산 | Skyfield 1.55 `keplerlib.propagate`, Brandon Rhodes; MagicFly의 궤도 축 수정본 `python/MFNavis/comet_propagation.py` | [MIT 원문](LICENSES/MIT-Skyfield.txt); 소스에도 원본 고지 유지 |
 | Python 의존성과 포함된 하위 라이브러리 | 설치 패키지별 원저작자 | 판매 이미지에서 수집한 `OPEN_SOURCE_LICENSES/python/`의 원문·NOTICE·METADATA |
 | Debian/Raspberry Pi OS 및 native 의존성 | 설치 패키지별 원저작자 | `OPEN_SOURCE_LICENSES/os/`의 copyright 원문 및 패키지 목록 |
 | MFNavis Korean 웹 글꼴 | 기존 Sarasa 번들에서 한글만 추출·이름 변경; Renzhi Li 및 원저작자 | [SIL Open Font License 1.1 및 저작권 고지](python/views/css/mfnavis-korean.LICENSE.txt); `scripts/build_web_korean_font.py`로 재생성 |

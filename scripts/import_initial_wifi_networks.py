@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import configparser
+import argparse
 import os
+import pwd
 import re
 from pathlib import Path
 
@@ -18,6 +20,9 @@ NM_DIR = Path(
     os.environ.get(
         "MFNAVIS_NM_CONNECTION_DIR", "/etc/NetworkManager/system-connections"
     )
+)
+NM_RUNTIME_DIR = Path(
+    os.environ.get("MFNAVIS_NM_RUNTIME_DIR", "/run/NetworkManager/system-connections")
 )
 BOOT_WPA_PATHS = [
     Path("/boot/firmware/wpa_supplicant.conf"),
@@ -119,9 +124,7 @@ def append_networks(path: Path, networks: list[dict[str, str]]) -> int:
 
     with path.open("a") as wpa_conf:
         if "ctrl_interface=" not in existing_contents:
-            wpa_conf.write(
-                "ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev\n"
-            )
+            wpa_conf.write("ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev\n")
             wpa_conf.write("update_config=1\n")
             wpa_conf.write("country=US\n")
         for network in new_networks:
@@ -138,18 +141,40 @@ def append_networks(path: Path, networks: list[dict[str, str]]) -> int:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--initial-only", action="store_true")
+    parser.add_argument("--owner")
+    args = parser.parse_args()
+    marker = WPA_PATH.with_suffix(".imported")
+    if args.initial_only and marker.exists():
+        return 0
+    if (
+        args.initial_only
+        and WPA_PATH.exists()
+        and parse_wpa_networks(WPA_PATH.read_text())
+    ):
+        marker.touch(mode=0o600)
+        return 0
     networks: list[dict[str, str]] = []
     for boot_path in BOOT_WPA_PATHS:
         if boot_path.exists():
             networks.extend(parse_wpa_networks(boot_path.read_text()))
 
-    if NM_DIR.exists():
-        for path in sorted(NM_DIR.glob("*.nmconnection")):
+    for directory in (NM_DIR, NM_RUNTIME_DIR):
+        for path in sorted(directory.glob("*.nmconnection")):
             network = parse_nm_connection(path)
             if network:
                 networks.append(network)
 
+    # Newly created files must never briefly expose Wi-Fi passwords.
+    os.umask(0o077)
     imported = append_networks(WPA_PATH, networks)
+    if args.owner and WPA_PATH.exists():
+        owner = pwd.getpwnam(args.owner)
+        os.chown(WPA_PATH, owner.pw_uid, owner.pw_gid)
+        os.chmod(WPA_PATH, 0o600)
+    if args.initial_only and imported:
+        marker.touch(mode=0o600)
     print(f"Imported {imported} Wi-Fi network(s) into {WPA_PATH}")
     return 0
 

@@ -1,7 +1,12 @@
 #!/usr/bin/python
 import sys
 
-from PiFinder.boot_config import get_boot_config_path
+if __package__:
+    from PiFinder.boot_config import get_boot_config_path
+else:
+    # Installed alongside this script for privileged execution, independent
+    # of the service's working directory and virtual environment.
+    from boot_config import get_boot_config_path
 
 
 def switch_boot(cam_type: str) -> None:

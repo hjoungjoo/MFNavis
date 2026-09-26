@@ -148,9 +148,7 @@ def test_calc_comets_empty_without_location():
 
 @pytest.mark.unit
 def test_vectorized_single_comet_matches_oracle():
-    """N==1: skyfield's propagate() squeezes one comet to shape (3,); the
-    ndim==1 reshape in the vectorized path must restore (3, 1).  Not hit by
-    the multi-comet tests, so cover it explicitly."""
+    """One comet must retain the same position, magnitude and distances."""
     sf_utils.set_location(_LAT, _LON, _ALT)
     df = comets._load_comets_dataframe()
     one = df.iloc[[0]].copy()
@@ -169,6 +167,40 @@ def test_vectorized_single_comet_matches_oracle():
     assert v["mag"] == pytest.approx(o["mag"], abs=1e-6)
     assert v["earth_distance"] == pytest.approx(o["earth_distance"], rel=1e-9)
     assert v["sun_distance"] == pytest.approx(o["sun_distance"], rel=1e-9)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("count", [1, 4])
+def test_batched_propagation_preserves_positions_and_velocities_over_time(count):
+    """Orbit and time axes must match independent upstream propagations."""
+    from skyfield.data import mpc
+    from skyfield.constants import GM_SUN_Pitjeva_2005_km3_s2 as GM_SUN
+    from skyfield.keplerlib import propagate as upstream_propagate
+
+    orbits = mpc._comet_orbits(
+        _spread_sample(comets._load_comets_dataframe(), count).iloc[:count],
+        sf_utils.ts,
+        GM_SUN,
+    )
+    target_times = sf_utils.ts.from_datetime(_DT).tt + np.array([-20.0, 0.0, 20.0])
+    position, velocity = comets.propagate(
+        orbits.position_at_epoch.au,
+        orbits.velocity_at_epoch.au_per_d,
+        orbits.epoch.tt,
+        target_times,
+        orbits.mu_au3_d2,
+    )
+    assert position.shape == velocity.shape == (3, count, 3)
+    for i in range(count):
+        expected_position, expected_velocity = upstream_propagate(
+            orbits.position_at_epoch.au[:, i],
+            orbits.velocity_at_epoch.au_per_d[:, i],
+            orbits.epoch.tt[i],
+            target_times,
+            orbits.mu_au3_d2,
+        )
+        np.testing.assert_allclose(position[:, i], expected_position, rtol=1e-12)
+        np.testing.assert_allclose(velocity[:, i], expected_velocity, rtol=1e-12)
 
 
 @pytest.mark.unit

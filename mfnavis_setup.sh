@@ -35,7 +35,7 @@ if [ ! -e /usr/sbin/policy-rc.d ] && [ ! -L /usr/sbin/policy-rc.d ]; then
 fi
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    git python3-pip python3-venv python3-dev build-essential pkg-config \
+    git sudo python3-pip python3-venv python3-dev build-essential pkg-config \
     samba samba-common-bin dnsmasq hostapd dhcpcd gpsd wget iw nftables \
     libinput10 libcap2-bin libjpeg-dev zlib1g-dev libfreetype6-dev \
     liblcms2-dev libopenjp2-7-dev libtiff-dev libffi-dev libssl-dev \
@@ -330,11 +330,12 @@ mfnavis_render_config "${MFNAVIS_REPO_DIR}/pi_config_files/mfnavis_apsta_prepare
 mfnavis_render_config "${MFNAVIS_REPO_DIR}/pi_config_files/mfnavis_apsta_monitor.service" /lib/systemd/system/mfnavis_apsta_monitor.service
 mfnavis_configure_python_services
 bash "${MFNAVIS_REPO_DIR}/scripts/install_service_control.sh" "${MFNAVIS_USER}"
+bash "${MFNAVIS_REPO_DIR}/scripts/install_runtime_control.sh" "${MFNAVIS_USER}"
 sudo systemctl daemon-reload
 sudo systemctl enable mfnavis
 sudo systemctl enable mfnavis_splash
 
-for group in input video render dialout gpio i2c spi; do
+for group in input video render dialout gpio i2c spi netdev bluetooth; do
     if getent group "${group}" >/dev/null; then
         sudo usermod -aG "${group}" "${MFNAVIS_USER}"
     fi

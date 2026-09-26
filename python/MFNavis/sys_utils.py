@@ -12,6 +12,7 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
 import pam
@@ -19,7 +20,7 @@ import requests
 import sh
 
 try:
-    from sh import wpa_cli, passwd
+    from sh import passwd
 except ImportError:
     # Off-device (CI, dev machines) these binaries may not exist. The code
     # paths that call them only run on the Pi, so fail at call time instead
@@ -30,7 +31,6 @@ except ImportError:
 
         return _fail
 
-    wpa_cli = _missing_command("wpa_cli")
     passwd = _missing_command("passwd")
 
 import socket
@@ -2682,7 +2682,7 @@ class Network:
         """
         self._sync_networkmanager_profiles()
         if self._wifi_mode in (WIFI_MODE_CLIENT, WIFI_MODE_APSTA):
-            wpa_cli("reconfigure")
+            sh.sudo("-n", "wpa_cli", "-i", "wlan0", "reconfigure")
         self.sta_dirty = False
 
     def connect_wifi_network(
@@ -3011,7 +3011,7 @@ class Network:
         lines = Network._rewrite_key_value_lines(lines, updates, remove_keys)
         with open(HOSTAPD_TMP_PATH, "w") as new_conf:
             new_conf.writelines(lines)
-        sh.sudo("cp", HOSTAPD_TMP_PATH, HOSTAPD_CONF_PATH)
+        sh.sudo("-n", "cp", HOSTAPD_TMP_PATH, HOSTAPD_CONF_PATH)
 
     def set_ap_name(self, ap_name):
         if ap_name == self.get_ap_name():
@@ -3145,7 +3145,7 @@ class Network:
         tmp_path = f"/tmp/{path.strip('/').replace('/', '_')}"
         with open(tmp_path, "w") as tmp_file:
             tmp_file.write(contents)
-        sh.sudo("cp", tmp_path, path)
+        sh.sudo("-n", "cp", tmp_path, path)
 
     def _update_dhcpcd_ap_file(self, path: str, interface: str, ap_ip: str) -> None:
         try:
@@ -3261,7 +3261,7 @@ class Network:
     def set_host_name(self, hostname) -> None:
         if hostname == self.get_host_name():
             return
-        _result = sh.sudo("hostnamectl", "set-hostname", hostname)
+        _result = sh.sudo("-n", "hostnamectl", "set-hostname", hostname)
         self._update_etc_hosts(hostname)
 
     @staticmethod
@@ -3298,7 +3298,7 @@ class Network:
         new_contents = Network._rewrite_hosts(contents, new_hostname)
         with open("/tmp/hosts", "w") as new_hosts:
             new_hosts.write(new_contents)
-        sh.sudo("cp", "/tmp/hosts", "/etc/hosts")
+        sh.sudo("-n", "cp", "/tmp/hosts", "/etc/hosts")
 
     def wifi_mode(self):
         return self._wifi_mode
@@ -3339,19 +3339,19 @@ class Network:
 
 def go_wifi_ap():
     logger.info("SYS: Switching to AP")
-    sh.sudo(str(utils.pifinder_dir / "switch-ap.sh"))
+    sh.sudo("-n", str(utils.pifinder_dir / "switch-ap.sh"))
     return True
 
 
 def go_wifi_cli():
     logger.info("SYS: Switching to Client")
-    sh.sudo(str(utils.pifinder_dir / "switch-cli.sh"))
+    sh.sudo("-n", str(utils.pifinder_dir / "switch-cli.sh"))
     return True
 
 
 def go_wifi_apsta():
     logger.info("SYS: Switching to AP+STA")
-    sh.sudo(str(utils.pifinder_dir / "switch-apsta.sh"))
+    sh.sudo("-n", str(utils.pifinder_dir / "switch-apsta.sh"))
     return True
 
 
@@ -3374,27 +3374,6 @@ def ensure_uhid_loaded() -> bool:
     except Exception as e:
         logger.warning("SYS: could not modprobe uhid: %s", e)
     return os.path.exists("/dev/uhid")
-
-
-def _restore_wifi_command() -> str:
-    """
-    Shell command that brings WiFi (client + AP) back online.
-
-    ``radio wifi on`` only re-enables the radio; reassociating the client is
-    otherwise left to NetworkManager autoconnect and can lag 10-30s, which reads
-    as "WiFi never came back". We therefore explicitly bring the exact profile
-    that was active back up (its UUID was stashed at pause time), falling back to
-    ``device connect``. hostapd is only restarted if it was already running, so
-    client-only-mode devices don't get an access point started behind their back.
-    """
-    return (
-        f"uuid=$(cat {BT_PAIRING_WIFI_STATE_FILE} 2>/dev/null); "
-        f"{NMCLI_COMMAND} radio wifi on; "
-        f'if [ -n "$uuid" ]; then {NMCLI_COMMAND} connection up "$uuid" 2>/dev/null; '
-        f"else {NMCLI_COMMAND} device connect {BT_PAIRING_STA_INTERFACE} 2>/dev/null; fi; "
-        f"ip link set {BT_PAIRING_AP_INTERFACE} up 2>/dev/null; "
-        "systemctl is-active --quiet hostapd && systemctl restart hostapd || true"
-    )
 
 
 def _capture_wlan_connection() -> None:
@@ -3492,6 +3471,27 @@ def pause_wifi_for_bt_pairing(
             "SYS: WiFi idle or 5GHz-only; skipping WiFi pause for Bluetooth pairing"
         )
         return False
+    watchdog_command = [
+        "/usr/bin/setsid",
+        "/usr/bin/bash",
+        "/usr/local/lib/mfnavis/restore_wifi.sh",
+        str(max(0, int(safety_timeout))),
+    ]
+    # Never drop the link when the independent recovery command is forbidden.
+    try:
+        permission = subprocess.run(
+            ["sudo", "-n", "-l", *watchdog_command],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if permission.returncode != 0:
+            logger.warning("SYS: WiFi restore permission missing; skipping pause")
+            return False
+    except (OSError, subprocess.TimeoutExpired):
+        logger.warning("SYS: Could not check WiFi restore permission; skipping pause")
+        return False
     # Remember exactly which client profile is up so we can bring it back cleanly.
     _capture_wlan_connection()
     # In-process fallback: restore WiFi even if the caller's resume path never
@@ -3511,20 +3511,14 @@ def pause_wifi_for_bt_pairing(
     # even if this process dies while WiFi is down.
     try:
         subprocess.Popen(
-            [
-                "sudo",
-                "-n",
-                "setsid",
-                "bash",
-                "-c",
-                f"sleep {int(safety_timeout)}; {_restore_wifi_command()}",
-            ],
+            ["sudo", "-n", *watchdog_command],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
     except Exception as e:
         logger.warning("SYS: could not arm WiFi restore watchdog: %s", e)
+        return False
     logger.info("SYS: pausing WiFi for Bluetooth pairing")
     subprocess.run(
         ["sudo", "-n", "ip", "link", "set", BT_PAIRING_AP_INTERFACE, "down"],
@@ -3545,7 +3539,7 @@ def resume_wifi_after_bt_pairing() -> None:
     """Bring WiFi (client + AP) back after a pairing attempt. Idempotent."""
     logger.info("SYS: resuming WiFi after Bluetooth pairing")
     subprocess.run(
-        ["sudo", "-n", "bash", "-c", _restore_wifi_command()],
+        ["sudo", "-n", "/usr/bin/bash", "/usr/local/lib/mfnavis/restore_wifi.sh"],
         capture_output=True,
         text=True,
         check=False,
@@ -3853,7 +3847,7 @@ def remove_backup():
     """
     Removes backup file
     """
-    sh.sudo("rm", BACKUP_PATH, _ok_code=(0, 1))
+    Path(BACKUP_PATH).unlink(missing_ok=True)
 
 
 def backup_userdata():
@@ -3912,7 +3906,7 @@ def restart_system() -> None:
     Restarts the system
     """
     logger.info("SYS: Initiating System Restart")
-    sh.sudo("shutdown", "-r", "now")
+    sh.sudo("-n", "shutdown", "-r", "now")
 
 
 def shutdown() -> None:
@@ -3920,7 +3914,7 @@ def shutdown() -> None:
     shuts down the system
     """
     logger.info("SYS: Initiating Shutdown")
-    sh.sudo("shutdown", "now")
+    sh.sudo("-n", "shutdown", "now")
 
 
 def update_software():
@@ -3948,7 +3942,9 @@ def recover_wifi():
     """
     logger.info("SYS: Running Wi-Fi recovery")
     try:
-        sh.sudo("bash", str(utils.pifinder_dir / "scripts" / "mf_wifi_recover.sh"))
+        sh.sudo(
+            "-n", "bash", str(utils.pifinder_dir / "scripts" / "mf_wifi_recover.sh")
+        )
     except Exception:
         logger.exception("SYS: Wi-Fi recovery failed")
         return False
@@ -3983,17 +3979,23 @@ def change_password(username, current_password, new_password):
 
 def switch_cam_imx477() -> None:
     logger.info("SYS: Switching cam to imx477")
-    sh.sudo("python", "-m", "PiFinder.switch_camera", "imx477")
+    sh.sudo(
+        "-n", "/usr/bin/python3", "/usr/local/lib/mfnavis/switch_camera.py", "imx477"
+    )
 
 
 def switch_cam_imx296() -> None:
     logger.info("SYS: Switching cam to imx296")
-    sh.sudo("python", "-m", "PiFinder.switch_camera", "imx296")
+    sh.sudo(
+        "-n", "/usr/bin/python3", "/usr/local/lib/mfnavis/switch_camera.py", "imx296"
+    )
 
 
 def switch_cam_imx462() -> None:
     logger.info("SYS: Switching cam to imx462")
-    sh.sudo("python", "-m", "PiFinder.switch_camera", "imx462")
+    sh.sudo(
+        "-n", "/usr/bin/python3", "/usr/local/lib/mfnavis/switch_camera.py", "imx462"
+    )
 
 
 def get_default_gpsd_device() -> str:
@@ -4113,10 +4115,10 @@ def update_gpsd_config(baud_rate: int, device: str = DEFAULT_GPSD_DEVICE) -> Non
             f.writelines(updated_lines)
 
         # Copy the temp file to the actual location with sudo
-        sh.sudo("cp", "/tmp/gpsd.conf", "/etc/default/gpsd")
+        sh.sudo("-n", "cp", "/tmp/gpsd.conf", "/etc/default/gpsd")
 
         # Restart GPSD service
-        sh.sudo("systemctl", "restart", "gpsd")
+        sh.sudo("-n", "systemctl", "restart", "gpsd")
 
         logger.info("SYS: GPSD configuration updated and service restarted")
 

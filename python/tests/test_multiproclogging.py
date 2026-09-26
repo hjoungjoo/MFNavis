@@ -157,3 +157,36 @@ def test_beforestart():
         assert "Another msg" in str
         # print(str)
         # assert False
+
+
+def test_join_drains_all_registered_queues(tmp_path):
+    """An early end marker must not discard another producer's backlog."""
+    log_file = tmp_path / "drained.log"
+    logger = mpl.MultiprocLogging(out_file=log_file)
+    first = logger.get_queue()
+    second = logger.get_queue()
+    first.put(None)
+    second.put(
+        logging.LogRecord(
+            "SecondProducer", logging.INFO, __file__, 0, "Pending record", (), None
+        )
+    )
+    logger.start(initial_queue=first)
+    logger.join()
+    assert "SecondProducer" in log_file.read_text()
+    assert "Pending record" in log_file.read_text()
+
+
+def test_join_detaches_handlers_for_stopped_sink(tmp_path):
+    logger = mpl.MultiprocLogging(out_file=tmp_path / "stopped.log")
+    logger.get_queue()
+    logger.start()
+    logger.join()
+
+    assert not any(
+        isinstance(handler, logging.handlers.QueueHandler)
+        and handler.queue in logger._queues
+        for handler in logging.getLogger().handlers
+    )
+    # Later log calls must not enqueue into an abandoned pipe.
+    logging.getLogger("AfterJoin").info("Consumer has stopped")

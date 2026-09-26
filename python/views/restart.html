@@ -18,10 +18,20 @@
 
 {% block scripts %}
 <script>
-setTimeout(function(){
+const redirectTimer = setTimeout(function(){
     location.href="/";
     }, 40000); // 40000 milliseconds = 40 seconds
 
 fetch("/system/restart?" + new Date().getTime())
+    .then(async function(response) {
+        if (!response.ok) {
+            throw new Error(await response.text());
+        }
+    })
+    .catch(function(error) {
+        clearTimeout(redirectTimer);
+        document.querySelector("h5").textContent = error.message;
+        document.querySelector(".progress").style.display = "none";
+    });
 </script>
 {% endblock %}

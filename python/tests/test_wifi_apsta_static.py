@@ -88,8 +88,11 @@ def test_mode_switch_scripts_manage_apsta_services():
     assert 'echo -n "AP+STA"' in switch_apsta
     assert "mfnavis_apsta_prepare" in switch_apsta
     assert "mfnavis_apsta_monitor" in switch_apsta
-    assert 'mfnavis_apsta.sh" cleanup' in switch_ap
-    assert 'mfnavis_apsta.sh" cleanup' in switch_cli
+    for script in (switch_apsta, switch_ap, switch_cli):
+        assert "nmcli device connect" not in script
+        assert 'mfnavis_apsta.sh" prepare' not in script
+        assert 'mfnavis_apsta.sh" cleanup' not in script
+        assert "systemctl stop" not in script
 
 
 def test_wifi_profile_import_is_installed_by_setup_and_update():

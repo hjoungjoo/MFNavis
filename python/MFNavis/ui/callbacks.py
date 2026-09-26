@@ -16,8 +16,10 @@ import json
 import os
 import time
 from datetime import datetime
+from functools import wraps
 
 import pytz
+import sh
 
 from typing import Any, Optional, TYPE_CHECKING
 from PiFinder import timez
@@ -293,6 +295,21 @@ def get_camera_exposure_star_display(ui_module: UIModule) -> str:
     return _camera_exposure_suffix(ui_module, "auto_star")
 
 
+def _device_operation(callback):
+    """Keep the device menu usable when a privileged command is rejected."""
+
+    @wraps(callback)
+    def run(ui_module, *args, **kwargs):
+        try:
+            return callback(ui_module, *args, **kwargs)
+        except (sh.ErrorReturnCode, OSError) as error:
+            logger.error("Device operation failed: %s", type(error).__name__)
+            ui_module.message(_("Operation failed"), 3)
+
+    return run
+
+
+@_device_operation
 def shutdown(ui_module: UIModule) -> None:
     """
     shuts down the Pi
@@ -418,6 +435,7 @@ def indi_restart_driver(ui_module: UIModule) -> None:
     )
 
 
+@_device_operation
 def restart_system(ui_module: UIModule) -> None:
     """
     Restarts the system
@@ -456,6 +474,7 @@ def _boot_camera_id() -> str:
     return cam_id
 
 
+@_device_operation
 def _switch_camera(ui_module: UIModule, cam_type: str, variant: Optional[str]) -> None:
     """Apply a Camera Type selection: sensor overlay plus mono/colour variant.
 
@@ -792,18 +811,21 @@ def switch_language(ui_module: UIModule) -> None:
         restart_pifinder(ui_module)
 
 
+@_device_operation
 def go_wifi_ap(ui_module: UIModule) -> None:
     ui_module.message(_("WiFi to AP"), 2)
     sys_utils.go_wifi_ap()
     restart_system(ui_module)
 
 
+@_device_operation
 def go_wifi_cli(ui_module: UIModule) -> None:
     ui_module.message(_("WiFi to Client"), 2)
     sys_utils.go_wifi_cli()
     restart_system(ui_module)
 
 
+@_device_operation
 def go_wifi_apsta(ui_module: UIModule) -> None:
     ui_module.message(_("WiFi to AP+STA"), 2)
     sys_utils.go_wifi_apsta()

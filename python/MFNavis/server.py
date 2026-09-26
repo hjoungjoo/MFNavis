@@ -9,6 +9,7 @@ import sys
 import pwd
 import multiprocessing
 import threading
+import sh
 from datetime import datetime, timezone
 
 import pydeepskylog as pds
@@ -373,6 +374,14 @@ class Server:
         logger.debug(f"Template folder path: {views2_path}")
 
         app = Flask(__name__, template_folder=views2_path)
+
+        @app.errorhandler(sh.ErrorReturnCode)
+        @app.errorhandler(PermissionError)
+        def system_command_failed(error):
+            # Privileged command output can include credentials.
+            logger.error("Device operation failed: %s", type(error).__name__)
+            return _("Device operation failed. Check service permissions."), 503
+
         app.secret_key = SESSION_SECRET
         app.config["BABEL_DEFAULT_LOCALE"] = DEFAULT_WEB_LANGUAGE
         app.config["BABEL_TRANSLATION_DIRECTORIES"] = os.path.abspath(
@@ -992,6 +1001,19 @@ class Server:
                 )
             except ValueError as e:
                 return _render_network_page(error_message=str(e))
+            except (sh.ErrorReturnCode, OSError) as e:
+                # Command output may contain network credentials. Keep it out
+                # of both the response and the application log.
+                logger.error(
+                    "Network settings could not be applied: %s", type(e).__name__
+                )
+                return _render_network_page(
+                    error_message=_(
+                        "Could not save or apply network settings. Check the "
+                        "MFNavis network permissions and system configuration. "
+                        "Some settings may have been saved; no restart was requested."
+                    )
+                ), 503
 
         @app.route("/tools/pwchange", methods=["POST"])
         @auth_required

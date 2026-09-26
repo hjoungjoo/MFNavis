@@ -6674,6 +6674,18 @@ msgstr "관측 기록을 저장하려면 관측지와 시각이 필요합니다.
 #~ msgid "Image Format"
 #~ msgstr "이미지 형식"
 
+msgid "Applying network settings"
+msgstr "네트워크 설정 적용 중"
+
+msgid "Preparing to restart. Please wait."
+msgstr "재시작을 준비하고 있습니다. 잠시 기다려 주세요."
+
+msgid "Device operation failed. Check service permissions."
+msgstr "장비 작업에 실패했습니다. 서비스 권한을 확인해 주세요."
+
+msgid "Could not save or apply network settings. Check the MFNavis network permissions and system configuration. Some settings may have been saved; no restart was requested."
+msgstr "네트워크 설정을 저장하거나 적용하지 못했습니다. MFNavis의 네트워크 권한과 시스템 설정을 확인해 주세요. 일부 설정은 저장됐을 수 있으며, 재시작은 요청하지 않았습니다."
+
 #~ msgid "keep going"
 #~ msgstr "계속"
 

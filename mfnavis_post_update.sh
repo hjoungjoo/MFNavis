@@ -19,6 +19,7 @@ export MFNAVIS_REPO_DIR MFNAVIS_DATA_DIR
 sudo python3 -m pip install --break-system-packages -r "${MFNAVIS_REPO_DIR}/python/requirements.txt"
 mfnavis_prepare_apsta_nat_config
 mfnavis_prepare_sta_band_config
+bash "${MFNAVIS_REPO_DIR}/scripts/install_runtime_control.sh" "${MFNAVIS_USER}"
 
 # wifi_status.txt is runtime state and no longer tracked, so the update that
 # untracked it deletes any unmodified copy. Re-seed it to the installer's

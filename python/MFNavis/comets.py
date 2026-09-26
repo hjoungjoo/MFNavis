@@ -4,6 +4,7 @@ from skyfield.data import mpc
 from skyfield.constants import GM_SUN_Pitjeva_2005_km3_s2 as GM_SUN
 from PiFinder.utils import Timer, comet_file
 from PiFinder.calc_utils import sf_utils
+from PiFinder.comet_propagation import propagate
 from PiFinder import timez
 import numpy as np
 import pandas as pd
@@ -251,8 +252,16 @@ def _calc_comets_vectorized(comets_df: pd.DataFrame, dt) -> Dict[str, Any]:
     # builder), propagated in a single call -> heliocentric state, AU,
     # equatorial ICRF, relative to the Sun.
     kepler = mpc._comet_orbits(comets_df, sf_utils.ts, GM_SUN)
-    helio_pos = kepler._at(t)[0]
-    if helio_pos.ndim == 1:  # propagate() squeezes a single comet to (3,)
+    helio_pos, _ = propagate(
+        kepler.position_at_epoch.au,
+        kepler.velocity_at_epoch.au_per_d,
+        kepler.epoch.tt,
+        t.tt,
+        kepler.mu_au3_d2,
+    )
+    if kepler._rotation is not None:
+        helio_pos = kepler._rotation @ helio_pos
+    if helio_pos.ndim == 1:
         helio_pos = helio_pos[:, np.newaxis]
 
     # Sun and observer are single 3-vectors relative to the solar-system

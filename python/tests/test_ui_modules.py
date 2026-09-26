@@ -295,11 +295,11 @@ def _all_uimodule_subclasses() -> set[str]:
 
 
 # --------------------------------------------------------------------------- #
-# Session-scoped fixtures (heavy / read-only resources)
+# Module-scoped fixtures (heavy resources and isolated patches)
 # --------------------------------------------------------------------------- #
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def _require_data_files():
     """Skip the whole module if not run from python/
     (paths are CWD-relative)."""
@@ -310,7 +310,7 @@ def _require_data_files():
         )
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def _sandbox_data_dir(tmp_path_factory):
     """Redirect user data dir to a temp dir so no test writes real settings.
 
@@ -341,7 +341,7 @@ class _StubTimezoneFinder:
         return "UTC"
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def _fast_timezonefinder():
     """Stub TimezoneFinder so SharedStateObj construction is instant.
 
@@ -356,7 +356,7 @@ def _fast_timezonefinder():
         yield
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def _fast_sleep():
     """No-op time.sleep for the whole harness.
 
@@ -371,7 +371,7 @@ def _fast_sleep():
         yield
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def _no_network():
     """Stub UISoftware's live GitHub version check
     the one hard network call)."""
@@ -382,7 +382,7 @@ def _no_network():
         yield
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def _no_comet_download():
     """Stop the comet catalog from downloading over the network.
 
@@ -400,7 +400,7 @@ def _no_comet_download():
         yield
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def _inert_sys_utils():
     """Neutralize the system-action boundary.
 
@@ -432,7 +432,7 @@ def _inert_sys_utils():
         yield
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def _stub_pi_files():
     """Make the hardcoded /boot/config.txt read succeed off a Pi.
 
@@ -452,7 +452,7 @@ def _stub_pi_files():
         yield
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def _no_preload():
     """Disable MenuManager's chart/align preload.
 
@@ -465,18 +465,18 @@ def _no_preload():
         yield
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def display():
     return get_display("headless")
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def camera_image():
     # UISQM / UIPreview call .copy() on this, so it must be a real image.
     return Image.new("RGB", (512, 512))
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def catalogs(_no_comet_download) -> Iterator[Catalogs]:
     """Build the real catalogs once from the bundled DB.
 
@@ -500,7 +500,7 @@ def catalogs(_no_comet_download) -> Iterator[Catalogs]:
         loader.stop()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def sample_object(catalogs):
     """A real CompositeObject for the object_details / log fixtures."""
     objs = catalogs.get_objects(only_selected=False, filtered=False)
@@ -509,7 +509,7 @@ def sample_object(catalogs):
     return objs[0]
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def hip_main_available() -> bool:
     """Whether the Hipparcos catalog is present (it ships in the repo).
 

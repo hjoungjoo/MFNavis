@@ -22,17 +22,20 @@ def test_base_template_exposes_theme_selector():
     assert 'value="red"' in base_html
 
 
-def test_base_template_does_not_expose_language_selector():
+def test_base_template_exposes_browser_language_selector():
     base_html = (VIEWS_DIR / "base.html").read_text()
     init_js = (VIEWS_DIR / "js" / "init.js").read_text()
     server_py = SERVER_PATH.read_text()
 
     assert 'action="/language"' not in base_html
-    assert "pf-language-select" not in base_html
-    assert "current_web_language" not in base_html
-    assert "web_language_options" not in base_html
+    assert base_html.count("pf-language-select") == 2
+    assert 'web_language() if web_language is defined else "en"' in base_html
+    assert 'value="en"' in base_html
+    assert 'value="ko"' in base_html
 
-    assert "pf-language-select" not in init_js
+    assert "pf-language-select" in init_js
+    assert "document.cookie = 'mfnavis_web_language='" in init_js
+    assert "window.location.reload()" in init_js
     assert "this.form.submit()" not in init_js
 
     assert "WEB_LANGUAGE_COOKIE" not in server_py
@@ -451,4 +454,4 @@ def test_style_css_cache_buster_is_bumped_when_the_file_changes():
     # base.html pins ?v=N; browsers keep serving the old sheet until it moves.
     base_html = (VIEWS_DIR / "base.html").read_text()
 
-    assert "/css/style.css?v=8" in base_html
+    assert "/css/style.css?v=11" in base_html

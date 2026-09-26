@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 
 {% block content %}
+<div id="network-applying" role="status" aria-live="polite" hidden
+     style="position:fixed;inset:0;z-index:2000;background:#303030;padding:15vh 10vw;text-align:center;">
+  <h5 class="grey-text text-lighten-1">{{ _('Applying network settings') }}</h5>
+  <p class="grey-text">{{ _('Preparing to restart. Please wait.') }}</p>
+  <div class="progress"><div class="indeterminate"></div></div>
+</div>
 <div class="row valign-wrapper" style="margin: 0px;">
   <div class="col s12">
         <h5 class="grey-text">{{ _('Network Settings') }}</h5>
@@ -114,7 +120,7 @@
     <p>{{ _('This will save the network settings, apply them and restart the MFNavis. You may have to adjust your network settings to re-connect. Are you sure?') }}</p>
   </div>
   <div class="modal-footer">
-    <a href="#" onClick="document.getElementById('apply_flag').value='1';document.getElementById('network_form').submit();" class="modal-close btn-flat">{{ _('Do It') }}</a>
+    <a href="#" onClick="applyNetworkSettings();return false;" class="modal-close btn-flat">{{ _('Do It') }}</a>
     <a href="#!" class="modal-close btn-flat">{{ _('Cancel') }}</a>
   </div>
 </div>
@@ -250,6 +256,19 @@
 
 {% block scripts %}
 <script>
+function applyNetworkSettings() {
+    var progress = document.getElementById('network-applying');
+    if (!progress.hidden) return;
+    progress.hidden = false;
+    document.getElementById('apply_flag').value = '1';
+    // Paint feedback before navigation waits for the server's settings writes.
+    requestAnimationFrame(function() {
+        setTimeout(function() { document.getElementById('network_form').submit(); }, 0);
+    });
+}
+window.addEventListener('pageshow', function() {
+    document.getElementById('network-applying').hidden = true;
+});
   document.addEventListener('DOMContentLoaded', function() {
       var elems = document.querySelectorAll('select');
           var instances = M.FormSelect.init(elems);

@@ -109,9 +109,25 @@ class MultiprocLogging:
 
     def join(self):
         assert self._proc is not None, "You didn't start first!"
-        # Signal to _run_sink, that it should stop.
-        self._queues[0].put(None)
+        # Stop this process writing into queues whose consumer is shutting
+        # down. Otherwise later logs fill the pipe and the queue feeder's
+        # interpreter-exit join waits forever.
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers.copy():
+            if (
+                isinstance(handler, logging.handlers.QueueHandler)
+                and handler.queue in self._queues
+            ):
+                root_logger.removeHandler(handler)
+                handler.close()
+        # Close each producer queue after its pending records. A marker on
+        # just the first queue can overtake records in the other queues.
+        for queue in self._queues:
+            queue.put(None)
         self._proc.join()
+        for queue in self._queues:
+            queue.close()
+            queue.join_thread()
 
     def _run_sink(self, output: Optional[Path], queues: List[Queue]):
         """
@@ -151,19 +167,20 @@ class MultiprocLogging:
         # logging_tree.printout()
 
         # Consume log messages and store them in output log file
-        nqueues = len(queues)
-        while True:
+        active_queues = list(queues)
+        while active_queues:
             empties = 0
-            for q in queues:
+            for q in list(active_queues):
                 try:
                     rec = q.get(block=False)
-                    if rec is None:  # Received End Marker
-                        return
+                    if rec is None:  # This queue has been drained.
+                        active_queues.remove(q)
+                        continue
                     logger = logging.getLogger(rec.name)
                     logger.handle(rec)
                 except Empty:
                     empties += 1
-            if empties == nqueues:
+            if active_queues and empties == len(active_queues):
                 sleep(0.1)  # No log messages in any queue, so sleep 100 ms.
 
     def get_queue(self):
