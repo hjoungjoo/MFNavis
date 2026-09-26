@@ -107,6 +107,28 @@ def test_preferences_do_not_leak_between_browsers(app):
         assert 'value="' + expected + '" selected' in page
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("language", ["en", "ko"])
+def test_indi_navigation_and_page_available_with_mount_control_on_or_off(
+    app, monkeypatch, enabled, language
+):
+    cfg = server_module.config.Config()
+    get_option = cfg.get_option
+    monkeypatch.setattr(
+        cfg,
+        "get_option",
+        lambda option, default=None: (
+            enabled if option == "mount_control" else get_option(option, default)
+        ),
+    )
+    client = authenticated_client(app, language)
+    for path in ("/", "/indi"):
+        response = client.get(path)
+        assert response.status_code == 200
+        # Both desktop and mobile navigation must offer the setup page.
+        assert response.text.count('href="/indi"') == 2
+
+
 @pytest.mark.parametrize("path", PAGES)
 @pytest.mark.parametrize("language", ["en", "ko"])
 def test_pages_render_in_selected_language(app, path, language):

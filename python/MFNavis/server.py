@@ -413,21 +413,6 @@ class Server:
         app.jinja_env.globals["web_messages"] = web_messages
         app.jinja_env.globals["catalog_description"] = catalog_description
 
-        def mount_control_enabled() -> bool:
-            """Whether the INDI mount-control process is switched on."""
-            try:
-                cfg = config.Config()
-                cfg.load_config()
-                return bool(cfg.get_option("mount_control", False))
-            except Exception:
-                logger.exception("Could not read mount_control for the nav")
-                return False
-
-        # Exposed as a callable, not a value: templates here render straight
-        # off jinja_env, which skips Flask's context processors, and a plain
-        # global would freeze the setting as of server start.
-        app.jinja_env.globals["mount_control_enabled"] = mount_control_enabled
-
         # Equipment measurements are floats; render 1000.0 as "1000" so the
         # tables and edit forms read the way the user typed them.
         app.jinja_env.filters["measurement"] = format_measurement

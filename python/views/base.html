@@ -1,10 +1,4 @@
 <!DOCTYPE html>
-{# The INDI nav entry only makes sense while Mount Control is on -- the
-   mount-control process is not started otherwise. mount_control_enabled
-   is registered on the real server's jinja_env; bare environments (tests,
-   offline tooling) have no such global, so default to showing the link.
-   Failing visible beats a missing registration hiding the page silently. #}
-{% set show_indi = mount_control_enabled() if mount_control_enabled is defined else True %}
 {% set language = web_language() if web_language is defined else "en" %}
 <html lang="{{ language }}" data-theme="grey">
 <head>
@@ -75,7 +69,7 @@
         <li><a href="/observations">{{ _('Observations') }}</a></li>
         <li><a href="/locations">{{ _('Locations') }}</a></li>
         <li><a href="/equipment">{{ _('Equipment') }}</a></li>
-        {% if show_indi %}<li><a href="/indi">{{ _('INDI') }}</a></li>{% endif %}
+        <li><a href="/indi">{{ _('INDI') }}</a></li>
         <li><a href="/network">{{ _('Network Setup') }}</a></li>
         <li><a href="/tools">{{ _('Tools') }}</a></li>
         <li><a href="/livecam">{{ _('LiveCam') }}</a></li>
@@ -89,7 +83,7 @@
         <li><a href="/observations">{{ _('Observations') }}</a></li>
         <li><a href="/locations">{{ _('Locations') }}</a></li>
         <li><a href="/equipment">{{ _('Equipment') }}</a></li>
-        {% if show_indi %}<li><a href="/indi">{{ _('INDI') }}</a></li>{% endif %}
+        <li><a href="/indi">{{ _('INDI') }}</a></li>
         <li><a href="/network">{{ _('Network Setup') }}</a></li>
         <li><a href="/tools">{{ _('Tools') }}</a></li>
         <li><a href="/livecam">{{ _('LiveCam') }}</a></li>
