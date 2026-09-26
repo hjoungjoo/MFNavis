@@ -6677,6 +6677,12 @@ msgstr "관측 기록을 저장하려면 관측지와 시각이 필요합니다.
 msgid "Applying network settings"
 msgstr "네트워크 설정 적용 중"
 
+msgid "Mount Control is off. Enable Mount Control in the device settings and restart MFNavis before using Serial Auto."
+msgstr "마운트 제어가 꺼져 있습니다. 장비 설정에서 마운트 제어를 켜고 MFNavis를 재시작한 다음 시리얼 Auto를 사용해 주세요."
+
+msgid "Start the OnStepX profile in INDI Web Manager before using Serial Auto."
+msgstr "INDI Web Manager에서 OnStepX 프로필을 시작한 다음 시리얼 Auto를 사용해 주세요."
+
 msgid "Preparing to restart. Please wait."
 msgstr "재시작을 준비하고 있습니다. 잠시 기다려 주세요."
 

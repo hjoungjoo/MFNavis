@@ -2110,8 +2110,9 @@ def test_usb_recovery_exception_is_latched_and_not_retried(monkeypatch):
     assert not mount._usb_auto_connect_allowed()
 
 
-def test_recovery_connect_skips_sync_unpark_tracking_and_requires_fresh_telemetry(
-    monkeypatch,
+@pytest.mark.parametrize("preserve_options", [{}, {"preserve_mount_state": True}])
+def test_connect_preserves_mount_state_by_default_and_during_recovery(
+    monkeypatch, preserve_options
 ):
     class RecoveryDevice:
         def getDeviceName(self):
@@ -2175,9 +2176,9 @@ def test_recovery_connect_skips_sync_unpark_tracking_and_requires_fresh_telemetr
     assert mount.connect(
         announce=False,
         sync_on_connect=False,
-        preserve_mount_state=True,
         require_fresh_telemetry=True,
         publish_connected=False,
+        **preserve_options,
     )
 
     client = RecoveryClient.instances[-1]

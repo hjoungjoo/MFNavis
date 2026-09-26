@@ -1504,7 +1504,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         self,
         announce: bool = True,
         sync_on_connect: bool = True,
-        preserve_mount_state: bool = False,
+        preserve_mount_state: bool = True,
         require_fresh_telemetry: bool = False,
         publish_connected: bool = True,
     ) -> bool:
@@ -5890,7 +5890,13 @@ class MountControlIndi(BacklashCalibrationMixin):
                     if first_attempt:
                         logger.info("Attempting automatic INDI mount connection")
                     with self._quiet_retry_logging(quiet=not first_attempt):
-                        connect_ok = self.connect(announce=False)
+                        # Connecting is separate from starting tracking or
+                        # synchronizing the controller's site/time.
+                        connect_ok = self.connect(
+                            announce=False,
+                            sync_on_connect=False,
+                            preserve_mount_state=True,
+                        )
                     if connect_ok:
                         if self._auto_connect_failures:
                             logger.info(

@@ -837,8 +837,15 @@ def probe_onstep_serial_port(
             reset_output = getattr(serial_device, "reset_output_buffer", None)
             if callable(reset_output):
                 reset_output()
+            # A previous baud probe can leave the controller with an
+            # incomplete LX200 command. Host buffer resets do not clear
+            # that parser; terminate it before asking for identification.
+            serial_device.write(b"#")
+            serial_device.flush()
             if settle_seconds > 0:
                 time.sleep(float(settle_seconds))
+            if callable(reset_input):
+                reset_input()
 
             serial_device.write(b":GVP#")
             serial_device.flush()
@@ -1602,7 +1609,7 @@ def apply_indi_onstep_location_time(
 
     if importlib.util.find_spec("PyIndi") is None:
         raise RuntimeError("PyIndi is not installed")
-    from PiFinder.mountcontrol_indi import PiFinderIndiClient
+    from PiFinder.mountcontrol_indi import PiFinderIndiClient, PyIndi
 
     coord_values: dict[str, float] = {}
     if latitude is not None and longitude is not None:
@@ -1627,6 +1634,7 @@ def apply_indi_onstep_location_time(
         }
 
     client = PiFinderIndiClient()
+    restore_tracking_off = False
     client.setServer(server_host, server_port)
     if not client.connectServer():
         return {
@@ -1694,6 +1702,16 @@ def apply_indi_onstep_location_time(
                         pass
                     time.sleep(0.2)
 
+        # OnStepX can start tracking when its site/time is initialized.
+        # Keep an explicitly idle mount idle, including on partial failure.
+        if client._wait_for_property(device, "TELESCOPE_TRACK_STATE", timeout=2.0):
+            tracking = device.getSwitch("TELESCOPE_TRACK_STATE")
+            if tracking:
+                restore_tracking_off = any(
+                    item.name == "TRACK_OFF" and item.s == PyIndi.ISS_ON
+                    for item in tracking
+                )
+
         if coord_values and not client.set_number(
             device, "GEOGRAPHIC_COORD", coord_values
         ):
@@ -1720,7 +1738,15 @@ def apply_indi_onstep_location_time(
             "properties": properties,
         }
     finally:
-        client.disconnectServer()
+        try:
+            if restore_tracking_off and not client.set_switch(
+                device, "TELESCOPE_TRACK_STATE", "TRACK_OFF"
+            ):
+                raise RuntimeError(
+                    "Could not preserve tracking OFF after site/time sync"
+                )
+        finally:
+            client.disconnectServer()
 
 
 def restart_indi_web_manager(timeout: float = 30.0) -> dict[str, Any]:

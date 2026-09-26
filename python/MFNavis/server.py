@@ -2175,6 +2175,18 @@ class Server:
                     connection_type == sys_utils.ONSTEP_CONNECTION_USB
                     and serial_port == sys_utils.ONSTEP_SERIAL_AUTO_VALUE
                 ):
+                    cfg = config.Config()
+                    cfg.load_config()
+                    # main creates the queue even when its consumer is off.
+                    # Never report a search as started in that state.
+                    if not cfg.get_option("mount_control", False):
+                        raise RuntimeError(
+                            _(
+                                "Mount Control is off. Enable Mount Control in "
+                                "the device settings and restart MFNavis before "
+                                "using Serial Auto."
+                            )
+                        )
                     if not sys_utils.is_local_indi_server_host(server_host):
                         raise ValueError(
                             "Serial Auto discovery requires a local INDI server"
@@ -2186,7 +2198,24 @@ class Server:
                             "Apply the local INDI server endpoint before using Auto"
                         )
                     if self.mountcontrol_queue is None:
-                        raise RuntimeError("Mount-control process is not available")
+                        raise RuntimeError(_("Mount-control process is not available"))
+                    # The page cache can still be empty just after a driver
+                    # starts. Read the driver directly for this precheck.
+                    onstep_props = sys_utils.get_indi_onstep_properties(
+                        server_host=server_host,
+                        server_port=server_port,
+                        device_name=indi_cfg["device_name"],
+                    )
+                    if (
+                        f"{indi_cfg['device_name']}.CONNECTION.CONNECT"
+                        not in onstep_props
+                    ):
+                        raise RuntimeError(
+                            _(
+                                "Start the OnStepX profile in INDI Web Manager "
+                                "before using Serial Auto."
+                            )
+                        )
                     discovery_state = str(
                         _mount_control_status().get("serial_discovery_state", "")
                     ).lower()
@@ -2285,7 +2314,7 @@ class Server:
                 return _render_indi_page(_("INDI OnStep settings applied"))
             except (RuntimeError, ValueError) as e:
                 logger.warning("Could not apply INDI OnStep settings: %s", e)
-                return _render_indi_page(error_message=str(e))
+                return _render_indi_page(error_message=str(e)), 400
 
         def _apply_indi_action(properties, success_message):
             indi_cfg = _indi_config_values()

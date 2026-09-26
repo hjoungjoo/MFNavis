@@ -218,6 +218,113 @@ try:
         assert result["version"] == "10.24c"
 
     @pytest.mark.unit
+    def test_probe_onstep_serial_recovers_incomplete_controller_command():
+        class FakeSerial:
+            def __init__(self, *_args, **_kwargs):
+                # Wrong-baud traffic left a partial command on the controller.
+                self.command = b":G"
+                self.reply = b""
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def reset_input_buffer(self):
+                # This only clears the host receive buffer, not self.command.
+                self.reply = b""
+
+            def write(self, payload):
+                self.command += payload
+                if self.command.endswith(b"#"):
+                    self.reply += {
+                        b":GVP#": b"On-Step#",
+                        b":GVN#": b"10.28x#",
+                    }.get(self.command, b"0")
+                    self.command = b""
+
+            def flush(self):
+                pass
+
+            def read_until(self, _terminator, _size):
+                reply, self.reply = self.reply, b""
+                return reply
+
+        result = sys_utils.probe_onstep_serial_port(
+            "/dev/ttyUSB0", 115200, settle_seconds=0, serial_factory=FakeSerial
+        )
+        assert result["status"] == "verified"
+        assert result["product"] == "On-Step"
+        assert result["version"] == "10.28x"
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("tracking_before", [False, True])
+    @pytest.mark.parametrize("sync_succeeds", [False, True])
+    def test_site_time_sync_preserves_tracking_even_on_partial_failure(
+        monkeypatch, tracking_before, sync_succeeds
+    ):
+        from types import SimpleNamespace
+        from PiFinder import mountcontrol_indi as mci
+
+        class Device:
+            def __init__(self):
+                self.tracking = tracking_before
+
+            def getDeviceName(self):
+                return "LX200 OnStepX"
+
+            def isConnected(self):
+                return True
+
+            def getSwitch(self, name):
+                assert name == "TELESCOPE_TRACK_STATE"
+                return [SimpleNamespace(name="TRACK_OFF", s=int(not self.tracking))]
+
+        class Client:
+            def __init__(self):
+                self.device = Device()
+                self.disconnected = False
+
+            def setServer(self, *args):
+                pass
+
+            def connectServer(self):
+                return True
+
+            def getDevice(self, name):
+                return self.device
+
+            def _wait_for_property(self, *args, **kwargs):
+                return True
+
+            def set_text(self, *args):
+                # The driver's time initialization can enable tracking.
+                self.device.tracking = True
+                return sync_succeeds
+
+            def set_switch(self, device, prop, element):
+                assert (prop, element) == ("TELESCOPE_TRACK_STATE", "TRACK_OFF")
+                device.tracking = False
+                return True
+
+            def disconnectServer(self):
+                self.disconnected = True
+
+        client = Client()
+        monkeypatch.setattr(mci, "PiFinderIndiClient", lambda: client)
+        monkeypatch.setattr(mci, "PyIndi", SimpleNamespace(ISS_ON=1))
+        monkeypatch.setattr(
+            sys_utils.importlib.util, "find_spec", lambda name: object()
+        )
+        result = sys_utils.apply_indi_onstep_location_time(
+            utc_datetime="2026-09-27T00:00:00+00:00", device_name="LX200 OnStepX"
+        )
+        assert result["ok"] is sync_succeeds
+        assert client.device.tracking is tracking_before
+        assert client.disconnected
+
+    @pytest.mark.unit
     def test_serial_without_modem_control_suppresses_lines_and_hangup(monkeypatch):
         import termios
 
