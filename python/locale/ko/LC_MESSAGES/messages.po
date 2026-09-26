@@ -6718,3 +6718,36 @@ msgstr "정렬 전 IMU를 GoTo 임시 기준으로 사용 (실내 테스트)"
 #: views/indi_mount.html
 msgid "Without a compass or prior alignment, the IMU heading is relative. This test reference does not locate real sky targets. Turn it off after indoor testing."
 msgstr "나침반이나 사전 정렬이 없으면 IMU 방위는 상대값입니다. 이 임시 기준으로 실제 천체 위치를 찾을 수는 없습니다. 실내 테스트가 끝나면 꺼 주세요."
+
+msgid "Mount Limits"
+msgstr "마운트 제한"
+
+msgid "Overhead Limit (°)"
+msgstr "천정 고도 제한 (°)"
+
+msgid "Horizon Limit (°)"
+msgstr "지평선 고도 제한 (°)"
+
+msgid "Meridian East (min)"
+msgstr "메리디안 East (분)"
+
+msgid "Meridian West (min)"
+msgstr "메리디안 West (분)"
+
+msgid "Current"
+msgstr "현재값"
+
+msgid "Apply Mount Limits"
+msgstr "마운트 제한 적용"
+
+msgid "Mount limits applied and verified"
+msgstr "마운트 제한을 적용하고 INDI 응답을 확인했습니다"
+
+msgid "Mount limits are already being applied"
+msgstr "마운트 제한을 적용 중입니다"
+
+msgid "Altitude limits are separate from axis limits. Meridian limits apply to German equatorial mounts; 4 minutes equals 1 degree."
+msgstr "고도 제한과 각 축 제한은 별도 설정입니다. 메리디안 제한은 독일식 적도의에 적용되며, 4분은 1도입니다."
+
+msgid "Meridian values are reported by INDI. In Alt/Az mode this driver does not read them back from the controller."
+msgstr "메리디안은 INDI가 보고하는 값입니다. 경위대 모드에서 이 드라이버는 컨트롤러의 메리디안 값을 재조회하지 않습니다."

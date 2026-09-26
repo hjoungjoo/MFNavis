@@ -327,6 +327,23 @@
 <div class="card grey darken-2">
   <div class="card-content">
     <h5 class="grey-text">{{ _('Settings') }}</h5>
+    <h6 class="grey-text">{{ _('Mount Limits') }}</h6>
+    <p class="grey-text">{{ _('Altitude limits are separate from axis limits. Meridian limits apply to German equatorial mounts; 4 minutes equals 1 degree.') }}</p>
+    <p class="grey-text">{{ _('Meridian values are reported by INDI. In Alt/Az mode this driver does not read them back from the controller.') }}</p>
+    <form action="/indi/limits" method="post" id="indi_limits_form">
+      <div class="row">
+        {% for key, label, low, high in [('overhead', _('Overhead Limit (°)'), 60, 90), ('horizon', _('Horizon Limit (°)'), -30, 30), ('meridian_east', _('Meridian East (min)'), -180, 180), ('meridian_west', _('Meridian West (min)'), -180, 180)] %}
+        <div class="input-field col s12 m6">
+          <input id="limit_{{ key }}" name="{{ key }}" type="number" min="{{ low }}" max="{{ high }}" step="1" required value="{{ limit_values[key] }}" {% if limit_values[key] == '' %}disabled{% endif %}>
+          <label for="limit_{{ key }}" class="active">{{ label }}</label>
+          <span class="helper-text grey-text">{{ _('Current') }}: <span id="limit_current_{{ key }}">{{ limit_values[key] if limit_values[key] != '' else '-' }}</span> · {{ low }} ~ {{ high }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="row">
+        <button type="submit" class="btn" id="limits_apply" {% if '' in limit_values.values() or not is_onstepx_driver %}disabled{% endif %}>{{ _('Apply Mount Limits') }}</button>
+      </div>
+    </form>
     <h6 class="grey-text">{{ _('Multi-Point Align') }}</h6>
     <table class="striped grey-text">
       <tbody>
@@ -1182,6 +1199,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setOnstepUtcBase(onstep[onstepKey('TIME_UTC.UTC')]);
     updateOnstepUtcDisplay();
     updateBacklashValues(payload.backlash_values || {}, payload.mount_control_status || {});
+    updateLimitValues(payload.limit_values || {}, payload.is_onstepx_driver);
     updateSerialDiscovery(payload.mount_control_status || {});
     updateMultipointAlign(payload.multipoint_align || {});
     updateGotoGuideStatus(payload.goto_guide_status || {});
@@ -1290,6 +1308,26 @@ document.addEventListener('DOMContentLoaded', function() {
     ];
     return lines.join('\n');
   }
+
+  function updateLimitValues(values, supported) {
+    var available = !!supported;
+    ['overhead', 'horizon', 'meridian_east', 'meridian_west'].forEach(function(key) {
+      var value = values[key];
+      var valid = typeof value === 'number' && Number.isFinite(value);
+      var input = document.getElementById('limit_' + key);
+      setText('limit_current_' + key, valid ? String(value) : '-');
+      if (input) {
+        input.disabled = !valid;
+        if (!input.dataset.edited) { input.value = valid ? String(value) : ''; }
+      }
+      available = available && valid;
+    });
+    setButtonEnabled(document.getElementById('limits_apply'), available);
+  }
+
+  document.querySelectorAll('#indi_limits_form input').forEach(function(input) {
+    input.addEventListener('input', function() { input.dataset.edited = 'true'; });
+  });
 
   function updateBacklashValues(values, mountStatus) {
     var raValue = valueOrEmpty(values.ra);

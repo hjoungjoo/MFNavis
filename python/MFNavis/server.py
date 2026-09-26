@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 import pydeepskylog as pds
 from PIL import Image
-from PiFinder import gps_time_sync, timez
+from PiFinder import gps_time_sync, timez, indi_limits
 from PiFinder import utils, calc_utils, config, location_catalog
 from PiFinder.db.observations_db import (
     ObservationsDatabase,
@@ -1961,6 +1961,9 @@ class Server:
                 pifinder_location_time=_pifinder_location_time_values(),
                 location_time_sync_status=_indi_location_time_sync_status(),
                 backlash_values=backlash_values,
+                limit_values=indi_limits.limit_values(
+                    onstep_props, indi_cfg["device_name"]
+                ),
                 align_stars=BRIGHT_ALIGN_STARS,
                 multipoint_align=_multipoint_align_status(),
                 mount_control_status=_mount_control_status(),
@@ -2018,6 +2021,9 @@ class Server:
                     ),
                     "onstep_mount_state": _onstep_mount_state(onstep_props, indi_cfg),
                     "backlash_values": _onstep_backlash_values(onstep_props, indi_cfg),
+                    "limit_values": indi_limits.limit_values(
+                        onstep_props, indi_cfg["device_name"]
+                    ),
                     "align_stars": BRIGHT_ALIGN_STARS,
                     "multipoint_align": _multipoint_align_status(),
                     "mount_control_status": _mount_control_status(),
@@ -2604,6 +2610,39 @@ class Server:
                 if request.headers.get("X-Requested-With") == "XMLHttpRequest":
                     return _indi_json_response(ok=False, error=str(e))
                 return _render_indi_page(error_message=str(e))
+
+        limits_apply_lock = threading.Lock()
+
+        @app.route("/indi/limits", methods=["POST"])
+        @auth_required
+        def indi_limits_save():
+            if not limits_apply_lock.acquire(blocking=False):
+                return _render_indi_page(
+                    error_message=_("Mount limits are already being applied")
+                ), 400
+            try:
+                indi_cfg = _indi_config_values()
+                _require_onstepx_driver(indi_cfg)
+                indi_limits.apply_limits(
+                    request.form,
+                    server_host=indi_cfg["server_host"],
+                    server_port=indi_cfg["server_port"],
+                    device_name=indi_cfg["device_name"],
+                )
+                props = _read_indi_onstep_properties(indi_cfg)
+                with self._indi_properties_lock:
+                    self._indi_properties_cache = dict(props)
+                return _render_indi_page(
+                    _("Mount limits applied and verified"), onstep_props=props
+                )
+            except (RuntimeError, ValueError, OSError) as exc:
+                logger.warning("Could not apply INDI mount limits: %s", exc)
+                return _render_indi_page(
+                    error_message=str(exc),
+                    onstep_props=_read_indi_onstep_properties(_indi_config_values()),
+                ), 400
+            finally:
+                limits_apply_lock.release()
 
         @app.route("/indi/backlash", methods=["POST"])
         @auth_required
