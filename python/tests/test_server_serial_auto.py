@@ -114,3 +114,16 @@ def test_serial_auto_does_not_start_a_second_scan(serial_client):
     assert response.status_code == 400
     assert "Serial discovery is already running" in response.text
     assert queue.empty()
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_provisional_imu_goto_setting_is_visible_and_saved(serial_client, enabled):
+    client, _, _, _ = serial_client
+    form = {"indi_goto_method": "pifinder"}
+    if enabled:
+        form["indi_goto_allow_unaligned_imu"] = "on"
+    response = client.post("/indi/goto_guide", data=form)
+    assert response.status_code == 200
+    cfg = module.config.Config()
+    assert cfg.get_option("indi_goto_allow_unaligned_imu") is enabled
+    assert 'name="indi_goto_allow_unaligned_imu"' in response.text

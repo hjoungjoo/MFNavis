@@ -483,6 +483,12 @@ class PointingCoordinateService:
             valid=True,
             metadata={
                 "solve_source": solve_source,
+                "last_solve_attempt": _as_float(
+                    getattr(solution, "last_solve_attempt", None)
+                ),
+                "last_solve_success": _as_float(
+                    getattr(solution, "last_solve_success", None)
+                ),
                 "has_plate_anchor": has_plate_anchor,
                 "source_ra": radec[0],
                 "source_dec": radec[1],

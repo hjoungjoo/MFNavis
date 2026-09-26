@@ -541,8 +541,15 @@ class UIObjectDetails(UIModule):
             movement = _("Adjusting")
         elif (guide.get("tracking_guide_settle_remaining") or 0) > 0:
             movement = _("Settling")
-        elif phase in {"pifinder_goto", "pifinder_goto_blocked"}:
+        elif phase in {
+            "pifinder_goto",
+            "pifinder_goto_blocked",
+            "native_pending",
+            "native_goto",
+        }:
             movement = _("WAIT")
+        elif phase == "native_tracking":
+            movement = _("Tracking") if mount.get("tracking_enabled") else _("WAIT")
         elif phase == "stopped":
             movement = _("Stopped")
         elif phase in {"complete", "tracking"}:

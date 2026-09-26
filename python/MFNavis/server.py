@@ -1487,6 +1487,9 @@ class Server:
                     cfg.get_option("indi_goto_refine_accuracy_arcmin", 3.0)
                 ),
                 "indi_goto_method": cfg.get_option("indi_goto_method", "pifinder"),
+                "indi_goto_allow_unaligned_imu": bool(
+                    cfg.get_option("indi_goto_allow_unaligned_imu", False)
+                ),
                 "indi_tracking_guide_enabled": bool(
                     cfg.get_option("indi_tracking_guide_enabled", True)
                 ),
@@ -2099,6 +2102,10 @@ class Server:
             cfg = config.Config()
             cfg.load_config()
             cfg.set_option("indi_goto_method", goto_method)
+            cfg.set_option(
+                "indi_goto_allow_unaligned_imu",
+                request.form.get("indi_goto_allow_unaligned_imu") == "on",
+            )
             cfg.set_option("indi_goto_refine_accuracy_arcmin", refine_accuracy_arcmin)
             cfg.set_option(
                 "indi_tracking_guide_enabled",

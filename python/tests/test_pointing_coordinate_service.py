@@ -1350,3 +1350,16 @@ def test_fusion_anchor_resets_when_observer_location_moves():
 
 def _wrap(delta):
     return ((delta + 180.0) % 360.0) - 180.0
+
+
+def test_failed_solve_metadata_retains_camera_epochs_separate_from_imu_epoch():
+    solution = DummySolution(
+        120.0, 20.0, solve_source="CAM_FAILED", has_plate_anchor=True
+    )
+    solution.last_solve_attempt = 999.0
+    solution.last_solve_success = 990.0
+    sample = PointingCoordinateService().solved_sample(DummyState(solution), None)
+    assert sample.timestamp == 1000.0
+    assert sample.metadata["last_solve_attempt"] == 999.0
+    assert sample.metadata["last_solve_success"] == 990.0
+    assert sample.source == SOURCE_PIFINDER_IMU_ESTIMATE

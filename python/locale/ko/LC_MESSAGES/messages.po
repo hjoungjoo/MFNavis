@@ -6706,3 +6706,15 @@ msgstr "네트워크 설정을 저장하거나 적용하지 못했습니다. MFN
 
 #~ msgid "This will take effect immediately and can not be undone. Are you sure?"
 #~ msgstr "This will take effect immediately and can not be undone. Are you sure?"
+
+#: views/indi_mount.html
+msgid "When plate solving fails, MFNavis continues with native mount GoTo and tracking. A new solve after settling restarts GoTo and fine alignment, even with Tracking Guide off."
+msgstr "솔빙이 실패하면 마운트 자체 GoTo와 추적을 이어갑니다. 마운트가 안정된 뒤 새 솔빙이 성공하면 GoTo와 미세보정을 다시 진행합니다. 추적 가이드를 꺼도 이 복귀 동작은 유지됩니다."
+
+#: views/indi_mount.html
+msgid "Use unaligned IMU as a provisional GoTo reference (indoor test)"
+msgstr "정렬 전 IMU를 GoTo 임시 기준으로 사용 (실내 테스트)"
+
+#: views/indi_mount.html
+msgid "Without a compass or prior alignment, the IMU heading is relative. This test reference does not locate real sky targets. Turn it off after indoor testing."
+msgstr "나침반이나 사전 정렬이 없으면 IMU 방위는 상대값입니다. 이 임시 기준으로 실제 천체 위치를 찾을 수는 없습니다. 실내 테스트가 끝나면 꺼 주세요."

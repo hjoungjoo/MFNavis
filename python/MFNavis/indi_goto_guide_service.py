@@ -18,6 +18,10 @@ Responsibilities:
   ``PointingCoordinateService`` coordinate, GoTo the target, and repeat sync +
   GoTo (bounded by ``indi_pifinder_goto_max_gotos``) until within the near
   threshold, then pulse-guide to the final accuracy and do a final sync.
+- A solve outage keeps native mount GoTo/tracking active. Initial unsolved
+  GoTo uses a fresh IMU anchor; recovery requires a new post-settle camera
+  solve and restarts the normal GoTo/fine-alignment sequence. This lifecycle
+  remains active with Tracking Guide off.
 - Tracking Guide (pifinder mode only): when enabled, hold a target with
   pulse-guide correction, and recover from an external disturbance by settling
   first, then either pulse-guiding (small error) or sync + GoTo re-acquisition
@@ -204,6 +208,11 @@ class IndiGotoGuideService:
         # Same bounded wait for the tracking-recovery goto's sync anchor.
         self.recovery_anchor_wait_since = 0.0
         self.initial_goto_deadline: Optional[float] = None
+        # Armed only by an accepted MFNavis target; Stop/manual/mode changes
+        # must never leave a delayed recovery slew behind.
+        self.solve_fallback_armed = False
+        self.solve_fallback_since_wall = 0.0
+        self.solve_fallback_source = ""
         self.last_action = "startup"
         self.pointing_status: dict[str, Any] = {"available": False}
 
@@ -265,6 +274,20 @@ class IndiGotoGuideService:
             "stop_movement",
         }:
             self._cancel_initial_goto_wait("pending GoTo canceled by user command")
+            cancel_active = self.solve_fallback_armed
+            self.solve_fallback_armed = False
+            if cancel_active and self.phase in {
+                "pifinder_goto",
+                "pifinder_pulse_align",
+                "native_pending",
+                "native_goto",
+                "native_tracking",
+            }:
+                self.phase = "idle"
+                self._disable_pulse_align()
+                self._disable_tracking_guide("solve recovery canceled by user")
+                self._reset_tracking_recovery()
+                self.tracking_target_ra = self.tracking_target_dec = None
 
         if command_type == "shutdown":
             return False
@@ -400,6 +423,7 @@ class IndiGotoGuideService:
         return True
 
     def _handle_goto_target(self, command: dict[str, Any]) -> None:
+        self.solve_fallback_armed = False
         self.manual_target_origin = None
         self.initial_goto_deadline = None
         self.alignment_target_pixel = None
@@ -407,6 +431,13 @@ class IndiGotoGuideService:
         try:
             target_ra = float(command["ra"])
             target_dec = float(command["dec"])
+            if (
+                not math.isfinite(target_ra)
+                or not math.isfinite(target_dec)
+                or abs(target_dec) > 90
+            ):
+                raise ValueError("invalid target")
+            target_ra %= 360.0
         except (KeyError, TypeError, ValueError):
             logger.warning("Invalid INDI GoTo target command: %r", command)
             self.service_state = "error"
@@ -431,6 +462,9 @@ class IndiGotoGuideService:
             self.tracking_guide_suspended = False
             logger.info("Tracking guide suspension cleared by new GoTo")
 
+        self._disable_tracking_guide("new GoTo target")
+        self._reset_tracking_recovery()
+        self.tracking_target_ra = self.tracking_target_dec = None
         self.active_target_ra = target_ra
         self.active_target_dec = target_dec
 
@@ -481,6 +515,17 @@ class IndiGotoGuideService:
 
         block_reason = self._pifinder_goto_block_reason()
         if block_reason:
+            anchor = self._imu_goto_anchor(self.pointing_status)
+            mount = self._mount_status_summary()
+            if (
+                anchor is not None
+                and self.config_values.get("mount_control", True)
+                and self._mount_status_fresh(mount)
+                and not self._mount_summary_reports_parked(mount)
+                and not self._mount_summary_reports_motion(mount)
+            ):
+                self._start_native_goto(anchor)
+                return
             self.service_state = "waiting"
             self.phase = "pifinder_goto_blocked"
             self.wait_reason = block_reason
@@ -500,6 +545,8 @@ class IndiGotoGuideService:
 
     def _begin_pifinder_goto(self, target_ra: float, target_dec: float) -> None:
         """Use the same checked pointing snapshot when starting or resuming."""
+        self.solve_fallback_armed = True
+        self.initial_goto_deadline = None
         current = self.pointing_status.get("current") or {}
         self.current_ra = self._finite_float(current.get("ra"))
         self.current_dec = self._finite_float(current.get("dec"))
@@ -569,6 +616,9 @@ class IndiGotoGuideService:
 
     def _tick_state_machine(self) -> None:
         goto_active = self.phase in {
+            "native_pending",
+            "native_goto",
+            "native_tracking",
             "pifinder_goto_blocked",
             "pifinder_goto",
             "pifinder_pulse_align",
@@ -600,6 +650,8 @@ class IndiGotoGuideService:
         if self.phase == "manual_retarget":
             self._tick_manual_retarget()
             return
+        if self._tick_solve_fallback():
+            return
         if (
             self.phase == "pifinder_goto_blocked"
             and self.initial_goto_deadline is not None
@@ -612,6 +664,268 @@ class IndiGotoGuideService:
         if self.phase == "pifinder_pulse_align":
             self._tick_pulse_align()
             return
+
+    def _imu_goto_anchor(self, pointing: dict[str, Any]) -> Optional[dict[str, Any]]:
+        """Select a fresh IMU coordinate, never a stale solve or mount fusion.
+
+        An unaligned IMUPLUS heading is allowed only by the explicit indoor
+        test setting. It is recorded as provisional in the sync provenance.
+        """
+        if not pointing.get("fresh"):
+            return None
+        for sample in (
+            pointing.get("solved"),
+            pointing.get("current"),
+            pointing.get("imu"),
+        ):
+            if not isinstance(sample, dict) or not sample.get("valid"):
+                continue
+            timestamp = self._finite_float(sample.get("timestamp"))
+            ra = self._finite_float(sample.get("ra"))
+            dec = self._finite_float(sample.get("dec"))
+            if (
+                timestamp is None
+                or not 0 <= time.time() - timestamp <= POINTING_STATUS_MAX_AGE_SECONDS
+                or ra is None
+                or dec is None
+                or abs(dec) > 90
+            ):
+                continue
+            metadata = sample.get("metadata") or {}
+            source = sample.get("source")
+            if source == "pifinder_imu_estimate" and metadata.get("has_plate_anchor"):
+                return sample
+            if source != "imu_fallback":
+                continue
+            if metadata.get("uses_magnetometer") or metadata.get("alignment_applied"):
+                return sample
+            if self.config_values.get("indi_goto_allow_unaligned_imu", False):
+                return {**sample, "source": "imu_provisional"}
+        return None
+
+    def _camera_solve_available(self, pointing: dict[str, Any]) -> bool:
+        """IMU updates between successful frames are not camera failures."""
+        if not pointing.get("usable_for_goto"):
+            return False
+        current = pointing.get("current") or {}
+        metadata = current.get("metadata") or {}
+        success = self._finite_float(metadata.get("last_solve_success"))
+        attempt = self._finite_float(metadata.get("last_solve_attempt"))
+        if success is not None:
+            return bool(
+                success > 0
+                and 0 <= time.time() - success <= MFNAVIS_SOLVE_ANCHOR_MAX_AGE_SECONDS
+                and (attempt is None or attempt <= success)
+            )
+        return self._is_recent_solve(current)
+
+    def _start_native_goto(self, anchor: dict[str, Any]) -> None:
+        self._disable_pulse_align()
+        self._disable_tracking_guide("starting native GoTo during solve outage")
+        self._reset_tracking_recovery()
+        self.initial_goto_deadline = None
+        self.solve_fallback_armed = True
+        self.solve_fallback_since_wall = time.time()
+        self.solve_fallback_source = str(anchor.get("source"))
+        self.current_ra, self.current_dec = anchor["ra"], anchor["dec"]
+        self.final_sync_sent = False
+        self.last_error_arcmin = None
+        self._send_sync_and_goto(first=True, origin="imu_goto_fallback")
+        if self.phase == "error":
+            return
+        self.phase = "native_goto"
+        self.tracking_target_ra, self.tracking_target_dec = (
+            self.active_target_ra,
+            self.active_target_dec,
+        )
+        self.wait_reason = "plate solve unavailable; using native mount GoTo"
+        self.last_action = "IMU sync + native GoTo sent"
+        logger.info(
+            "Native GoTo fallback started (source=%s)", self.solve_fallback_source
+        )
+
+    def _cancel_solve_fallback(self, reason: str) -> None:
+        """Cancel automatic return, leaving the mount's own tracking alone."""
+        self.solve_fallback_armed = False
+        self._disable_pulse_align()
+        self._disable_tracking_guide(reason)
+        self._reset_tracking_recovery()
+        self.tracking_target_ra = self.tracking_target_dec = None
+        self.phase = "idle"
+        self.service_state = "idle"
+        self.wait_reason = reason
+        self.last_action = "solve recovery canceled"
+
+    def _mount_status_fresh(self, mount: dict[str, Any]) -> bool:
+        if not mount.get("available"):
+            return False
+        if "updated" not in mount:  # Also used by in-process status providers.
+            return True
+        timestamp = self._finite_float(mount.get("updated"))
+        return (
+            timestamp is not None
+            and 0 <= time.time() - timestamp <= POINTING_STATUS_MAX_AGE_SECONDS
+        )
+
+    def _tick_solve_fallback(self) -> bool:
+        """Keep native motion through outages; re-acquire on a post-idle solve.
+
+        This belongs to the accepted GoTo lifecycle, independently of the
+        optional continuous Tracking Guide checkbox.
+        """
+        if not self.solve_fallback_armed:
+            return False
+        if self.config_values.get(
+            "indi_goto_method", "pifinder"
+        ) != "pifinder" or not self.config_values.get("mount_control", True):
+            self._cancel_solve_fallback("GoTo mode or mount control changed")
+            return True
+        if self.tracking_guide_suspended:
+            self._cancel_solve_fallback("automatic correction suspended")
+            return True
+        mount = self._mount_status_summary()
+        if not self._mount_status_fresh(mount):
+            self._disable_pulse_align()
+            self._disable_tracking_guide("mount unavailable")
+            return True
+        if self._mount_summary_reports_parked(mount):
+            self._cancel_solve_fallback("mount parked")
+            return True
+        if self.active_target_ra is None or self.active_target_dec is None:
+            self._cancel_solve_fallback("target cleared")
+            return True
+        if (
+            self.phase in {"complete", "tracking", "native_tracking"}
+            and mount.get("tracking_enabled") is False
+        ):
+            self._cancel_solve_fallback("mount tracking switched off")
+            return True
+        pointing = self._refresh_pointing_status()
+        self.pointing_status = pointing
+        native = self.phase in {"native_pending", "native_goto", "native_tracking"}
+        if not native:
+            if self._camera_solve_available(pointing):
+                return False
+            self.solve_fallback_since_wall = time.time()
+            self.solve_fallback_source = "existing_mount_alignment"
+            self._disable_pulse_align()
+            self._disable_tracking_guide("plate solve lost; retaining native tracking")
+            if self.tracking_recovery_state == "goto_wait":
+                # Preserve the verified transaction and the already-issued slew.
+                self.final_goto_sent_at = self.tracking_recovery_goto_sent_at
+                self.final_goto_idle_since = 0.0
+                self.tracking_recovery_state = "idle"
+                self.phase = "native_goto"
+            elif self.phase == "pifinder_goto":
+                self.phase = "native_goto"
+            elif self.phase == "pifinder_pulse_align":
+                self.phase = "native_pending"
+                self.final_goto_idle_since = 0.0
+            elif self.phase in {"complete", "tracking"}:
+                self.phase = "native_tracking"
+                self.final_goto_idle_since = 0.0
+            else:
+                return False
+            self.tracking_target_ra, self.tracking_target_dec = (
+                self.active_target_ra,
+                self.active_target_dec,
+            )
+            self.wait_reason = "plate solve unavailable; native mount tracking"
+            logger.info("Plate solve lost; continuing %s", self.phase)
+
+        if self.phase == "native_pending":
+            if self._mount_summary_reports_motion(mount):
+                # The guide's bounded manual approach must finish before Sync.
+                self.final_goto_idle_since = 0.0
+                return True
+            if not self._camera_solve_available(pointing):
+                anchor = self._imu_goto_anchor(pointing)
+                if anchor is None:
+                    # Preserve the mount's established frame when IMU is also
+                    # unavailable; never use an unaligned/raw mount readback.
+                    sample = pointing.get("mount") or {}
+                    timestamp = self._finite_float(sample.get("timestamp"))
+                    ra, dec = (
+                        self._finite_float(sample.get("ra")),
+                        self._finite_float(sample.get("dec")),
+                    )
+                    if (
+                        pointing.get("fresh")
+                        and sample.get("valid")
+                        and sample.get("aligned")
+                        and timestamp is not None
+                        and 0
+                        <= time.time() - timestamp
+                        <= POINTING_STATUS_MAX_AGE_SECONDS
+                        and ra is not None
+                        and dec is not None
+                        and abs(dec) <= 90
+                    ):
+                        anchor = sample
+                if anchor is None:
+                    self.wait_reason = (
+                        "waiting for a usable IMU or aligned mount coordinate"
+                    )
+                    return True
+                self._start_native_goto(anchor)
+                return True
+
+        if self.phase == "native_goto":
+            if not self._verified_sync_goto_ready(mount, recovery=False):
+                return True
+            if str(mount.get("state", "")).lower() in {
+                "goto_failed",
+                "sync_goto_failed",
+            }:
+                self._stop_with_error(str(mount.get("message") or "native GoTo failed"))
+                return True
+            if (
+                time.monotonic() - self.final_goto_sent_at
+                < MFNAVIS_FINAL_GOTO_SETTLE_SECONDS
+            ):
+                return True
+        if self._mount_summary_reports_motion(mount):
+            self.final_goto_idle_since = 0.0
+            return True
+        now = time.monotonic()
+        if not self.final_goto_idle_since:
+            self.final_goto_idle_since = now
+            self.solve_anchor_required_after_wall = time.time()
+            return True
+        if now - self.final_goto_idle_since < MFNAVIS_FINAL_GOTO_SETTLE_SECONDS:
+            return True
+        self.phase = "native_tracking"
+        self.service_state = "waiting"
+        self.last_action = "native mount tracking; waiting for plate solve"
+        current = pointing.get("current") or {}
+        if (
+            not self._camera_solve_available(pointing)
+            or not self._is_fresh_arrival_solve(current)
+            or float(current.get("timestamp") or 0) <= self.solve_fallback_since_wall
+        ):
+            return True
+        if mount.get("tracking_enabled") is False:
+            self._cancel_solve_fallback("mount tracking switched off")
+            return True
+        altitude = self._tracking_target_altitude_deg()
+        minimum = float(
+            self.config_values.get(
+                "indi_tracking_guide_min_target_alt_deg",
+                TRACKING_TARGET_MIN_ALT_DEFAULT_DEG,
+            )
+        )
+        if altitude is not None and altitude < minimum:
+            self._cancel_solve_fallback("target below recovery altitude limit")
+            return True
+        self._reset_tracking_recovery()
+        self.correction_count = 0
+        self.previous_goto_error_arcmin = None
+        self.final_sync_sent = False
+        self.pulse_alignment_unreliable = False
+        self.solve_fallback_source = ""
+        logger.info("Plate solve restored; restarting MFNavis GoTo and fine alignment")
+        self._begin_pifinder_goto(self.active_target_ra, self.active_target_dec)
+        return True
 
     def _begin_manual_retarget(self) -> None:
         """User movement replaces the GoTo destination after release/settle."""
@@ -628,6 +942,7 @@ class IndiGotoGuideService:
             )
             if ra is not None and dec is not None:
                 self.manual_target_origin = (ra, dec)
+        self.solve_fallback_armed = False
         self._disable_pulse_align()
         self._disable_tracking_guide("manual target change")
         self._reset_tracking_recovery()
@@ -737,6 +1052,7 @@ class IndiGotoGuideService:
         self._begin_pifinder_goto(self.active_target_ra, self.active_target_dec)
 
     def _stop_with_error(self, reason: str) -> None:
+        self.solve_fallback_armed = False
         self._forward_to_mountcontrol({"type": "stop_movement"})
         self._disable_pulse_align()
         self.service_state = "error"
@@ -803,7 +1119,9 @@ class IndiGotoGuideService:
             and timestamp >= self.solve_anchor_required_after_wall
         )
 
-    def _send_sync_and_goto(self, *, first: bool) -> None:
+    def _send_sync_and_goto(
+        self, *, first: bool, origin: str = "pifinder_goto"
+    ) -> None:
         """Sync the mount to the current PiFinder coordinate, then GoTo target.
 
         Used for both the initial iteration and every corrective one; the sync
@@ -820,7 +1138,7 @@ class IndiGotoGuideService:
             return
 
         self.sync_goto_request_id = uuid.uuid4().hex
-        self._forward_to_mountcontrol(
+        if not self._forward_to_mountcontrol(
             {
                 "type": "sync_and_goto",
                 "request_id": self.sync_goto_request_id,
@@ -828,9 +1146,16 @@ class IndiGotoGuideService:
                 "sync_dec": self.current_dec,
                 "ra": self.active_target_ra,
                 "dec": self.active_target_dec,
-                **self._sync_context("pifinder_goto"),
+                **self._sync_context(
+                    origin,
+                    self.solve_fallback_source
+                    if origin == "imu_goto_fallback"
+                    else None,
+                ),
             }
-        )
+        ):
+            self.solve_fallback_armed = False
+            return
         self.correction_count = 1 if first else self.correction_count + 1
         self.previous_goto_error_arcmin = self.last_error_arcmin
         self.final_goto_sent_at = time.monotonic()
@@ -1224,6 +1549,10 @@ class IndiGotoGuideService:
                 return
             self.alignment_target_pixel = None
 
+        if self.phase in {"native_pending", "native_goto", "native_tracking"}:
+            self._disable_tracking_guide("mount native tracking during solve outage")
+            self.tracking_guide_state = "native_tracking"
+            return
         if self.phase in {"pifinder_goto", "pifinder_pulse_align", "manual_retarget"}:
             self._disable_tracking_guide(f"paused during {self.phase}")
             self._reset_tracking_recovery()
@@ -1638,6 +1967,7 @@ class IndiGotoGuideService:
         large to be a physical disturbance. stop_movement aborts motion only;
         sidereal tracking stays on.
         """
+        self.solve_fallback_armed = False
         self._forward_to_mountcontrol({"type": "stop_movement"})
         self._disable_tracking_guide(reason)
         self._reset_tracking_recovery()
@@ -2027,6 +2357,9 @@ class IndiGotoGuideService:
             "mount_type": cfg.get_option("mount_type", "Alt/Az"),
             "mount_control": bool(cfg.get_option("mount_control", False)),
             "indi_goto_method": str(cfg.get_option("indi_goto_method", "pifinder")),
+            "indi_goto_allow_unaligned_imu": bool(
+                cfg.get_option("indi_goto_allow_unaligned_imu", False)
+            ),
             "indi_tracking_guide_enabled": bool(
                 cfg.get_option("indi_tracking_guide_enabled", True)
             ),
@@ -2107,6 +2440,9 @@ class IndiGotoGuideService:
 
     def _status_payload(self) -> dict[str, Any]:
         return {
+            "solve_fallback_armed": self.solve_fallback_armed,
+            "solve_fallback_source": self.solve_fallback_source,
+            "solve_fallback_since_wall": self.solve_fallback_since_wall,
             "service_state": self.service_state,
             "phase": self.phase,
             "wait_reason": self.wait_reason,
