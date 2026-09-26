@@ -41,7 +41,7 @@ from flask import (
     session,
     make_response,
 )
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from flask_babel import Babel, gettext  # type: ignore[import-untyped]
 from werkzeug.routing import IntegerConverter
 from waitress import serve as waitress_serve
@@ -1920,6 +1920,9 @@ class Server:
 
         def _render_indi_page(status_message="", error_message="", onstep_props=None):
             indi_cfg = _indi_config_values(resolve_transport=True)
+            manager_host = urlsplit(request.host_url).hostname or "localhost"
+            if ":" in manager_host:
+                manager_host = f"[{manager_host}]"
 
             try:
                 ap_clients = self.network.get_ap_clients()
@@ -1933,6 +1936,7 @@ class Server:
             backlash_values = _onstep_backlash_values(onstep_props, indi_cfg)
             return app.jinja_env.get_template("indi_mount.html").render(
                 title=_("INDI"),
+                indi_web_manager_url=f"http://{manager_host}:8624/",
                 **indi_cfg,
                 serial_ports=sys_utils.list_onstep_serial_ports(),
                 ap_clients=ap_clients,

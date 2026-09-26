@@ -44,7 +44,7 @@
   <div class="card-content">
     <h5 class="grey-text">{{ _('Current INDI Driver State') }}</h5>
     <div class="row">
-      <a href="#" id="indi_web_manager_link" class="btn">{{ _('INDI Web Manager') }}</a>
+      <a href="{{ indi_web_manager_url }}" id="indi_web_manager_link" class="btn" data-pf-no-spa>{{ _('INDI Web Manager') }}</a>
       <button type="button" id="restart_indi_button" class="btn">{{ _('Restart INDI') }}</button>
       <button type="button" id="reboot_indi_button" class="btn red darken-3">{{ _('REBOOT INDI') }}</button>
     </div>
@@ -609,7 +609,6 @@ document.addEventListener('DOMContentLoaded', function() {
   var serialBaud = document.getElementById('serial_baud');
   var serialManual = document.getElementById('serial_manual');
   var indiMountApplyButton = document.getElementById('indi_mount_apply_button');
-  var managerLink = document.getElementById('indi_web_manager_link');
   var restartIndiButton = document.getElementById('restart_indi_button');
   var rebootIndiButton = document.getElementById('reboot_indi_button');
   var networkHost = document.getElementById('network_host');
@@ -1511,13 +1510,16 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  document.getElementById('pulse_guide_rate_form').addEventListener('submit', function(event) {
-    event.preventDefault();
-    postIndiAction('/indi/guide_rate', {
-      guide_rate: document.getElementById('guide_rate').value
-    }).then(function() { setActionStatus('{{ _("Command sent") }}'); })
-      .catch(function(error) { setActionStatus(error.message); });
-  });
+  var pulseGuideRateForm = document.getElementById('pulse_guide_rate_form');
+  if (pulseGuideRateForm) {
+    pulseGuideRateForm.addEventListener('submit', function(event) {
+      event.preventDefault();
+      postIndiAction('/indi/guide_rate', {
+        guide_rate: document.getElementById('guide_rate').value
+      }).then(function() { setActionStatus('{{ _("Command sent") }}'); })
+        .catch(function(error) { setActionStatus(error.message); });
+    });
+  }
 
   document.querySelectorAll('[data-park-action]').forEach(function(button) {
     button.addEventListener('click', function(event) {
@@ -1763,9 +1765,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  if (managerLink) {
-    managerLink.href = window.location.protocol + '//' + window.location.hostname + ':8624/';
-  }
   if (restartIndiButton) {
     restartIndiButton.addEventListener('click', function(event) {
       event.preventDefault();

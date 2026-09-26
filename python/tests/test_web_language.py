@@ -3,7 +3,10 @@
 from html.parser import HTMLParser
 from pathlib import Path
 from types import SimpleNamespace
+import json
 import re
+import shutil
+import subprocess
 
 from babel.messages.extract import extract, extract_from_dir
 from babel.messages.pofile import read_po
@@ -123,6 +126,74 @@ def test_pages_render_in_selected_language(app, path, language):
         assert "Network Setup" not in text
         assert "Open-source licenses" not in text
         assert "Home" not in text
+
+
+class IndiPage(HTMLParser):
+    def __init__(self, html):
+        super().__init__()
+        self.elements = {}
+        self.scripts = []
+        self.script = None
+        self.feed(html)
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if "id" in attrs:
+            self.elements[attrs["id"]] = attrs
+        if tag == "script" and "src" not in attrs:
+            self.script = []
+
+    def handle_endtag(self, tag):
+        if tag == "script" and self.script is not None:
+            self.scripts.append("".join(self.script))
+            self.script = None
+
+    def handle_data(self, data):
+        if self.script is not None:
+            self.script.append(data)
+
+
+@pytest.mark.parametrize(
+    "base_url,expected",
+    [
+        ("http://mfnavis.local/", "http://mfnavis.local:8624/"),
+        ("http://192.0.2.10:8080/", "http://192.0.2.10:8624/"),
+        ("https://mfnavis.example/", "http://mfnavis.example:8624/"),
+        ("http://[2001:db8::10]:8080/", "http://[2001:db8::10]:8624/"),
+    ],
+)
+def test_indi_manager_link_is_ready_without_javascript(app, base_url, expected):
+    with app.test_request_context("/indi", base_url=base_url):
+        server_module.session["authenticated"] = True
+        page = IndiPage(app.full_dispatch_request().get_data(as_text=True))
+    link = page.elements["indi_web_manager_link"]
+    assert link["href"] == expected
+    assert "data-pf-no-spa" in link
+
+
+@pytest.mark.parametrize("language", ["en", "ko"])
+@pytest.mark.parametrize("device", ["", "Telescope Simulator", "LX200 OnStepX"])
+def test_indi_initializes_with_and_without_onstep_forms(
+    app, monkeypatch, language, device
+):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required for the INDI JavaScript regression tests")
+    monkeypatch.setattr(
+        server_module.sys_utils, "get_indi_profile_device_name", lambda: device
+    )
+    page = IndiPage(authenticated_client(app, language).get("/indi").text)
+    has_guide_form = "pulse_guide_rate_form" in page.elements
+    assert has_guide_form == (device == "LX200 OnStepX")
+    script = next(s for s in page.scripts if "pulse_guide_rate_form" in s)
+    result = subprocess.run(
+        [node, str(Path(__file__).with_name("js") / "indi_initialization.mjs")],
+        input=json.dumps({"script": script, "hasGuideForm": has_guide_form}),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_every_web_message_has_a_compiled_korean_translation(app):

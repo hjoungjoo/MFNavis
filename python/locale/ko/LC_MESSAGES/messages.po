@@ -741,6 +741,10 @@ msgstr "종료 중"
 msgid "Restarting..."
 msgstr "재시작 중..."
 
+#: MFNavis/server.py MFNavis/ui/callbacks.py
+msgid "Restart failed"
+msgstr "재시작 실패"
+
 #: PiFinder/ui/callbacks.py:300
 msgid ""
 "Mount Control\n"
