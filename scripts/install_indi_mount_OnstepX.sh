@@ -77,6 +77,8 @@ sanitize_arm64_flags() {
 INDI_VERSION="${INDI_VERSION:-v2.2.3.1}"
 INDI_3RDPARTY_VERSION="${INDI_3RDPARTY_VERSION:-v2.2.3.1}"
 PYINDI_VERSION="${PYINDI_VERSION:-v2.1.2}"
+MFNAVIS_PYTHON="${MFNAVIS_PYTHON:-python3}"
+INDI_WEB_EXEC="${INDI_WEB_EXEC:-/usr/local/bin/indi-web}"
 FASTAPI_VERSION="${FASTAPI_VERSION:-0.103.2}"
 STARLETTE_VERSION="${STARLETTE_VERSION:-0.27.0}"
 UVICORN_VERSION="${UVICORN_VERSION:-0.23.2}"
@@ -228,12 +230,13 @@ sudo apt install -y \
     libudev-dev libdbus-1-dev libglib2.0-dev python3-pip \
     python3-setuptools python-dev-is-python3 chrony
 
-PIP_BREAK_SYSTEM_PACKAGES=1 sudo python3 -m pip install --break-system-packages \
+PIP_BREAK_SYSTEM_PACKAGES=1 sudo "${MFNAVIS_PYTHON}" -m pip install --break-system-packages \
     jinja2 \
     "fastapi==${FASTAPI_VERSION}" \
     "starlette==${STARLETTE_VERSION}" \
     "uvicorn==${UVICORN_VERSION}" \
-    "anyio==${ANYIO_VERSION}"
+    "anyio==${ANYIO_VERSION}" \
+    "wsproto==1.2.0"
 
 mkdir -p "${BUILD_ROOT}"
 cd "${BUILD_ROOT}"
@@ -252,7 +255,7 @@ make -j"${JOBS}"
 stop_services_for_install
 cmake_install_if_available
 
-PIP_BREAK_SYSTEM_PACKAGES=1 sudo python3 -m pip install --break-system-packages \
+PIP_BREAK_SYSTEM_PACKAGES=1 sudo "${MFNAVIS_PYTHON}" -m pip install --break-system-packages \
     "git+https://github.com/indilib/pyindi-client.git@${PYINDI_VERSION}#egg=pyindi-client"
 
 cd "${BUILD_ROOT}"
@@ -279,7 +282,7 @@ cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release \
 make -j"${JOBS}"
 cmake_install_if_available
 
-PIP_BREAK_SYSTEM_PACKAGES=1 sudo python3 -m pip install --break-system-packages \
+PIP_BREAK_SYSTEM_PACKAGES=1 sudo "${MFNAVIS_PYTHON}" -m pip install --break-system-packages \
     "git+https://github.com/jscheidtmann/indiwebmanager.git@control_panel#egg=indiweb"
 
 # Use the same resolved install user as the other MFNavis services.
@@ -294,7 +297,7 @@ After=multi-user.target
 Type=idle
 User=${CURRENT_USER}
 WorkingDirectory=${REPO_ROOT}
-ExecStart=/usr/local/bin/indi-web -v
+ExecStart=${INDI_WEB_EXEC} -v
 Restart=always
 RestartSec=5
 

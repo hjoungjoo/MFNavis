@@ -2,6 +2,14 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${REPO_ROOT}/scripts/indi_archive_platform.sh"
+MFNAVIS_CODENAME="$(. /etc/os-release; printf '%s' "${VERSION_CODENAME:-}")"
+if [[ "${MFNAVIS_CODENAME}" == trixie && -z "${MFNAVIS_PYTHON:-}" && \
+      -x "${REPO_ROOT}/.venv-trixie/bin/python" ]]; then
+    MFNAVIS_PYTHON="${REPO_ROOT}/.venv-trixie/bin/python"
+fi
+MFNAVIS_PYTHON="${MFNAVIS_PYTHON:-python3}"
+require_indi_archive_platform
 BUILD_ROOT="${BUILD_ROOT:-$HOME/indi-latest}"
 OUT_DIR="${OUT_DIR:-${REPO_ROOT}/dist}"
 INDI_BUILD_DIR="${INDI_BUILD_DIR:-${BUILD_ROOT}/indi/build}"
@@ -14,7 +22,7 @@ INDI_3RDPARTY_MANIFEST="${INDI_3RDPARTY_BUILD_DIR}/install_manifest.txt"
 # manifest is produced), but if a driver that ships a bundled lib is ever
 # enabled, those libs must go into the archive too. Include it when present.
 INDI_3RDPARTY_LIBS_MANIFEST="${INDI_3RDPARTY_LIBS_BUILD_DIR}/install_manifest.txt"
-PYTHON_SITE="${PYTHON_SITE:-$(python3 -c 'import site; print(site.getsitepackages()[0])')}"
+PYTHON_SITE="${PYTHON_SITE:-$("${MFNAVIS_PYTHON}" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')}"
 SPLIT_ARCHIVE="${SPLIT_ARCHIVE:-auto}"
 ARCHIVE_SPLIT_SIZE="${ARCHIVE_SPLIT_SIZE:-47M}"
 ARCHIVE_SPLIT_THRESHOLD_BYTES="${ARCHIVE_SPLIT_THRESHOLD_BYTES:-95000000}"
@@ -173,6 +181,9 @@ while IFS= read -r path; do
     copy_path_to_rootfs "${path}" "${ROOTFS}"
 done < <(find /usr/bin -maxdepth 1 -type l \( -lname indi_lx200generic -o -lname indi_tcfs_focus \) -print | sort)
 
+if [[ "${MFNAVIS_CODENAME}" == trixie ]]; then
+    "${MFNAVIS_PYTHON}" "${REPO_ROOT}/scripts/prepare_indi_archive.py" "${STAGING}"
+else
 for path in \
     "${PYTHON_SITE}/PyIndi.py" \
     "${PYTHON_SITE}/_PyIndi.cpython-311-aarch64-linux-gnu.so" \
@@ -182,9 +193,18 @@ for path in \
     /usr/local/bin/indi-web; do
     copy_path_to_rootfs "${path}" "${ROOTFS}"
 done
+fi
 
 {
-    echo "archive_format=mfnavis-indi-binary-v1"
+    if [[ "${MFNAVIS_CODENAME}" == trixie ]]; then
+        echo "archive_format=mfnavis-indi-binary-v2"
+        echo "os_codename=${MFNAVIS_CODENAME}"
+        echo "python_version=$("${MFNAVIS_PYTHON}" -c 'import sys; print("%s.%s" % sys.version_info[:2])')"
+        echo "python_soabi=$("${MFNAVIS_PYTHON}" -c 'import sysconfig; print(sysconfig.get_config_var("SOABI"))')"
+        echo "python_payload=wheels"
+    else
+        echo "archive_format=mfnavis-indi-binary-v1"
+    fi
     echo "created_at=$(date -Is)"
     echo "host=$(hostname)"
     echo "machine=$(uname -m)"
@@ -210,11 +230,55 @@ if [ -f "${INDI_3RDPARTY_LIBS_MANIFEST}" ]; then
         "${METADATA}/indi-3rdparty-libs-install_manifest.txt"
 fi
 
-ARCHIVE_NAME="${ARCHIVE_NAME:-mfnavis-indi-bookworm-arm64-$(date +%Y%m%d-%H%M%S).tar.gz}"
+if [[ "${MFNAVIS_CODENAME}" == trixie ]]; then
+    # Ship matching installation tools so the v2 payload is usable even when
+    # the checkout on the destination still has a Bookworm-only installer.
+    mkdir -p "${METADATA}/installer/scripts"
+    cp "${REPO_ROOT}/mfnavis_paths.sh" "${METADATA}/installer/"
+    for tool in install_indi_mount_archive.sh indi_archive_platform.sh verify_indi_archive.py; do
+        cp "${REPO_ROOT}/scripts/${tool}" "${METADATA}/installer/scripts/"
+    done
+    mkdir -p "${METADATA}/licenses"
+    for license in LICENSE COPYING.BSD COPYING.GPL COPYING.LGPL; do
+        if [[ -f "${BUILD_ROOT}/indi/${license}" ]]; then
+            cp "${BUILD_ROOT}/indi/${license}" "${METADATA}/licenses/indi-${license}"
+        fi
+    done
+    cp "${BUILD_ROOT}/indi-3rdparty/LICENSE" "${METADATA}/licenses/indi-3rdparty-LICENSE"
+    cp "${REPO_ROOT}/scripts/patches/indi-v2.2.3.1-onstepx.patch" "${METADATA}/"
+    {
+        echo "indi_source=https://github.com/indilib/indi"
+        echo "indi_commit=$(git -C "${BUILD_ROOT}/indi" rev-parse HEAD)"
+        echo "indi_3rdparty_source=https://github.com/indilib/indi-3rdparty"
+        echo "indi_3rdparty_commit=$(git -C "${BUILD_ROOT}/indi-3rdparty" rev-parse HEAD)"
+    } > "${METADATA}/source_provenance.txt"
+    cat > "${METADATA}/INSTALL.txt" <<'INSTALL_EOF'
+Trixie/aarch64/Python 3.13 INDI archive
+
+Use the updated scripts/install_indi_mount_archive.sh in your MFNavis checkout.
+Run it as the destination OS user, without sudo; it requests sudo for system work.
+The archive contains offline Python wheels. Native runtime packages use Trixie apt.
+Use MFNAVIS_PYTHON=/path/to/application/venv/bin/python to share PyIndi with MFNavis.
+The default uses MFNavis/.venv-trixie when present, otherwise creates .venv-indi.
+A separate .venv-indi does not change the Python interpreter of MFNavis itself.
+
+For an older checkout, first verify the checksum, then extract the bundled tools:
+  archive=/absolute/path/to/mfnavis-indi-trixie-arm64.tar.gz
+  tools_dir=$(mktemp -d)
+  tar -xzf "$archive" -C "$tools_dir" ./metadata/installer
+  MFNAVIS_REPO_DIR="$HOME/MFNavis" bash \
+    "$tools_dir/metadata/installer/scripts/install_indi_mount_archive.sh" "$archive"
+
+Add --verify-only to check the checksum, archive paths and host ABI without installing.
+Bookworm archives cannot be installed on Trixie, even if the file is renamed.
+INSTALL_EOF
+fi
+
+ARCHIVE_NAME="${ARCHIVE_NAME:-mfnavis-indi-${MFNAVIS_CODENAME}-arm64-$(date +%Y%m%d-%H%M%S).tar.gz}"
 ARCHIVE_PATH="${OUT_DIR}/${ARCHIVE_NAME}"
 
 tar --owner=0 --group=0 --numeric-owner -C "${STAGING}" -czf "${ARCHIVE_PATH}" .
-sha256sum "${ARCHIVE_PATH}" > "${ARCHIVE_PATH}.sha256"
+(cd "$(dirname "${ARCHIVE_PATH}")"; sha256sum "$(basename "${ARCHIVE_PATH}")") > "${ARCHIVE_PATH}.sha256"
 split_archive_if_needed "${ARCHIVE_PATH}"
 
 echo "Created archive: ${ARCHIVE_PATH}"

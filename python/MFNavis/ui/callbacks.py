@@ -307,7 +307,8 @@ def restart_pifinder(ui_module: UIModule) -> None:
     service
     """
     ui_module.message(_("Restarting..."), 2)
-    sys_utils.restart_pifinder()
+    if not sys_utils.restart_pifinder():
+        ui_module.message(_("Restart failed"), 3)
 
 
 def mount_control_toggle(ui_module: UIModule) -> None:

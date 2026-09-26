@@ -3880,13 +3880,31 @@ def restore_userdata(zip_path):
     restore_backup(zip_path, utils.data_dir)
 
 
-def restart_pifinder() -> None:
-    """
-    Uses systemctl to restart the PiFinder
-    service
-    """
+def restart_pifinder() -> bool:
+    """Queue a service restart without prompting for a password or raising."""
     logger.info("SYS: Restarting MFNavis")
-    sh.sudo("systemctl", "restart", "mfnavis")
+    try:
+        result = subprocess.run(
+            [
+                "/usr/bin/sudo",
+                "-n",
+                "/usr/bin/systemctl",
+                "--no-block",
+                "restart",
+                "mfnavis.service",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        logger.exception("SYS: Could not request MFNavis restart")
+        return False
+    if result.returncode != 0:
+        logger.error("SYS: MFNavis restart failed: %s", result.stderr.strip())
+        return False
+    return True
 
 
 def restart_system() -> None:

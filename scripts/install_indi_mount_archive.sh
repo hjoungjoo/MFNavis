@@ -2,23 +2,29 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MFNAVIS_REPO_DIR="${REPO_ROOT}"
+MFNAVIS_REPO_DIR="${MFNAVIS_REPO_DIR:-${REPO_ROOT}}"
 source "${REPO_ROOT}/mfnavis_paths.sh"
 ARCHIVE="${1:-}"
+VERIFY_ONLY="${2:-}"
 FASTAPI_VERSION="${FASTAPI_VERSION:-0.103.2}"
 STARLETTE_VERSION="${STARLETTE_VERSION:-0.27.0}"
 UVICORN_VERSION="${UVICORN_VERSION:-0.23.2}"
 ANYIO_VERSION="${ANYIO_VERSION:-3.7.1}"
 
 usage() {
-    echo "Usage: $0 <mfnavis-indi-bookworm-arm64.tar.gz>" >&2
+    echo "Usage: $0 <mfnavis-indi-OS-arm64.tar.gz> [--verify-only]" >&2
     echo "       If the archive is split, pass the .tar.gz path and keep .tar.gz.part-* next to it." >&2
 }
 
-if [ -z "${ARCHIVE}" ]; then
+if [[ -z "${ARCHIVE}" || ( -n "${VERIFY_ONLY}" && "${VERIFY_ONLY}" != --verify-only ) || "$#" -gt 2 ]]; then
     usage
     exit 1
 fi
+
+# Reject unsupported binaries before reconstructing archives or touching apt,
+# Python packages, system services or files under /usr.
+source "${REPO_ROOT}/scripts/indi_archive_platform.sh"
+require_indi_archive_platform
 
 # mfnavis_setup.sh mounts /tmp as a small tmpfs (SD-wear reduction), far too
 # small to rebuild the split archive and extract its rootfs; use disk-backed
@@ -68,19 +74,12 @@ prepare_archive() {
 
 ARCHIVE_REQUESTED="${ARCHIVE}"
 ARCHIVE="$(prepare_archive "${ARCHIVE_REQUESTED}")"
-python3 "${REPO_ROOT}/scripts/verify_indi_archive.py" \
-    "${ARCHIVE}" "${ARCHIVE_REQUESTED}.sha256"
+"${MFNAVIS_PYTHON:-python3}" "${REPO_ROOT}/scripts/verify_indi_archive.py" \
+    "${ARCHIVE}" "${ARCHIVE_REQUESTED}.sha256" --check-host
 
-if [ "$(uname -m)" != "aarch64" ]; then
-    echo "This archive installer supports only Raspberry Pi OS Bookworm 64-bit/aarch64." >&2
-    exit 1
-fi
-
-if [ -r /etc/os-release ]; then
-    . /etc/os-release
-    if [ "${VERSION_CODENAME:-}" != "bookworm" ]; then
-        echo "WARNING: expected Bookworm, found ${PRETTY_NAME:-unknown OS}." >&2
-    fi
+if [[ "${VERIFY_ONLY}" == --verify-only ]]; then
+    echo "Archive and host compatibility verified; no installation performed."
+    exit 0
 fi
 
 SERVICE_USER="${MFNAVIS_USER}"
@@ -95,6 +94,29 @@ fi
 echo "Installing INDI binary archive:"
 cat "${INDI_TMPDIR}/metadata/build_info.txt"
 echo
+
+ARCHIVE_FORMAT="$(sed -n 's/^archive_format=//p' "${INDI_TMPDIR}/metadata/build_info.txt")"
+if [[ "${ARCHIVE_FORMAT}" == mfnavis-indi-binary-v2 ]]; then
+    if [[ -z "${MFNAVIS_PYTHON:-}" ]]; then
+        if [[ -x "${MFNAVIS_REPO_DIR}/.venv-trixie/bin/python" ]]; then
+            MFNAVIS_PYTHON="${MFNAVIS_REPO_DIR}/.venv-trixie/bin/python"
+        else
+            python3 -m venv --system-site-packages "${MFNAVIS_REPO_DIR}/.venv-indi"
+            MFNAVIS_PYTHON="${MFNAVIS_REPO_DIR}/.venv-indi/bin/python"
+        fi
+    fi
+    "${MFNAVIS_PYTHON}" -c 'import sys; assert sys.prefix != sys.base_prefix, "Set MFNAVIS_PYTHON to a virtualenv interpreter"'
+    "${MFNAVIS_PYTHON}" "${REPO_ROOT}/scripts/verify_indi_archive.py" \
+        "${ARCHIVE}" "${ARCHIVE_REQUESTED}.sha256" --check-host
+    # Ensure the wheelhouse contains the complete pinned dependency closure
+    # before stopping either service or overwriting any native files.
+    "${MFNAVIS_PYTHON}" -m pip install --dry-run --ignore-installed --no-index \
+        --find-links "${INDI_TMPDIR}/wheels" -r "${INDI_TMPDIR}/metadata/python-requirements.txt"
+    mapfile -t RUNTIME_PACKAGES < "${INDI_TMPDIR}/metadata/runtime-packages.txt"
+    sudo apt-get update
+    sudo apt-get install -y "${RUNTIME_PACKAGES[@]}" chrony
+    INDI_WEB_EXEC="$("${MFNAVIS_PYTHON}" -c 'import sysconfig; print(sysconfig.get_path("scripts") + "/indi-web")')"
+else
 
 sudo apt update
 sudo apt install -y \
@@ -117,6 +139,8 @@ PIP_BREAK_SYSTEM_PACKAGES=1 sudo python3 -m pip install --break-system-packages 
     "psutil==6.0.0" \
     "requests==2.32.4" \
     "importlib_metadata==8.5.0"
+    INDI_WEB_EXEC=/usr/local/bin/indi-web
+fi
 
 if sudo systemctl is-active --quiet mfnavis.service; then
     APP_WAS_ACTIVE=1
@@ -139,8 +163,15 @@ sudo tar -C "${INDI_TMPDIR}/rootfs" --owner=0 --group=0 --numeric-owner -cf - . 
     | sudo tar -C / --numeric-owner --keep-directory-symlink -xpf -
 sudo ldconfig
 
+if [[ "${ARCHIVE_FORMAT}" == mfnavis-indi-binary-v2 ]]; then
+    "${MFNAVIS_PYTHON}" -m pip install --no-index --no-deps --force-reinstall \
+        --find-links "${INDI_TMPDIR}/wheels" -r "${INDI_TMPDIR}/metadata/python-requirements.txt"
+    "${MFNAVIS_PYTHON}" -c 'import PyIndi, indiweb, fastapi; print("INDI Python imports OK")'
+fi
+
 # Safety net: if a previous run (or an older archive) already clobbered the
 # usrmerge symlinks, restore them so the system stays bootable.
+if [[ "${ARCHIVE_FORMAT}" != mfnavis-indi-binary-v2 ]]; then
 for merged in lib bin sbin lib64; do
     if [ -d "/${merged}" ] && [ ! -L "/${merged}" ] && [ -d "/usr/${merged}" ]; then
         echo "WARNING: /${merged} is a real directory but should be a symlink to /usr/${merged}." >&2
@@ -150,6 +181,7 @@ for merged in lib bin sbin lib64; do
         sudo ln -s "usr/${merged}" "/${merged}"
     fi
 done
+fi
 sudo ldconfig
 
 cat > "${INDI_TMPDIR}/indiwebmanager.service" <<EOF
@@ -160,8 +192,8 @@ After=multi-user.target
 [Service]
 Type=idle
 User=${SERVICE_USER}
-WorkingDirectory=${REPO_ROOT}
-ExecStart=/usr/local/bin/indi-web -v
+WorkingDirectory=${MFNAVIS_REPO_DIR}
+ExecStart=${INDI_WEB_EXEC} -v
 Restart=always
 RestartSec=5
 

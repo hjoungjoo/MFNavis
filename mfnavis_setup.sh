@@ -110,70 +110,14 @@ source "${MFNAVIS_REPO_DIR}/mfnavis_paths.sh"
 
 python3 "${MFNAVIS_REPO_DIR}/scripts/check_cedar_free.py" --repo "${MFNAVIS_REPO_DIR}"
 
-find_mfnavis_indi_archive() {
-    local archives=()
-    local part_archives=()
-    shopt -s nullglob
-    archives=("${MFNAVIS_REPO_DIR}"/dist/mfnavis-indi-bookworm-arm64-*.tar.gz)
-    part_archives=("${MFNAVIS_REPO_DIR}"/dist/mfnavis-indi-bookworm-arm64-*.tar.gz.part-00)
-    shopt -u nullglob
-
-    if [[ "${#archives[@]}" -gt 0 ]]; then
-        printf "%s\n" "${archives[@]}" | sort | tail -n 1
-    elif [[ "${#part_archives[@]}" -gt 0 ]]; then
-        local latest_part
-        latest_part="$(printf "%s\n" "${part_archives[@]}" | sort | tail -n 1)"
-        printf "%s\n" "${latest_part%.part-00}"
-    fi
-}
-
-install_optional_indi_archive() {
-    local mode="${MFNAVIS_INSTALL_INDI_ARCHIVE:-auto}"
-    local archive="${MFNAVIS_INDI_ARCHIVE:-}"
-
-    mode="${mode,,}"
-    if [[ -z "${archive}" ]]; then
-        archive="$(find_mfnavis_indi_archive || true)"
-    fi
-
-    case "${mode}" in
-        1|true|yes|on|archive)
-            if [[ -z "${archive}" ]]; then
-                echo "MFNAVIS_INSTALL_INDI_ARCHIVE is enabled, but no INDI archive was found." >&2
-                echo "Set MFNAVIS_INDI_ARCHIVE=/path/to/mfnavis-indi-bookworm-arm64.tar.gz." >&2
-                exit 1
-            fi
-            ;;
-        auto|"")
-            if [[ -z "${archive}" ]]; then
-                echo "No INDI binary archive found; skipping optional INDI mount support."
-                echo "To install it during setup, put the archive in ${MFNAVIS_REPO_DIR}/dist or set MFNAVIS_INDI_ARCHIVE."
-                return 0
-            fi
-            ;;
-        0|false|no|off|none|skip)
-            echo "Skipping optional INDI mount support."
-            return 0
-            ;;
-        *)
-            echo "Invalid MFNAVIS_INSTALL_INDI_ARCHIVE value: ${mode}" >&2
-            echo "Use auto, true, or false." >&2
-            exit 1
-            ;;
-    esac
-
-    if [[ ! -f "${archive}" && ! -f "${archive}.part-00" ]]; then
-        echo "INDI archive not found: ${archive}" >&2
-        exit 1
-    fi
-
-    echo "Installing optional INDI mount support from ${archive}"
-    bash "${MFNAVIS_REPO_DIR}/scripts/install_indi_mount_archive.sh" "${archive}"
-}
+source "${MFNAVIS_REPO_DIR}/scripts/mfnavis_setup_runtime.sh"
+mfnavis_select_setup_python
+mfnavis_prepare_indi_archive
 
 bash "${MFNAVIS_REPO_DIR}/scripts/ensure_tetra3_link.sh" "${MFNAVIS_REPO_DIR}"
 bash "${MFNAVIS_REPO_DIR}/scripts/setup_mfds.sh"
-sudo python3 -m pip install --break-system-packages -r python/requirements.txt
+mfnavis_install_setup_python
+mfnavis_install_setup_indi
 
 # Setup GPSD
 sudo cp "${MFNAVIS_REPO_DIR}/pi_config_files/gpsd.conf" /etc/default/gpsd
@@ -384,6 +328,8 @@ mfnavis_render_config "${MFNAVIS_REPO_DIR}/pi_config_files/mfnavis.service" /lib
 mfnavis_render_config "${MFNAVIS_REPO_DIR}/pi_config_files/mfnavis_splash.service" /lib/systemd/system/mfnavis_splash.service
 mfnavis_render_config "${MFNAVIS_REPO_DIR}/pi_config_files/mfnavis_apsta_prepare.service" /lib/systemd/system/mfnavis_apsta_prepare.service
 mfnavis_render_config "${MFNAVIS_REPO_DIR}/pi_config_files/mfnavis_apsta_monitor.service" /lib/systemd/system/mfnavis_apsta_monitor.service
+mfnavis_configure_python_services
+bash "${MFNAVIS_REPO_DIR}/scripts/install_service_control.sh" "${MFNAVIS_USER}"
 sudo systemctl daemon-reload
 sudo systemctl enable mfnavis
 sudo systemctl enable mfnavis_splash
@@ -393,7 +339,5 @@ for group in input video render dialout gpio i2c spi; do
         sudo usermod -aG "${group}" "${MFNAVIS_USER}"
     fi
 done
-
-install_optional_indi_archive
 
 echo "MFNavis setup complete, please restart the Pi"

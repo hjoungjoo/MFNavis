@@ -1037,7 +1037,8 @@ class Server:
             """
             Restarts just the PiFinder software
             """
-            sys_utils.restart_pifinder()
+            if not sys_utils.restart_pifinder():
+                return _("Restart failed"), 503
             return "restarting"
 
         @app.route("/equipment")

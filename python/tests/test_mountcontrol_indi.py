@@ -25,6 +25,11 @@ def isolated_motion_settings(monkeypatch, tmp_path):
     monkeypatch.setattr(mci.config.utils, "data_dir", tmp_path)
     monkeypatch.setattr(mci.config.utils, "runtime_dir", tmp_path)
     monkeypatch.setattr(mci, "STATUS_FILE", tmp_path / "mount_control_status.json")
+    monkeypatch.setattr(
+        sys_utils,
+        "get_indi_profile_drivers",
+        lambda **kwargs: {"profile": "", "drivers": []},
+    )
 
 
 class DummyMountControl(MountControlIndi):

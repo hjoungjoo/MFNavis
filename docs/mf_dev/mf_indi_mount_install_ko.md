@@ -29,6 +29,31 @@ INDI 마운트 제어는 실험 기능입니다. 먼저 INDI Telescope Simulator
 드라이버, PyIndi와 MFNavis의 OnStepX 패치 구성이 그대로 설치됩니다. 소스 수정이나
 드라이버 패치 변경이 필요할 때만 아래의 전체 소스 설치·빌드 방식을 사용하세요.
 
+아카이브는 OS별로 구분합니다. **Bookworm/aarch64/Python 3.11**은 기존 v1
+아카이브를, **Trixie/aarch64/Python 3.13**은 v2 아카이브를 사용합니다. 설치 전에
+아카이브의 OS와 Python ABI가 장치에 맞는지 검사합니다. Bookworm 아카이브의
+이름이나 apt 패키지 이름을 바꾸는 것만으로 Trixie에서 사용할 수는 없습니다.
+
+Trixie 아카이브에는 네이티브 바이너리, 실제 ELF 의존성에서 수집한 apt 패키지
+목록, 버전이 고정된 Python wheel과 설치 도구를 포함합니다. Python 패키지는
+네트워크 없이 가상환경에 설치하며, 네이티브 런타임 패키지는 Trixie apt를
+사용합니다. 시스템 Python에 `--break-system-packages`로 설치하지 않습니다.
+
+```bash
+cd ~/MFNavis
+bash scripts/install_indi_mount_archive.sh \
+  dist/mfnavis-indi-trixie-arm64-v2.2.3.1-current.tar.gz --verify-only
+MFNAVIS_PYTHON="$PWD/.venv-trixie/bin/python" \
+  bash scripts/install_indi_mount_archive.sh \
+  dist/mfnavis-indi-trixie-arm64-v2.2.3.1-current.tar.gz
+```
+
+`MFNAVIS_PYTHON`에는 MFNavis가 사용하는 가상환경의 Python을 지정합니다.
+미지정 시 `.venv-trixie`가 있으면 사용하고, 없으면 `.venv-indi`를 생성합니다.
+별도의 `.venv-indi`는 MFNavis 서비스의 Python을 자동으로 바꾸지 않으므로,
+MFNavis에서도 PyIndi를 사용하려면 앱의 가상환경을 명시해야 합니다.
+구버전 체크아웃용 설치 도구는 아카이브의 `metadata/installer/`에 있습니다.
+
 ```bash
 cd ~/MFNavis
 bash scripts/install_indi_mount_archive.sh \
@@ -87,15 +112,47 @@ Git 저장소에는 큰 아카이브가 `.tar.gz.part-00`, `.part-01` 같은 조
 `install_indi_mount_archive.sh`가 조각을 다시 합치고 `.sha256` checksum을
 검증한 뒤 설치합니다.
 
-전체 MFNavis 설치 스크립트인 `mfnavis_setup.sh`에서도 같은 아카이브 설치 경로를 사용할 수 있습니다.
+전체 MFNavis 설치 스크립트인 `mfnavis_setup.sh`는 INDI를 기본으로 아카이브에서
+설치합니다. 현재 OS에 맞는 `dist/mfnavis-indi-<OS>-arm64-*.tar.gz` 또는
+`.tar.gz.part-00`을 찾아 최신 버전을 선택합니다. 분할 파일과 `.sha256`은
+같은 디렉터리에 두어야 합니다. Bookworm/Python 3.11과 Trixie/Python 3.13을
+지원하며, 소스 빌드를 자동으로 호출하지 않습니다.
+
+이 변경과 Trixie 아카이브를 포함한 `Trixie` 브랜치를 설치하려면 다음처럼
+다운로드 경로와 체크아웃 브랜치를 모두 지정합니다.
+
+```bash
+wget -O /tmp/mfnavis-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavis/Trixie/mfnavis_setup.sh
+MFNAVIS_INSTALL_BRANCH=Trixie bash /tmp/mfnavis-setup.sh
+```
+
+기존 체크아웃에 수정된 tracked 파일이 있으면 설치 스크립트는 해당 변경을
+덮어쓰지 않고 중단합니다. 기존 설치가 선택한 브랜치로 fast-forward 가능한지도
+검사합니다. 자세한 변경·검증 범위는 [Trixie 배포 기록](TRIXIE_20260926_ko.md)을
+참조합니다.
+
+다른 위치의 아카이브를 선택하려면 절대 경로로 지정합니다. Trixie 예:
 
 ```bash
 cd ~
-MFNAVIS_INDI_ARCHIVE="$HOME/MFNavis/dist/mfnavis-indi-bookworm-arm64-v2.2.3.1-current.tar.gz" \
+MFNAVIS_INDI_ARCHIVE="$HOME/MFNavis/dist/mfnavis-indi-trixie-arm64-v2.2.3.1-current.tar.gz" \
   bash "$HOME/MFNavis/mfnavis_setup.sh"
 ```
 
-`MFNAVIS_INSTALL_INDI_ARCHIVE`는 기본값이 `auto`입니다. `dist/mfnavis-indi-bookworm-arm64-*.tar.gz` 파일이 있거나 `MFNAVIS_INDI_ARCHIVE`가 지정되어 있으면 INDI 지원을 설치하고, 없으면 일반 MFNavis 설치만 진행합니다. 강제로 끄려면 다음처럼 실행합니다.
+`MFNAVIS_INSTALL_INDI_ARCHIVE`는 기본값이 `true`입니다. 이전 설정의 `auto`도
+이제 아카이브 설치를 필수로 수행합니다. 아카이브가 없거나 checksum·OS·Python
+ABI가 맞지 않으면 앱 Python 패키지 설치와 GPS·네트워크 설정 전에 중단합니다.
+Trixie 아카이브는 별도로 제공해야 하며, 설치 스크립트가 다운로드하거나
+Bookworm 아카이브로 대신 설치하지 않습니다.
+
+Trixie에서는 `requirements-trixie.txt`로 `.venv-trixie`를 구성하고, 같은 Python에
+아카이브의 PyIndi와 INDI Web Manager wheel을 설치합니다. MFNavis, splash,
+INDI Web Manager 서비스도 이 환경을 사용합니다. `MFNAVIS_PYTHON`을 지정할 때는
+Python 3.13 가상환경을 사용하고 Picamera2 등 OS 패키지 접근을 위해
+`--system-site-packages`로 생성합니다. Bookworm은 기존 시스템 Python 설치를
+유지합니다.
+
+INDI를 사용하지 않는 별도 설치에서만 명시적으로 끌 수 있습니다.
 
 ```bash
 MFNAVIS_INSTALL_INDI_ARCHIVE=false bash "$HOME/MFNavis/mfnavis_setup.sh"
@@ -107,6 +164,13 @@ MFNAVIS_INSTALL_INDI_ARCHIVE=false bash "$HOME/MFNavis/mfnavis_setup.sh"
 cd ~/MFNavis
 bash scripts/package_indi_mount_archive.sh
 ```
+
+Trixie에서는 기본적으로 `.venv-trixie/bin/python`의 설치된 INDI 구성과
+`~/indi-latest`의 네이티브 설치 manifest를 사용합니다. 다른 가상환경을
+사용하면 `MFNAVIS_PYTHON`으로 지정합니다. Python 패키징 도구 `wheel`과
+`packaging`이 필요합니다. 패키징 시 PyIndi와 커스텀 INDI Web Manager는
+설치된 파일·wheel metadata·라이선스를 모아 wheel로 다시 포장하고, 나머지
+Python 의존성은 현재 설치된 정확한 버전으로 wheel을 수집합니다.
 
 `package_indi_mount_archive.sh`는 전체 `.tar.gz`와 `.sha256`을 만들고,
 아카이브가 GitHub에 올리기 좋은 크기 제한을 넘으면 `.tar.gz.part-*`
