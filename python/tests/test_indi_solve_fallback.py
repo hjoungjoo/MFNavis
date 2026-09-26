@@ -513,3 +513,28 @@ def test_cancel_normal_goto_cannot_rearm_after_outage(rig, command):
     service._tick_state_machine()
     assert not commands(service)
     assert not service.solve_fallback_armed
+
+
+@pytest.mark.parametrize("upper,accepted", [(80.0, False), (85.0, True)])
+def test_native_sync_uses_live_indi_altitude_limit_not_a_fixed_80(rig, upper, accepted):
+    service, _, mount, pointing = rig
+    pointing["imu"]["alt"] = 81.4
+    mount.update(alignment_min_altitude=-10.0, alignment_max_altitude=upper)
+    service.handle_command({"type": "goto_target", "ra": 110.0, "dec": 30.0})
+    assert bool(commands(service)) is accepted
+    if not accepted:
+        assert service.phase == "error"
+        assert "81.4" in service.wait_reason
+        assert "80.0" in service.wait_reason
+        assert not service.solve_fallback_armed
+
+
+def test_mount_limit_change_applies_to_next_goto_without_restart(rig):
+    service, _, mount, pointing = rig
+    pointing["imu"]["alt"] = 81.4
+    mount.update(alignment_min_altitude=-10.0, alignment_max_altitude=80.0)
+    service.handle_command({"type": "goto_target", "ra": 110.0, "dec": 30.0})
+    assert not commands(service)
+    mount["alignment_max_altitude"] = 85.0
+    service.handle_command({"type": "goto_target", "ra": 110.0, "dec": 30.0})
+    assert commands(service)[-1]["type"] == "sync_and_goto"

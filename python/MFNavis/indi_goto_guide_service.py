@@ -720,6 +720,26 @@ class IndiGotoGuideService:
         return self._is_recent_solve(current)
 
     def _start_native_goto(self, anchor: dict[str, Any]) -> None:
+        mount = self._mount_status_summary()
+        altitude = self._finite_float(anchor.get("alt"))
+        low = self._finite_float(mount.get("alignment_min_altitude"))
+        high = self._finite_float(mount.get("alignment_max_altitude"))
+        if (
+            altitude is not None
+            and low is not None
+            and high is not None
+            and low <= high
+            and not low <= altitude <= high
+        ):
+            self.solve_fallback_armed = False
+            self.initial_goto_deadline = None
+            self.phase = "error"
+            self.service_state = "error"
+            self.wait_reason = f"IMU sync altitude {altitude:.1f} deg outside INDI mount limits {low:.1f} to {high:.1f} deg"
+            self.last_action = "native GoTo rejected by mount elevation limits"
+            self.error_notifier.emit("imu_sync_altitude_limit", self.wait_reason)
+            logger.warning(self.wait_reason)
+            return
         self._disable_pulse_align()
         self._disable_tracking_guide("starting native GoTo during solve outage")
         self._reset_tracking_recovery()
@@ -2416,6 +2436,8 @@ class IndiGotoGuideService:
             "message": status.get("message"),
             "updated": status.get("updated"),
             "device": status.get("device"),
+            "alignment_min_altitude": status.get("alignment_min_altitude"),
+            "alignment_max_altitude": status.get("alignment_max_altitude"),
             "park_state": status.get("park_state"),
             "driver_mount_status": status.get("driver_mount_status"),
             "raw_mount_status": status.get("raw_mount_status"),

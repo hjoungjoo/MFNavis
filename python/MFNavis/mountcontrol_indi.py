@@ -17,6 +17,7 @@ import queue
 import re
 import threading
 import time
+from collections import deque
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from multiprocessing import Queue
@@ -545,14 +546,15 @@ if PyIndi is not None:
                 clientlogger.exception("updateProperty coordinate handling failed")
 
         def newMessage(self, device, message):
-            # Routine driver chatter (time/coordinate echoes) floods the log
-            # at INFO during every session; real state changes are logged by
-            # their handlers. Keep the raw stream at debug.
-            clientlogger.debug(
-                "INDI message from %s: %s",
-                device.getDeviceName(),
-                device.messageQueue(message),
-            )
+            text = str(device.messageQueue(message))
+            if (
+                self.mount_control is not None
+                and device.getDeviceName() == self.mount_control._indi_device_name()
+            ):
+                self.mount_control.receive_sync_driver_message(text, self.generation)
+            # Controller errors are useful even when debug logging is off.
+            log = clientlogger.warning if "[ERROR]" in text else clientlogger.debug
+            log("INDI message from %s: %s", device.getDeviceName(), text)
 
         def serverConnected(self):
             clientlogger.info("Connected to INDI server")
@@ -678,6 +680,9 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._sync_property_lock = threading.Lock()
         self._sync_property_sequence = 0
         self._sync_property_receipts: dict[str, dict[str, Any]] = {}
+        # Preserve short-lived Ok/Alert replies across periodic Idle telemetry.
+        self._sync_property_events: dict[str, deque] = {}
+        self._sync_driver_errors: list[str] = []
         self._pending_sync_goto: Optional[dict[str, Any]] = None
         self._sync_goto_status: Optional[dict[str, Any]] = None
         # Non-sidereal tracking frequency (None = sidereal firmware default).
@@ -4296,15 +4301,39 @@ class MountControlIndi(BacklashCalibrationMixin):
                 "values": dict(values),
                 "received_monotonic": time.monotonic(),
             }
+            self._sync_property_events.setdefault(name, deque(maxlen=32)).append(
+                self._sync_property_receipts[name]
+            )
+
+    def receive_sync_driver_message(self, message: str, client_generation: int) -> None:
+        if client_generation != self._client_generation:
+            return
+        with self._sync_property_lock:
+            transaction = self._pending_sync_goto
+            if transaction is None:
+                return
+            if (
+                transaction.get("stage") == "waiting_sync_coordinates"
+                and "OnStep: Synchronization successful." in message
+            ):
+                transaction["driver_sync_success_monotonic"] = time.monotonic()
+            if "[ERROR]" in message and len(self._sync_driver_errors) < 8:
+                if message not in self._sync_driver_errors:
+                    self._sync_driver_errors.append(message)
 
     def _cancel_sync_goto(self, reason: str) -> None:
         if self._pending_sync_goto is None:
             return
+        with self._sync_property_lock:
+            errors = list(self._sync_driver_errors)
+        if errors:
+            reason = f"{reason}: {errors[0]}"
         self._pending_sync_goto = None
         self._sync_goto_status = {
             **(self._sync_goto_status or {}),
             "state": "failed",
             "reason": reason,
+            "driver_errors": errors,
         }
         self._write_controller_status("sync_goto_failed", reason)
         logger.warning("Verified sync+GoTo cancelled: %s", reason)
@@ -4341,6 +4370,8 @@ class MountControlIndi(BacklashCalibrationMixin):
             }
             self._write_controller_status("sync_goto_failed", "INDI unavailable")
             return False
+        with self._sync_property_lock:
+            self._sync_driver_errors = []
         transaction = dict(command)
         transaction.update(zip(("sync_ra", "sync_dec", "ra", "dec"), values))
         transaction["generation"] = self._client_generation
@@ -4403,13 +4434,54 @@ class MountControlIndi(BacklashCalibrationMixin):
             else "ON_COORD_SET"
         )
         with self._sync_property_lock:
-            receipt = self._sync_property_receipts.get(name)
-        if receipt is None or receipt["sequence"] <= transaction["after_sequence"]:
+            replies = list(self._sync_property_events.get(name, ()))
+        receipt = None
+        for reply in replies:
+            if reply["sequence"] <= transaction["after_sequence"]:
+                continue
+            if reply["state"] == "alert":
+                receipt = reply
+                break
+            idle_sync_success = (
+                stage == "waiting_sync_coordinates"
+                and reply["state"] == "idle"
+                and transaction.get("driver_sync_success_monotonic") is not None
+            )
+            if reply["state"] != "ok" and not idle_sync_success:
+                continue
+            if stage in {"waiting_sync_mode", "waiting_slew_mode"}:
+                expected = "SYNC" if stage == "waiting_sync_mode" else "SLEW"
+                if not reply["values"].get(expected):
+                    continue
+            else:
+                try:
+                    ra, dec = (
+                        float(reply["values"]["RA"]) * 15.0,
+                        float(reply["values"]["DEC"]),
+                    )
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if not math.isfinite(ra) or not math.isfinite(dec) or abs(dec) > 90:
+                    continue
+                if (
+                    radec_separation_arcmin(
+                        ra, dec, transaction["sync_ra"], transaction["sync_dec"]
+                    )
+                    > SYNC_GOTO_COORD_TOLERANCE_ARCMIN
+                ):
+                    continue
+            receipt = reply
+            break
+        if receipt is None:
             return
         if receipt["state"] == "alert":
             self._cancel_sync_goto(f"Driver rejected {stage}")
             return
-        if receipt["state"] != "ok":
+        if receipt["state"] != "ok" and not (
+            stage == "waiting_sync_coordinates"
+            and receipt["state"] == "idle"
+            and transaction.get("driver_sync_success_monotonic") is not None
+        ):
             return
         if stage == "waiting_sync_mode":
             if not receipt["values"].get("SYNC"):

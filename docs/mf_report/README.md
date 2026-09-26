@@ -8,6 +8,7 @@
 - [2026-09-26 점검 후 혜성 계산·번역·테스트 간 간섭 수정](mfnavis_trixie_cloudy_fixes_20260926_ko.md)
 - [2026-09-27 실내 OnStepX 시리얼 Auto 적용 복구](mfnavis_trixie_serial_auto_20260927_ko.md)
 - [2026-09-27 실내 GoTo 솔빙 실패 시 IMU·마운트 전환](mfnavis_trixie_solve_fallback_20260927_ko.md)
+- [2026-09-27 실내 GoTo Sync 거절·확인 응답 수정](mfnavis_trixie_sync_ack_20260927_ko.md)
 
 문서별 요약과 날짜는 인덱스를 본다:
 [한국어](../mf_docs_index_ko.md) · [English](../mf_docs_index_en.md).

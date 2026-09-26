@@ -3435,3 +3435,122 @@ def test_legacy_indi_alignment_number_and_connection_callbacks():
         SimpleNamespace(name="CONNECTION", device=mount._indi_device_name())
     )
     assert json.loads(mci.STATUS_FILE.read_text())["alignment_min_altitude"] == 20
+
+
+@pytest.mark.parametrize("terminal", ["ok", "alert"])
+def test_sync_terminal_reply_survives_later_idle_telemetry(monkeypatch, terminal):
+    mount, command = _verified_goto_test_mount(monkeypatch)
+    assert mount.begin_sync_and_goto(command)
+    _sync_ack(mount, "ON_COORD_SET", {"SYNC": True})
+    mount.receive_sync_property(
+        "EQUATORIAL_EOD_COORD",
+        terminal,
+        {"RA": 8.8, "DEC": 49.5},
+        mount._client_generation,
+    )
+    # This reproduces OnStep's Alert -> Idle burst before the service polls.
+    mount.receive_sync_property(
+        "EQUATORIAL_EOD_COORD",
+        "idle",
+        {"RA": 13.0, "DEC": 42.3},
+        mount._client_generation,
+    )
+    mount._check_pending_sync_goto()
+    if terminal == "alert":
+        assert mount._sync_goto_status["state"] == "failed"
+        assert (
+            "Driver rejected waiting_sync_coordinates"
+            in mount._sync_goto_status["reason"]
+        )
+        assert mount.moves == []
+    else:
+        assert mount._sync_goto_status["state"] == "waiting_slew_mode"
+        _sync_ack(mount, "ON_COORD_SET", {"SLEW": True})
+        assert mount.moves == [(140.0, 45.0)]
+
+
+def test_sync_checks_all_replies_for_a_matching_coordinate(monkeypatch):
+    mount, command = _verified_goto_test_mount(monkeypatch)
+    mount.begin_sync_and_goto(command)
+    _sync_ack(mount, "ON_COORD_SET", {"SYNC": True})
+    for state, ra in [("ok", 13.0), ("busy", 8.8), ("ok", 8.8), ("idle", 13.0)]:
+        mount.receive_sync_property(
+            "EQUATORIAL_EOD_COORD",
+            state,
+            {"RA": ra, "DEC": 49.5},
+            mount._client_generation,
+        )
+    mount._check_pending_sync_goto()
+    assert mount._sync_goto_status["state"] == "waiting_slew_mode"
+
+
+def test_sync_failure_includes_controller_limit_error(monkeypatch):
+    mount, command = _verified_goto_test_mount(monkeypatch)
+    mount.begin_sync_and_goto(command)
+    _sync_ack(mount, "ON_COORD_SET", {"SYNC": True})
+    error = "[ERROR] OnStep slew/syncError: Above Overhead limit"
+    mount.receive_sync_driver_message(error, mount._client_generation)
+    mount.receive_sync_driver_message(
+        "[ERROR] Synchronization failed.", mount._client_generation
+    )
+    mount.receive_sync_property(
+        "EQUATORIAL_EOD_COORD",
+        "alert",
+        {"RA": 13.0, "DEC": 42.3},
+        mount._client_generation,
+    )
+    mount.receive_sync_property(
+        "EQUATORIAL_EOD_COORD",
+        "idle",
+        {"RA": 13.0, "DEC": 42.3},
+        mount._client_generation,
+    )
+    mount._check_pending_sync_goto()
+    assert error in mount._sync_goto_status["reason"]
+    assert mount._sync_goto_status["driver_errors"][0] == error
+    assert mount.moves == []
+    # An error from an earlier request cannot contaminate the next one.
+    mount.begin_sync_and_goto({**command, "request_id": "second"})
+    assert mount._sync_driver_errors == []
+
+
+def test_stale_driver_error_does_not_attach_to_new_sync(monkeypatch):
+    mount, command = _verified_goto_test_mount(monkeypatch)
+    mount.receive_sync_driver_message("[ERROR] old", mount._client_generation)
+    mount.begin_sync_and_goto(command)
+    mount.receive_sync_driver_message(
+        "[ERROR] old client", mount._client_generation - 1
+    )
+    assert mount._sync_driver_errors == []
+
+
+def test_onstep_idle_sync_needs_success_message_and_matching_remote_coordinate(
+    monkeypatch,
+):
+    mount, command = _verified_goto_test_mount(monkeypatch)
+    mount.begin_sync_and_goto(command)
+    _sync_ack(mount, "ON_COORD_SET", {"SYNC": True})
+    _sync_ack(mount, "EQUATORIAL_EOD_COORD", {"RA": 8.8, "DEC": 49.5}, state="idle")
+    assert mount._sync_goto_status["state"] == "waiting_sync_coordinates"
+    mount.receive_sync_driver_message(
+        "[INFO] OnStep: Synchronization successful.", mount._client_generation
+    )
+    mount._check_pending_sync_goto()
+    assert mount._sync_goto_status["state"] == "waiting_slew_mode"
+    assert mount.moves == []
+    _sync_ack(mount, "ON_COORD_SET", {"SLEW": True})
+    assert mount.moves == [(140.0, 45.0)]
+
+
+def test_success_message_cannot_verify_old_or_wrong_idle_readback(monkeypatch):
+    mount, command = _verified_goto_test_mount(monkeypatch)
+    _sync_ack(mount, "EQUATORIAL_EOD_COORD", {"RA": 8.8, "DEC": 49.5}, state="idle")
+    mount.begin_sync_and_goto(command)
+    _sync_ack(mount, "ON_COORD_SET", {"SYNC": True})
+    mount.receive_sync_driver_message(
+        "[INFO] OnStep: Synchronization successful.", mount._client_generation
+    )
+    _sync_ack(mount, "EQUATORIAL_EOD_COORD", {"RA": 13.0, "DEC": 42.3}, state="idle")
+    assert mount._sync_goto_status["state"] == "waiting_sync_coordinates"
+    assert mount._coordinate_sync is None
+    assert not mount.moves
