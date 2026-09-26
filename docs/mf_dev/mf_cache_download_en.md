@@ -42,6 +42,11 @@ cd ~/MFNavis
 python3 scripts/warm_mfnavis_caches.py
 ```
 
+On Trixie, the script automatically uses the installed `.venv-trixie` Python.
+An already active virtual environment is used instead. To select an interpreter
+explicitly, set `MFNAVIS_PYTHON=/path/to/venv/bin/python`; this takes precedence
+over both automatic choices. The image downloader uses the same interpreter.
+
 The default sequence is:
 
 1. Build the Hipparcos star-field and B-V color-index caches.

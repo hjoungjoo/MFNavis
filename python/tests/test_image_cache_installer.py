@@ -16,7 +16,8 @@ from PiFinder import audit_images, gen_images, get_images
 REPO = Path(__file__).resolve().parents[2]
 
 
-def test_cache_warmup_refuses_root_owned_output(monkeypatch, capsys):
+@pytest.fixture
+def cache_warmup():
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
@@ -24,12 +25,79 @@ def test_cache_warmup_refuses_root_owned_output(monkeypatch, capsys):
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def test_cache_warmup_refuses_root_owned_output(cache_warmup, monkeypatch, capsys):
+    module = cache_warmup
     monkeypatch.setattr(module.os, "geteuid", lambda: 0)
     monkeypatch.setattr(sys, "argv", ["warm_mfnavis_caches", "--images", "none"])
     with pytest.raises(SystemExit) as exc:
         module.main()
     assert exc.value.code == 2
     assert "without sudo" in capsys.readouterr().err
+
+
+def test_cache_warmup_selects_installed_venv(cache_warmup, tmp_path, monkeypatch):
+    runtime = tmp_path / ".venv-trixie" / "bin" / "python"
+    runtime.parent.mkdir(parents=True)
+    runtime.symlink_to(sys.executable)
+    monkeypatch.setattr(cache_warmup, "REPO_ROOT", tmp_path)
+    monkeypatch.delenv("MFNAVIS_PYTHON", raising=False)
+    monkeypatch.setattr(sys, "prefix", sys.base_prefix)
+    args = ["warm_mfnavis_caches.py", "--images", "poss", "--workers", "4"]
+    monkeypatch.setattr(sys, "argv", args)
+    launches = []
+    monkeypatch.setattr(cache_warmup.os, "execv", lambda *args: launches.append(args))
+    cache_warmup._ensure_runtime_python()
+    assert launches == [
+        (str(runtime), [str(runtime), cache_warmup.__file__, *args[1:]])
+    ]
+
+
+def test_cache_warmup_honors_explicit_python(cache_warmup, monkeypatch):
+    # An explicit runtime also takes precedence over an active virtualenv.
+    monkeypatch.setenv("MFNAVIS_PYTHON", sys.executable)
+    launches = []
+    monkeypatch.setattr(cache_warmup.os, "execv", lambda *args: launches.append(args))
+    monkeypatch.setattr(sys, "executable", "/different/venv/bin/python")
+    monkeypatch.setattr(sys, "argv", ["warm_pifinder_caches.py", "--images", "none"])
+    cache_warmup._ensure_runtime_python()
+    assert launches[0][1][1:] == [cache_warmup.__file__, "--images", "none"]
+
+
+@pytest.mark.parametrize("installed", [True, False])
+def test_cache_warmup_does_not_reexec_active_venv(
+    cache_warmup, tmp_path, monkeypatch, installed
+):
+    monkeypatch.setattr(cache_warmup, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(sys, "prefix", str(tmp_path / ".venv-trixie"))
+    monkeypatch.setattr(sys, "base_prefix", "/usr")
+    monkeypatch.delenv("MFNAVIS_PYTHON", raising=False)
+    if installed:
+        runtime = tmp_path / ".venv-trixie" / "bin" / "python"
+        runtime.parent.mkdir(parents=True)
+        runtime.symlink_to(sys.executable)
+    monkeypatch.setattr(
+        cache_warmup.os, "execv", lambda *_: pytest.fail("unexpected re-exec")
+    )
+    cache_warmup._ensure_runtime_python()
+
+
+def test_cache_warmup_falls_back_on_bookworm(cache_warmup, tmp_path, monkeypatch):
+    monkeypatch.setattr(cache_warmup, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(sys, "prefix", sys.base_prefix)
+    monkeypatch.delenv("MFNAVIS_PYTHON", raising=False)
+    monkeypatch.setattr(
+        cache_warmup.os, "execv", lambda *_: pytest.fail("unexpected re-exec")
+    )
+    cache_warmup._ensure_runtime_python()
+
+
+def test_cache_warmup_rejects_invalid_python(cache_warmup, tmp_path, monkeypatch):
+    monkeypatch.setenv("MFNAVIS_PYTHON", str(tmp_path / "missing-python"))
+    with pytest.raises(RuntimeError, match="MFNAVIS_PYTHON is not executable"):
+        cache_warmup._ensure_runtime_python()
 
 
 def test_image_save_is_atomic_and_cleans_failed_temporary_file(tmp_path, monkeypatch):

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -28,6 +29,32 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PYTHON_ROOT = REPO_ROOT / "python"
+
+
+def _ensure_runtime_python() -> None:
+    """Use the installed application interpreter before importing its packages."""
+    configured = os.environ.get("MFNAVIS_PYTHON")
+    if configured:
+        runtime_python = shutil.which(os.path.expanduser(configured))
+        if runtime_python is None:
+            raise RuntimeError(f"MFNAVIS_PYTHON is not executable: {configured}")
+    elif sys.prefix != sys.base_prefix:
+        return
+    else:
+        installed_python = REPO_ROOT / ".venv-trixie" / "bin" / "python"
+        if not os.access(installed_python, os.X_OK):
+            return
+        runtime_python = str(installed_python)
+
+    # Do not resolve symlinks: a venv's Python often points at /usr/bin/python3,
+    # but launching that symlink is what activates the venv's package paths.
+    if os.path.abspath(runtime_python) == os.path.abspath(sys.executable):
+        return
+    print(f"[runtime] Using MFNavis Python: {runtime_python}", flush=True)
+    os.execv(
+        runtime_python,
+        [runtime_python, str(Path(__file__).resolve()), *sys.argv[1:]],
+    )
 
 
 def _add_project_to_path() -> None:
@@ -146,13 +173,14 @@ def main() -> int:
 
     started = time.monotonic()
     try:
+        _ensure_runtime_python()
         if not args.skip_runtime:
             warm_runtime_caches()
         warm_catalog_images(args.images, args.workers)
     except KeyboardInterrupt:
         print("\nStopped. Re-run this command to continue from the existing cache.")
         return 130
-    except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
+    except (OSError, RuntimeError, ImportError, subprocess.CalledProcessError) as exc:
         print(f"Cache warm-up failed: {exc}", file=sys.stderr)
         return 1
 

@@ -133,6 +133,8 @@ cd ~/MFNavis
 python3 scripts/warm_mfnavis_caches.py
 ```
 
+Trixie에서는 설치된 `.venv-trixie`의 Python을 자동으로 사용합니다.
+
 장치와 웹 카탈로그에서 사용하는 POSS 이미지만 받으려면:
 
 ```bash

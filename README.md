@@ -141,6 +141,8 @@ cd ~/MFNavis
 python3 scripts/warm_mfnavis_caches.py
 ```
 
+On Trixie, this command automatically uses the installed `.venv-trixie` Python.
+
 To download only the POSS images used by the device and web catalog:
 
 ```bash

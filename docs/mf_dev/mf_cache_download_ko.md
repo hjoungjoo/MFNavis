@@ -41,6 +41,11 @@ cd ~/MFNavis
 python3 scripts/warm_mfnavis_caches.py
 ```
 
+Trixie에서는 설치된 `.venv-trixie`의 Python을 자동으로 사용한다. 이미
+가상환경을 활성화했다면 해당 환경을 사용한다. Python을 직접 지정하려면
+`MFNAVIS_PYTHON=/경로/venv/bin/python`을 설정하며, 이 설정이 가장 우선한다.
+이미지 다운로드에도 같은 Python을 사용한다.
+
 기본값은 다음 순서로 동작한다.
 
 1. Hipparcos 별 필드 및 B-V 색상 캐시를 생성한다.
