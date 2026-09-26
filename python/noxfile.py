@@ -1,16 +1,43 @@
 import os
+import sys
 
 import nox
 
 nox.options.sessions = ["lint", "format", "type_hints", "smoke_tests"]
 
-# CI selects the interpreter explicitly through NOX_PYTHON.  Bookworm
-# deployment and every supported CI session target Python 3.11; do not
-# silently choose an older interpreter merely because it is installed.
-_PYTHON = os.environ.get("NOX_PYTHON") or "3.11"
+# Keep the Bookworm CI default; an active Python 3.13 uses the Trixie setup.
+_PYTHON = os.environ.get("NOX_PYTHON") or (
+    "3.13" if sys.version_info[:2] == (3, 13) else "3.11"
+)
+_TRIXIE = _PYTHON == "3.13"
+_DEV_REQUIREMENTS = "requirements_dev-trixie.txt" if _TRIXIE else "requirements_dev.txt"
+_DOC_REQUIREMENTS = (
+    "requirements_docs-trixie.txt" if _TRIXIE else "../docs/source/requirements.txt"
+)
+_VENV_PARAMS = ["--system-site-packages"] if _TRIXIE else []
 
 
-@nox.session(reuse_venv=True, python=_PYTHON)
+def _install(session: nox.Session, *args: str) -> None:
+    if not session.virtualenv.is_sandboxed:
+        if sys.prefix == sys.base_prefix:
+            session.error("Activate the development venv before using --no-venv")
+        session.log("Using packages from the active development environment")
+        return
+    session.install(*args)
+
+
+def _install_development(session: nox.Session) -> None:
+    # Both developer requirement files include their matching runtime file.
+    _install(session, "-r", _DEV_REQUIREMENTS)
+    if (
+        session.virtualenv.is_sandboxed
+        and _TRIXIE
+        and os.environ.get("MFNAVIS_DEV_USE_OS_GPIO") == "1"
+    ):
+        session.run("python", "-m", "pip", "uninstall", "-y", "RPi.GPIO")
+
+
+@nox.session(reuse_venv=True, python=_PYTHON, venv_params=_VENV_PARAMS)
 def lint(session: nox.Session) -> None:
     """
     Check the project's codebase for lint violations.
@@ -23,11 +50,11 @@ def lint(session: nox.Session) -> None:
     Args:
         session (nox.Session): The Nox session being run, providing context and methods for session actions.
     """
-    session.install("ruff==0.4.8")
+    _install(session, "ruff==0.4.8")
     session.run("ruff", "check", "--config", "builtins=['_']")
 
 
-@nox.session(reuse_venv=True, python=_PYTHON)
+@nox.session(reuse_venv=True, python=_PYTHON, venv_params=_VENV_PARAMS)
 def lint_fix(session: nox.Session) -> None:
     """
     Apply the linter's automatic fixes (rewrites files).
@@ -35,11 +62,11 @@ def lint_fix(session: nox.Session) -> None:
     Args:
         session (nox.Session): The Nox session being run, providing context and methods for session actions.
     """
-    session.install("ruff==0.4.8")
+    _install(session, "ruff==0.4.8")
     session.run("ruff", "check", "--fix", "--config", "builtins=['_']")
 
 
-@nox.session(reuse_venv=True, python=_PYTHON)
+@nox.session(reuse_venv=True, python=_PYTHON, venv_params=_VENV_PARAMS)
 def format(session: nox.Session) -> None:
     """
     Check the project's code formatting.
@@ -52,11 +79,11 @@ def format(session: nox.Session) -> None:
     Args:
         session (nox.Session): The Nox session being run, providing context and methods for session actions.
     """
-    session.install("ruff==0.4.8")
+    _install(session, "ruff==0.4.8")
     session.run("ruff", "format", "--check", "--diff")
 
 
-@nox.session(reuse_venv=True, python=_PYTHON)
+@nox.session(reuse_venv=True, python=_PYTHON, venv_params=_VENV_PARAMS)
 def format_fix(session: nox.Session) -> None:
     """
     Apply the project's code formatting (rewrites files).
@@ -64,11 +91,11 @@ def format_fix(session: nox.Session) -> None:
     Args:
         session (nox.Session): The Nox session being run, providing context and methods for session actions.
     """
-    session.install("ruff==0.4.8")
+    _install(session, "ruff==0.4.8")
     session.run("ruff", "format")
 
 
-@nox.session(reuse_venv=True, python=_PYTHON)
+@nox.session(reuse_venv=True, python=_PYTHON, venv_params=_VENV_PARAMS)
 def type_hints(session: nox.Session) -> None:
     """
     Check type hints in the project's codebase.
@@ -79,17 +106,18 @@ def type_hints(session: nox.Session) -> None:
     Args:
         session (nox.Session): The Nox session being run, providing context and methods for session actions.
     """
-    session.install("-r", "requirements.txt")
-    session.install("-r", "requirements_dev.txt")
+    _install_development(session)
     # First run populates the cache so --install-types knows what stubs are needed.
     # success_codes=[0, 1] here is expected: missing-stub errors before stubs are
     # installed. The second run (with stubs) must exit 0; real type errors fail CI.
     # Targets PiFinder/ explicitly to avoid broken tetra3 symlink in the tree.
-    session.run("mypy", "PiFinder", success_codes=[0, 1])
-    session.run("mypy", "--install-types", "--non-interactive", "PiFinder")
+    session.run("python", "-m", "mypy", "PiFinder", success_codes=[0, 1])
+    session.run(
+        "python", "-m", "mypy", "--install-types", "--non-interactive", "PiFinder"
+    )
 
 
-@nox.session(reuse_venv=True, python=_PYTHON)
+@nox.session(reuse_venv=True, python=_PYTHON, venv_params=_VENV_PARAMS)
 def unit_tests(session: nox.Session) -> None:
     """
     Run the project's unit tests.
@@ -100,12 +128,11 @@ def unit_tests(session: nox.Session) -> None:
     Args:
         session (nox.Session): The Nox session being run, providing context and methods for session actions.
     """
-    session.install("-r", "requirements.txt")
-    session.install("-r", "requirements_dev.txt")
-    session.run("pytest", "-m", "unit")
+    _install_development(session)
+    session.run("pytest", "-m", "unit", *session.posargs)
 
 
-@nox.session(reuse_venv=True, python=_PYTHON)
+@nox.session(reuse_venv=True, python=_PYTHON, venv_params=_VENV_PARAMS)
 def web_tests(session: nox.Session) -> None:
     """
     Run the project's test suite on the web interface.
@@ -115,12 +142,11 @@ def web_tests(session: nox.Session) -> None:
     Args:
         session (nox.Session): The Nox session being run, providing context and methods for session actions.
     """
-    session.install("-r", "requirements.txt")
-    session.install("-r", "requirements_dev.txt")
+    _install_development(session)
     session.run("pytest", "-m", "web")
 
 
-@nox.session(reuse_venv=True, python=_PYTHON)
+@nox.session(reuse_venv=True, python=_PYTHON, venv_params=_VENV_PARAMS)
 def smoke_tests(session: nox.Session) -> None:
     """
         Run the project's smoke tests.
@@ -131,12 +157,11 @@ def smoke_tests(session: nox.Session) -> None:
         Args:
             session (nox.Session): The Nox session being run, providing context and methods for session actions.
     """
-    session.install("-r", "requirements.txt")
-    session.install("-r", "requirements_dev.txt")
+    _install_development(session)
     session.run("pytest", "-m", "smoke")
 
 
-@nox.session(reuse_venv=True, python=_PYTHON)
+@nox.session(reuse_venv=True, python=_PYTHON, venv_params=_VENV_PARAMS)
 def ui_tests(session: nox.Session) -> None:
     """
     Run the UI module smoke harness (tests/test_ui_modules.py).
@@ -149,18 +174,16 @@ def ui_tests(session: nox.Session) -> None:
     Args:
         session (nox.Session): The Nox session being run, providing context and methods for session actions.
     """
-    session.install("-r", "requirements.txt")
-    session.install("-r", "requirements_dev.txt")
+    _install_development(session)
     session.run("pytest", "-m", "integration", "tests/test_ui_modules.py")
 
 
-@nox.session(reuse_venv=True, python=_PYTHON)
+@nox.session(reuse_venv=True, python=_PYTHON, venv_params=_VENV_PARAMS)
 def babel(session: nox.Session) -> None:
     """
     Run the I18N toolchain
     """
-    session.install("-r", "requirements.txt")
-    session.install("-r", "requirements_dev.txt")
+    _install_development(session)
 
     session.run(
         "pybabel",
@@ -178,7 +201,7 @@ def babel(session: nox.Session) -> None:
     session.run("pybabel", "compile", "-d", "locale")
 
 
-@nox.session(reuse_venv=True, python=_PYTHON)
+@nox.session(reuse_venv=True, python=_PYTHON, venv_params=_VENV_PARAMS)
 def docs(session: nox.Session) -> None:
     """
     Build the Sphinx user manual, failing on any warning.
@@ -190,7 +213,7 @@ def docs(session: nox.Session) -> None:
     turns every warning into a failure, so "it rendered" is not mistaken for
     "it is correct". ``--keep-going`` reports all of them in one run.
     """
-    session.install("-r", "../docs/source/requirements.txt")
+    _install(session, "-r", _DOC_REQUIREMENTS)
     session.run(
         "python",
         "-m",

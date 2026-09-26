@@ -1,0 +1,31 @@
+# Trixie development runtime and INDI wheels prepared from the binary archive.
+-r requirements-trixie.txt
+--find-links ../.dev-indi/wheels
+-r ../.dev-indi/python-requirements.txt
+-r ../.dev-indi/python-custom.txt
+
+luma.emulator==1.5.0
+PyHotKey==1.5.2
+ruff==0.4.8
+nox==2024.4.15
+mypy==1.15.0
+pytest==8.4.2
+pygame==2.6.1
+pre-commit==3.7.1
+Babel==2.16.0
+xlrd==2.0.2
+selenium==4.15.0
+types-pytz==2022.7.1
+pynput
+types-pynput
+types-requests==2.28.2
+types-pyserial
+types-aiofiles
+types-tqdm==4.65.0
+pandas-stubs==2.3.3.260113
+types-waitress
+jsonschema==4.23.0
+wheel==0.46.1
+packaging==25.0
+debugpy==1.8.16
+-r requirements_docs-trixie.txt

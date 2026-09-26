@@ -1,0 +1,4 @@
+# Python 3.13 documentation tools (the Bookworm Sphinx 7 stack is separate).
+Sphinx==8.2.3
+sphinx-rtd-theme==3.0.2
+sphinxcontrib-mermaid==1.0.0

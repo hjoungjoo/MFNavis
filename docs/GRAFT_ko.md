@@ -8,7 +8,7 @@
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 export DO_NOT_TRACK=1
-cd ~/PiFinder
+cd ~/MFNavis
 graft map
 graft ask "_solver_preprocess_enabled" --source
 graft skeleton python/PiFinder/solver.py
@@ -45,3 +45,6 @@ Python 가상환경이나 MFDS 실행 바이너리와 별도로 설치되는 개
 
 텔레메트리는 이 장비에서 `graft telemetry disable`로 영구 비활성화했습니다.
 이 설정은 사용자별 로컬 설정이므로 다른 장비에서도 위 명령을 실행합니다.
+
+Trixie Python 개발 도구와 환경 활성화는
+[Trixie 개발 환경](mf_dev/TRIXIE_DEVELOPMENT_ko.md)을 참조합니다.
