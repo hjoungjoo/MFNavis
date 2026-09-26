@@ -1,19 +1,19 @@
 use generate_script.py to generate a random testing script.
 
-## Pre-populating PiFinder caches
+## Pre-populating MFNavis caches
 
-Use `warm_pifinder_caches.py` before an offline session to build the local
+Use `warm_mfnavis_caches.py` before an offline session to build the local
 catalog/star-data caches and download the catalog survey images:
 
 ```bash
-python3 scripts/warm_pifinder_caches.py
+python3 scripts/warm_mfnavis_caches.py
 ```
 
 The default downloads both POSS and SDSS images. The catalog and web detail
 views use POSS; use this smaller option when that is all that is required:
 
 ```bash
-python3 scripts/warm_pifinder_caches.py --images poss
+python3 scripts/warm_mfnavis_caches.py --images poss
 ```
 
 The command is safe to stop and re-run: image files already present in

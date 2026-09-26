@@ -1,12 +1,12 @@
-# PiFinder Offline Cache Download Guide
+# MFNavis Offline Cache Download Guide
 
 [English](mf_cache_download_en.md) | [한국어](mf_cache_download_ko.md)
 
 ## Purpose and scope
 
-`scripts/warm_pifinder_caches.py` prepares rebuildable local caches while the
-PiFinder has internet access. It makes catalog browsing and catalog-detail
-pages faster and keeps cached object images available when the PiFinder is
+`scripts/warm_mfnavis_caches.py` prepares rebuildable local caches while the
+MFNavis has internet access. It makes catalog browsing and catalog-detail
+pages faster and keeps cached object images available when the MFNavis is
 offline.
 
 The command creates or downloads only the following data:
@@ -16,7 +16,7 @@ The command creates or downloads only the following data:
 | `~/MFNavis_data/cache/hip_main.pkl` | Parsed Hipparcos star catalog | Faster star-field startup |
 | `~/MFNavis_data/cache/hip_bv.npz` | Hipparcos B-V color-index lookup | Faster SQM color-correction startup |
 | `~/MFNavis_data/cache/catalogs/` | Composite-object catalog cache | Faster catalog search and list startup |
-| `~/MFNavis_data/catalog_images/` | POSS/SDSS survey images | Object pictures in PiFinder and the web catalog |
+| `~/MFNavis_data/catalog_images/` | POSS/SDSS survey images | Object pictures in MFNavis and the web catalog |
 
 It does not change observing records, equipment settings, Wi-Fi credentials,
 user photos, or logs. It also does not pre-create condition-specific data such
@@ -24,8 +24,8 @@ as a camera warm-pixel map.
 
 ## Before you start
 
-- The **PiFinder itself** must have internet access. A phone connected to
-  PiFinderAP does not necessarily provide internet access to the PiFinder.
+- The **MFNavis itself** must have internet access. A phone connected to
+  MFNavisAP does not necessarily provide internet access to the MFNavis.
 - Leave enough power and storage available. The prebuilt image's 13,000+
   catalog images occupy about 5 GB; allow **at least 6 GB free** for the full
   POSS+SDSS download. The final size varies with the current catalog and
@@ -39,41 +39,41 @@ From the repository root, run:
 
 ```bash
 cd ~/MFNavis
-python3 scripts/warm_pifinder_caches.py
+python3 scripts/warm_mfnavis_caches.py
 ```
 
 The default sequence is:
 
 1. Build the Hipparcos star-field and B-V color-index caches.
 2. Build the complete composite-object catalog cache.
-3. Download POSS and SDSS survey images through `PiFinder.gen_images`.
+3. Download POSS and SDSS survey images through `MFNavis.gen_images`.
 
 Ten images are downloaded concurrently by default. Use a lower worker count
 on an unreliable or shared network:
 
 ```bash
-python3 scripts/warm_pifinder_caches.py --workers 4
+python3 scripts/warm_mfnavis_caches.py --workers 4
 ```
 
 ## Choose the cache scope
 
-PiFinder and the web catalog use POSS images. To avoid storing SDSS images,
+MFNavis and the web catalog use POSS images. To avoid storing SDSS images,
 download only POSS:
 
 ```bash
-python3 scripts/warm_pifinder_caches.py --images poss
+python3 scripts/warm_mfnavis_caches.py --images poss
 ```
 
 To build only the fast-start local caches, without images:
 
 ```bash
-python3 scripts/warm_pifinder_caches.py --images none
+python3 scripts/warm_mfnavis_caches.py --images none
 ```
 
 To download images without rebuilding the runtime caches:
 
 ```bash
-python3 scripts/warm_pifinder_caches.py --skip-runtime
+python3 scripts/warm_mfnavis_caches.py --skip-runtime
 ```
 
 ## Check progress and completion
@@ -108,14 +108,14 @@ rerun the command. Settings and observing records are unaffected.
 
 | Symptom | Check and action |
 | --- | --- |
-| No image files are added | Confirm internet, DNS, and HTTPS access on the PiFinder itself. |
+| No image files are added | Confirm internet, DNS, and HTTPS access on the MFNavis itself. |
 | Storage becomes full | Use `--images poss` or use larger storage. |
 | Download is too slow | Adjust `--workers` between 4 and 10; lower values can be more reliable on weak networks. |
 | A web catalog detail page still has no image | That object may not have a POSS survey image. The web server always prefers an existing local cache file. |
 
 ## Implementation references
 
-- Runner: `scripts/warm_pifinder_caches.py`
-- Image generator: `python/PiFinder/gen_images.py`
-- Web catalog image route: `python/PiFinder/web_catalogs.py`
-- Cache path definitions: `python/PiFinder/utils.py`
+- Runner: `scripts/warm_mfnavis_caches.py`
+- Image generator: `python/MFNavis/gen_images.py`
+- Web catalog image route: `python/MFNavis/web_catalogs.py`
+- Cache path definitions: `python/MFNavis/utils.py`

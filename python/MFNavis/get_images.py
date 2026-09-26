@@ -146,7 +146,7 @@ def download_images_concurrent(image_names: List[str], max_workers: int = 10) ->
 
     # Create a session for connection pooling
     session = requests.Session()
-    session.headers.update({"User-Agent": "PiFinder-ImageDownloader/1.0"})
+    session.headers.update({"User-Agent": "MFNavis-ImageDownloader/1.0"})
 
     failed_downloads = []
 

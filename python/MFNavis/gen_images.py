@@ -2,14 +2,14 @@
 # -*- coding:utf-8 -*-
 """
 Fetch images from sky survey sources (NASA SkyView POSS, SDSS DR18)
-and prepare them for PiFinder use.
+and prepare them for MFNavis use.
 
 Usage:
-    python -m PiFinder.gen_images                  # Fetch missing images
-    python -m PiFinder.gen_images --force           # Re-fetch ALL images
-    python -m PiFinder.gen_images --force --poss    # Re-fetch POSS only
-    python -m PiFinder.gen_images --force --sdss    # Re-fetch SDSS only
-    python -m PiFinder.gen_images --workers 20      # More concurrency
+    python -m MFNavis.gen_images                  # Fetch missing images
+    python -m MFNavis.gen_images --force          # Re-fetch ALL images
+    python -m MFNavis.gen_images --force --poss   # Re-fetch POSS only
+    python -m MFNavis.gen_images --force --sdss   # Re-fetch SDSS only
+    python -m MFNavis.gen_images --workers 20     # More concurrency
 """
 
 import argparse
@@ -252,7 +252,7 @@ def main() -> int:
     print(f"Fetching: {', '.join(sources)} with {args.workers} workers")
 
     session = requests.Session()
-    session.headers.update({"User-Agent": "PiFinder-ImageGenerator/2.0"})
+    session.headers.update({"User-Agent": "MFNavis-ImageGenerator/2.0"})
 
     failed: List[Tuple[str, str]] = []
     fetched = 0

@@ -138,13 +138,13 @@ download both image surveys:
 
 ```bash
 cd ~/MFNavis
-python3 scripts/warm_pifinder_caches.py
+python3 scripts/warm_mfnavis_caches.py
 ```
 
 To download only the POSS images used by the device and web catalog:
 
 ```bash
-python3 scripts/warm_pifinder_caches.py --images poss
+python3 scripts/warm_mfnavis_caches.py --images poss
 ```
 
 Use `--images none` to prepare runtime caches without downloading images.

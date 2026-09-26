@@ -130,13 +130,13 @@ INDI 마운트 지원은 선택 사항으로, 설치 스크립트가 INDI 아카
 
 ```bash
 cd ~/MFNavis
-python3 scripts/warm_pifinder_caches.py
+python3 scripts/warm_mfnavis_caches.py
 ```
 
 장치와 웹 카탈로그에서 사용하는 POSS 이미지만 받으려면:
 
 ```bash
-python3 scripts/warm_pifinder_caches.py --images poss
+python3 scripts/warm_mfnavis_caches.py --images poss
 ```
 
 이미지 다운로드 없이 런타임 캐시만 준비하려면 `--images none`을 사용합니다.

@@ -20,12 +20,12 @@ def test_cache_warmup_refuses_root_owned_output(monkeypatch, capsys):
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
-        "warm_pifinder_caches", REPO / "scripts/warm_pifinder_caches.py"
+        "warm_mfnavis_caches", REPO / "scripts/warm_mfnavis_caches.py"
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     monkeypatch.setattr(module.os, "geteuid", lambda: 0)
-    monkeypatch.setattr(sys, "argv", ["warm_pifinder_caches", "--images", "none"])
+    monkeypatch.setattr(sys, "argv", ["warm_mfnavis_caches", "--images", "none"])
     with pytest.raises(SystemExit) as exc:
         module.main()
     assert exc.value.code == 2
