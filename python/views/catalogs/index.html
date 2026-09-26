@@ -19,7 +19,7 @@
     {% for entry in group.entries %}
     <a class="pfcat-card" href="/catalogs/{{ entry.code }}">
       <span class="pfcat-code">{{ entry.code }}</span>
-      <span class="pfcat-desc">{{ entry.desc }}</span>
+      <span class="pfcat-desc">{{ catalog_description(entry.code, entry.desc) if catalog_description is defined else _(entry.desc) }}</span>
       <span class="pfcat-count">{{ "{:,}".format(entry.count) }} {{ _('objects') }}</span>
     </a>
     {% endfor %}
@@ -28,6 +28,6 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/js/catalogs.js?v=9"></script>
+<script src="/js/catalogs.js?v=11"></script>
 <script>pfcatInitHome();</script>
 {% endblock %}

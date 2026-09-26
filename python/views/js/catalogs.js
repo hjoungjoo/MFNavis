@@ -28,15 +28,15 @@ function pfcatInitHome() {
         .then((r) => r.json())
         .then((data) => {
           if (!data.results.length) {
-            box.innerHTML = "<a>No results</a>";
+            box.innerHTML = "<a>" + pfcatEsc(pfT("No results")) + "</a>";
           } else {
             box.innerHTML = data.results
               .map(
                 (r) =>
                   `<a href="/catalogs/object/${r.object_id}">` +
-                  `<b>${pfcatEsc(r.display)}</b>` +
+                  `<b>${pfcatEsc(pfT(r.display))}</b>` +
                   `<span class="hit-name">${pfcatEsc(r.matched_name)} · ` +
-                  `${pfcatEsc(r.type_label)} · ${pfcatEsc(r.const)}</span></a>`
+                  `${pfcatEsc(pfT(r.type_label))} · ${pfcatEsc(r.const)}</span></a>`
               )
               .join("");
           }
@@ -51,14 +51,14 @@ function pfcatInitHome() {
 }
 
 function pfcatNearbyNote(data) {
-  let note = `RA ${data.center.ra.toFixed(3)}° / Dec ${data.center.dec.toFixed(3)}° · ` +
-    (data.ranking === "visibility_distance" ? "visibility, then distance" : "nearest first");
+  let note = `${pfT("RA")} ${data.center.ra.toFixed(3)}° / ${pfT("Dec")} ${data.center.dec.toFixed(3)}° · ` +
+    (data.ranking === "visibility_distance" ? pfT("visibility, then distance") : pfT("nearest first"));
   if (data.sky) {
     const sky = data.sky;
-    if (sky.configured_bortle !== null) note += ` · Configured Bortle ${sky.configured_bortle}`;
-    if (sky.measured_bortle !== null) note += ` · Measured Bortle ≈${sky.measured_bortle} (SQM ${sky.measured_sqm.toFixed(2)})`;
+    if (sky.configured_bortle !== null) note += ` · ${pfT("Configured Bortle")} ${sky.configured_bortle}`;
+    if (sky.measured_bortle !== null) note += ` · ${pfT("Measured Bortle")} ≈${sky.measured_bortle} (SQM ${sky.measured_sqm.toFixed(2)})`;
     if (sky.enabled) {
-      note += ` · Applied Bortle ≈${sky.bortle} · ${sky.aperture_mm} mm / ${sky.magnification.toFixed(0)}×`;
+      note += ` · ${pfT("Applied Bortle")} ≈${sky.bortle} · ${sky.aperture_mm} mm / ${sky.magnification.toFixed(0)}×`;
     } else {
       note += sky.sqm !== null ? " · Set telescope and eyepiece for visibility ranking"
         : sky.measurement_state === "stale" ? " · SQM reading expired; using distance"
@@ -66,12 +66,12 @@ function pfcatNearbyNote(data) {
     }
   }
   const sourceLabels = {
-    solve: "Plate solve",
-    pifinder_imu_estimate: "Solve + IMU",
-    mount: "Mount",
-    mount_imu_delta: "Mount + IMU",
+    solve: pfT("Plate solve"),
+    pifinder_imu_estimate: pfT("Solve + IMU"),
+    mount: pfT("Mount"),
+    mount_imu_delta: pfT("Mount + IMU"),
     imu_fallback: data.center.unaligned
-      ? "IMU estimate (heading not aligned)" : "IMU estimate",
+      ? pfT("IMU estimate (heading not aligned)") : pfT("IMU estimate"),
   };
   if (sourceLabels[data.center.source]) {
     note += " · " + sourceLabels[data.center.source];
@@ -113,7 +113,7 @@ function pfcatInitCatalog() {
     const nearby = data.sort === "nearby";
     setNearbyColumns(nearby);
     if (!data.objects.length) {
-      rows.innerHTML = `<tr><td colspan="${nearby ? 9 : 7}" class="pfcat-muted">No objects match</td></tr>`;
+      rows.innerHTML = `<tr><td colspan="${nearby ? 9 : 7}" class="pfcat-muted">${pfcatEsc(pfT("No objects match"))}</td></tr>`;
     } else {
       rows.innerHTML = data.objects
         .map((o) => {
@@ -125,16 +125,16 @@ function pfcatInitCatalog() {
           }
           return (
             `<tr data-href="${o.href || "/catalogs/object/" + o.object_id}">` +
-            `<td><span class="pfcat-objname">${pfcatEsc(o.display)}</span>` +
+            `<td><span class="pfcat-objname">${pfcatEsc(pfT(o.display))}</span>` +
             (o.common_name ? `<span class="pfcat-objalias">${pfcatEsc(o.common_name)}</span>` : "") +
             `</td>` +
-            `<td><span class="pfcat-typechip">${pfcatEsc(o.type_label)}</span></td>` +
+            `<td><span class="pfcat-typechip">${pfcatEsc(pfT(o.type_label))}</span></td>` +
             `<td>${pfcatEsc(o.const)}</td>` +
             `<td class="num">${pfcatEsc(o.mag)}</td>` +
             `<td class="num">${pfcatEsc(o.size)}</td>` +
             `<td class="num">${alt}</td>` +
             `<td>${o.observed ? "✓" : ""}</td>` +
-            (nearby ? `<td>${pfcatEsc(o.visibility.label)}</td>` +
+            (nearby ? `<td>${pfcatEsc(pfT(o.visibility.label))}</td>` +
               `<td class="num">${o.distance == null ? "—" : o.distance.toFixed(2) + "°"}</td>` : "") +
             `</tr>`
           );
@@ -153,10 +153,10 @@ function pfcatInitCatalog() {
         });
       });
     }
-    el("pfcat-shown").textContent = `${data.total} shown`;
+    el("pfcat-shown").textContent = `${data.total} ${pfT("shown")}`;
     const notes = [];
     if (nearby) notes.push(pfcatNearbyNote(data));
-    if (!data.alt_available) notes.push("Altitude unavailable (waiting for GPS lock)");
+    if (!data.alt_available) notes.push(pfT("Altitude unavailable (waiting for GPS lock)"));
     el("pfcat-foot-note").textContent = notes.join(" · ");
 
     const pages = el("pfcat-pages");
@@ -186,7 +186,7 @@ function pfcatInitCatalog() {
     const serial = ++requestSerial;
     const columns = nearbyOn() ? 9 : 7;
     setNearbyColumns(nearbyOn());
-    el("pfcat-rows").innerHTML = `<tr><td colspan="${columns}" class="pfcat-muted">Loading…</td></tr>`;
+    el("pfcat-rows").innerHTML = `<tr><td colspan="${columns}" class="pfcat-muted">${pfcatEsc(pfT("Loading…"))}</td></tr>`;
     el("pfcat-pages").innerHTML = "";
     el("pfcat-shown").textContent = "";
     el("pfcat-foot-note").textContent = "";
@@ -195,11 +195,11 @@ function pfcatInitCatalog() {
       const response = await fetch("/catalogs/api/objects?" + params().toString(), { cache: "no-store" });
       const data = await response.json();
       if (serial !== requestSerial) return;
-      if (!response.ok) throw new Error(data.error || "Load failed");
+      if (!response.ok) throw new Error(data.error || pfT("Load failed"));
       render(data);
     } catch (error) {
       if (serial !== requestSerial) return;
-      el("pfcat-rows").innerHTML = `<tr><td colspan="${columns}" class="pfcat-muted">${pfcatEsc(error.message || "Load failed")}</td></tr>`;
+      el("pfcat-rows").innerHTML = `<tr><td colspan="${columns}" class="pfcat-muted">${pfcatEsc(error.message || pfT("Load failed"))}</td></tr>`;
     } finally {
       if (serial === requestSerial) root.setAttribute("aria-busy", "false");
     }
@@ -334,7 +334,7 @@ function pfcatInitObject() {
     .then((data) => {
       const note = document.getElementById("pfcat-alt-note");
       if (!data.available) {
-        note.textContent = "Waiting for GPS lock";
+        note.textContent = pfT("Waiting for GPS lock");
         return;
       }
       pfcatDrawAltChart(document.getElementById("pfcat-altchart"), data);
@@ -343,12 +343,35 @@ function pfcatInitObject() {
         String(t.getHours()).padStart(2, "0") + ":" +
         String(t.getMinutes()).padStart(2, "0") + " · max +" + data.transit_alt + "°";
       document.getElementById("pfcat-now-altaz").textContent =
-        "Alt " + data.alt_now + "° · Az " + data.az_now + "°";
+        pfT("Alt ") + data.alt_now + "° · Az " + data.az_now + "°";
     })
     .catch(() => {});
 
   const pushBtn = document.getElementById("pfcat-push");
   const result = document.getElementById("pfcat-push-result");
+  const observeBtn = document.getElementById("pfcat-observe");
+  const observeResult = document.getElementById("pfcat-observe-result");
+  const pageAlive = window.pfPageAlive || (() => true);
+  observeBtn.addEventListener("click", async () => {
+    if (observeBtn.disabled) return;
+    observeBtn.disabled = true;
+    observeResult.textContent = pfT("Saving observation…");
+    try {
+      const response = await fetch(planet
+        ? "/catalogs/api/observe_planet/" + planet
+        : "/catalogs/api/observe/" + objectId, {method: "POST"});
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || "Could not record observation.");
+      if (!pageAlive()) return;
+      if (window.pfNavigate) window.pfNavigate(data.url);
+      else window.location.href = data.url;
+    } catch (error) {
+      if (!pageAlive()) return;
+      observeResult.textContent = pfT(error.message in (window.pfMessages || {})
+        ? error.message : "Could not record observation.");
+      observeBtn.disabled = false;
+    }
+  });
 
   // GoTo progress panel: per-axis angles remaining + service phase.
   const gotoPanel = document.getElementById("pfcat-goto-status");
@@ -366,7 +389,7 @@ function pfcatInitObject() {
   function renderGotoStatus(data) {
     if (!gotoPanel) return;
     gotoPanel.style.display = "";
-    let state = data.last_action || data.state || "—";
+    let state = pfT(data.last_action || data.state || "—");
     if (data.attempt && data.max_gotos) {
       state += " (" + data.attempt + "/" + data.max_gotos + ")";
     }
@@ -378,10 +401,10 @@ function pfcatInitObject() {
       const parts = [];
       const az = fmtDelta(data.delta.az_deg, "→", "←");
       const alt = fmtDelta(data.delta.alt_deg, "↑", "↓");
-      if (az !== null && alt !== null) parts.push("Az " + az + " · Alt " + alt);
-      const ra = fmtDelta(data.delta.ra_deg, " E", " W");
-      const dec = fmtDelta(data.delta.dec_deg, " N", " S");
-      if (ra !== null && dec !== null) parts.push("RA " + ra + " · Dec " + dec);
+      if (az !== null && alt !== null) parts.push(pfT("Az ") + az + " · Alt " + alt);
+      const ra = fmtDelta(data.delta.ra_deg, pfT(" E"), pfT(" W"));
+      const dec = fmtDelta(data.delta.dec_deg, pfT(" N"), pfT(" S"));
+      if (ra !== null && dec !== null) parts.push(pfT("RA ") + ra + " · Dec " + dec);
       gotoDelta.textContent = parts.length ? parts.join("  |  ") : "—";
     } else {
       gotoDelta.textContent = "—";
@@ -437,7 +460,7 @@ function pfcatInitObject() {
       .then(({ ok, status, data }) => {
         pushBtn.disabled = false;
         if (ok && data.success) {
-          let msg = "Pushed " + data.pushed;
+          let msg = pfT("Pushed ") + data.pushed;
           if (data.goto && data.goto.action !== "none") {
             msg += " · GoTo started";
             startGotoPolling();
@@ -449,14 +472,14 @@ function pfcatInitObject() {
           }
           result.textContent = msg;
         } else if (status === 401) {
-          result.innerHTML = 'Login required — <a href="/login">log in</a>';
+          result.innerHTML = pfcatEsc(pfT('Login Required')) + ' — <a href="/login">' + pfcatEsc(pfT('Login')) + '</a>';
         } else {
-          result.textContent = data.error || "Push failed";
+          result.textContent = data.error || pfT("Push failed");
         }
       })
       .catch(() => {
         pushBtn.disabled = false;
-        result.textContent = "Push failed";
+        result.textContent = pfT("Push failed");
       });
   });
 
@@ -474,18 +497,18 @@ function pfcatInitObject() {
         .then(({ ok, status, data }) => {
           stopBtn.disabled = false;
           if (ok && data.success) {
-            result.textContent = "GoTo stopped";
+            result.textContent = pfT("GoTo stopped");
             stopGotoPolling();
-            if (gotoState) gotoState.textContent = "stopped";
+            if (gotoState) gotoState.textContent = pfT("stopped");
           } else if (status === 401) {
-            result.innerHTML = 'Login required — <a href="/login">log in</a>';
+            result.innerHTML = pfcatEsc(pfT('Login Required')) + ' — <a href="/login">' + pfcatEsc(pfT('Login')) + '</a>';
           } else {
-            result.textContent = data.error || "Stop failed";
+            result.textContent = data.error || pfT("Stop failed");
           }
         })
         .catch(() => {
           stopBtn.disabled = false;
-          result.textContent = "Stop failed";
+          result.textContent = pfT("Stop failed");
         });
     });
   }

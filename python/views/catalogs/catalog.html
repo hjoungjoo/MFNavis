@@ -7,14 +7,14 @@
      data-alt-enabled="{{ 1 if alt_enabled else 0 }}">
   <div class="pfcat-crumb"><a href="/catalogs">{{ _('Catalogs') }}</a> / {{ catalog_code }}</div>
   <h4 class="pfcat-title">{{ catalog_code }}</h4>
-  <p class="pfcat-sub">{{ catalog_desc }} · {{ "{:,}".format(object_count) }} {{ _('objects') }}</p>
+  <p class="pfcat-sub">{{ catalog_description(catalog_code, catalog_desc) if catalog_description is defined else catalog_desc }} · {{ "{:,}".format(object_count) }} {{ _('objects') }}</p>
 
   <div class="pfcat-filterbar">
     <input type="search" class="browser-default" id="pfcat-q" placeholder="{{ _('Filter by name…') }}" autocomplete="off">
     <select class="browser-default" id="pfcat-type">
       <option value="">{{ _('Type: All') }}</option>
       {% for t in obj_types %}
-      <option value="{{ t.code }}">{{ t.label }}</option>
+      <option value="{{ t.code }}">{{ _(t.label) }}</option>
       {% endfor %}
     </select>
     <select class="browser-default" id="pfcat-const">
@@ -77,6 +77,6 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/js/catalogs.js?v=9"></script>
+<script src="/js/catalogs.js?v=11"></script>
 <script>pfcatInitCatalog();</script>
 {% endblock %}

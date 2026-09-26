@@ -846,7 +846,7 @@ def update_sqm(
                 last_update=timez.local_now().isoformat(),
             )
             shared_state.set_sqm(new_sqm_state)
-            logger.info(f"SQM updated: {sqm_value:.2f} mag/arcsec²")
+            logger.debug(f"SQM updated: {sqm_value:.2f} mag/arcsec²")
             return True
         if sqm_value is not None:
             return True
@@ -1122,7 +1122,7 @@ def _solve_sep_emergency(
 
     # One extra search budget shared by preprocessed and RAW SEP retries.
     # Repeated empty-sky failures back off before invoking SEP extraction.
-    logger.info("SEP emergency retry after MFDS failure, frame %s", expected_frame_id)
+    logger.debug("SEP emergency retry after MFDS failure, frame %s", expected_frame_id)
     try:
         with tetra3.search_budget(1000):
             for preprocessed in (True, False):
@@ -1162,7 +1162,7 @@ def _solve_sep_emergency(
                 )
                 if path:
                     runner.record_emergency_result(True)
-                    logger.info(
+                    logger.debug(
                         "SEP emergency solved frame %s via %s", expected_frame_id, path
                     )
                     return solution, path, run
@@ -2308,7 +2308,7 @@ def solver(
                                             # an older frame. Never publish it
                                             # after a newer camera attempt.
                                             solution = {}
-                                        logger.info(
+                                        logger.debug(
                                             "Async preprocess calibration frame %s: "
                                             "accepted=%s ready=%s samples=%d "
                                             "rejected=%d separation=%s skipped=%d",
@@ -2368,7 +2368,7 @@ def solver(
                                         ff_frame_hw,
                                         fullframe_geometry["crop_width_px"],
                                     )
-                                logger.info(
+                                logger.debug(
                                     "Solver preprocessing frame %s: window=%d "
                                     "detector=%s candidates=%d selected=%s",
                                     preprocess_metadata.get("frame_id"),
@@ -2401,7 +2401,7 @@ def solver(
                                                 float(preprocessed_solution["Dec"]),
                                             )
                                         )
-                                    logger.info(
+                                    logger.debug(
                                         "Solver stage timing frame %s: "
                                         "raw_cascade=%.1fms preprocess_detect=%.1fms "
                                         "through_preprocess=%.1fms raw_solved=%s "
@@ -2436,7 +2436,7 @@ def solver(
                                         clear_frame=False,
                                     )
                                     if timing_debug_wanted:
-                                        logger.info(
+                                        logger.debug(
                                             "Async preprocessing busy frame %s: "
                                             "submitted=%d completed=%d skipped=%d "
                                             "raw_solved=%s",

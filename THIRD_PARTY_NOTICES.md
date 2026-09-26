@@ -1,29 +1,33 @@
-# MFNavis — third-party notices / 제3자 고지
+# MFNavis — third-party notices
 
-제품: **MFNavis** · 판매·배포: **FNPD 한국** · 제작·수정: **MagicFly**
+Product: **MFNavis** · Sales and distribution: **FNPD Korea** · Development and modifications: **MagicFly**
 
-MFNavis는 PiFinder에서 파생된 제품이다. PiFinder는 원 프로젝트의 명칭이며
-제품명이나 원 프로젝트의 공식 판매·보증을 뜻하지 않는다. 원저작자 고지는
-유지하고 MagicFly의 변경 부분을 구분한다. GPL 부분은 GPL에 따라 사용·수정·
-재배포할 수 있으며, 제품 판매 조건으로 이 권리를 제한하지 않는다.
-각 라이선스의 무보증 조항은 해당 원문을 따른다.
+MFNavis is derived from PiFinder. PiFinder is the name of the original project;
+it is not this product's name and does not imply official sales or endorsement
+by the original project. Original copyright notices are retained, and MagicFly's
+modifications are identified separately. GPL-covered components may be used,
+modified and redistributed under the GPL; product sales terms do not restrict
+these rights. The warranty disclaimers in the original licenses apply.
 
-| 구성요소 | 출처·권리자 | 조건 / 동봉 원문 |
+| Component | Source and copyright holders | Terms and included license text |
 |---|---|---|
-| PiFinder / MF_PiFinder 및 파생 변경 | PiFinder 원저작자·기여자, MagicFly의 변경 부분 | [GPLv3](LICENSES/GPL-3.0.txt); 파일별 원래 고지 유지 |
-| MFDS native | MagicFly 자체 작성·수정 부분, 그 밖의 원래 고지 | 설치된 `python/MFDS/LICENSE`, `LICENSING.md`의 FSL 5년 후 MIT 정책 |
-| MFDS의 PiFinder integration·전처리 | PiFinder 기여자 및 각 파일 작성자 | GPLv3; FSL 상용 제한을 적용하지 않음 |
-| MFDS legacy MIT | 원문상의 PiFinder contributors | [MIT 원문](LICENSES/MIT-MFDS-legacy.txt); 이전 허락 유지 |
-| Tetra3 및 포함된 파생 solver | `python/PiFinder/tetra3/VENDORED.md`와 각 원본 파일의 작성자 | [Apache-2.0](LICENSES/Apache-2.0-Tetra3.txt); 원본 attribution 유지 |
-| SEP 1.4.1 | [SEP authors](LICENSES/SEP-AUTHORS.md); 포함된 SExtractor 코드의 원래 저작자 | LGPL-3.0-or-later: [LGPLv3](LICENSES/LGPL-3.0.txt) + GPLv3; 수정·교체 가능한 배포와 대응소스 제공 |
-| Python 의존성과 포함된 하위 라이브러리 | 설치 패키지별 원저작자 | 판매 이미지에서 수집한 `OPEN_SOURCE_LICENSES/python/`의 원문·NOTICE·METADATA |
-| Debian/Raspberry Pi OS 및 native 의존성 | 설치 패키지별 원저작자 | `OPEN_SOURCE_LICENSES/os/`의 copyright 원문 및 패키지 목록 |
-| 웹 JS/CSS·폰트, 천문 카탈로그, 사진·하드웨어 설계 | 각 파일의 원래 출처 | 소프트웨어 라이선스와 별도로 원본 고지·사용 조건 확인 |
+| PiFinder / MF_PiFinder and derived modifications | Original PiFinder authors and contributors; modifications by MagicFly | [GPLv3](LICENSES/GPL-3.0.txt); retain the original notices in each file |
+| MFDS native | Code written or modified by MagicFly, plus other original notices | The FSL-to-MIT-after-five-years policy in the installed `python/MFDS/LICENSE` and `LICENSING.md` |
+| MFDS PiFinder integration and preprocessing | PiFinder contributors and the authors of each file | GPLv3; FSL commercial restrictions do not apply |
+| MFDS legacy MIT | PiFinder contributors identified in the original notice | [Original MIT license](LICENSES/MIT-MFDS-legacy.txt); previous permissions remain in effect |
+| Tetra3 and included derived solver | Authors identified in `python/PiFinder/tetra3/VENDORED.md` and the original files | [Apache-2.0](LICENSES/Apache-2.0-Tetra3.txt); retain original attribution |
+| SEP 1.4.1 | [SEP authors](LICENSES/SEP-AUTHORS.md) and the original authors of the included SExtractor code | LGPL-3.0-or-later: [LGPLv3](LICENSES/LGPL-3.0.txt) plus GPLv3; provide a distribution that permits modification and replacement, together with corresponding source |
+| Python dependencies and bundled libraries | Original authors of each installed package | Original license text, NOTICE and METADATA collected from the product image in `OPEN_SOURCE_LICENSES/python/` |
+| Debian/Raspberry Pi OS and native dependencies | Original authors of each installed package | Original copyright files and package lists in `OPEN_SOURCE_LICENSES/os/` |
+| MFNavis Korean web font | Korean subset of the existing Sarasa bundle, renamed; Renzhi Li and original authors | [SIL Open Font License 1.1 and copyright notices](python/views/css/mfnavis-korean.LICENSE.txt); regenerate with `scripts/build_web_korean_font.py` |
+| Web JS/CSS and fonts, astronomical catalogs, photographs, hardware designs | Original sources of the respective files | Check the original notices and terms separately from software licensing |
 
-NumPy/SciPy의 bundled BLAS 등은 상위 패키지 이름만으로 고지를 대신하지 않는다.
-빌드에 실제로 설치된 의존성의 원문을 `scripts/collect_product_licenses.py`로 수집한다.
-라이선스 파일이 없는 패키지는 미확인 목록에 기록하며 해결 전 출하하지 않는다.
-이 문서는 OS 전체 및 데이터·폰트까지 자동으로 승인한 완결된 법률 감사가 아니다.
+Naming a parent package does not replace the notices for bundled components,
+such as the BLAS libraries in NumPy/SciPy. Use
+`scripts/collect_product_licenses.py` to collect the original notices for the
+dependencies actually installed in the build. Packages without license files
+are recorded for review and must be resolved before shipment. This document is
+not a completed legal audit approving the entire OS, data and fonts.
 
-대응소스 동봉 방식과 수정판 설치 절차는
-[판매·소스 제공 문서](docs/MFNAVIS_RELEASE_ko.md)를 따른다.
+For corresponding-source media and installation of modified versions, see the
+[sales and source-distribution guide](docs/MFNAVIS_RELEASE_en.md).

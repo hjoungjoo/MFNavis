@@ -67,7 +67,7 @@ msgstr "산개성단"
 #. TRANSLATORS: Object type
 #: PiFinder/obj_types.py:12
 msgid "Cluster + Neb"
-msgstr "성단+성운"
+msgstr "성단·성운"
 
 #. TRANSLATORS: Object type
 #: PiFinder/obj_types.py:13
@@ -107,7 +107,7 @@ msgstr "삼중성"
 #. TRANSLATORS: Object type
 #: PiFinder/obj_types.py:20
 msgid "Knot"
-msgstr "Knot"
+msgstr "성운 응집부"
 
 #. TRANSLATORS: Object type
 #: PiFinder/obj_types.py:21
@@ -127,7 +127,7 @@ msgstr "혜성"
 #. TRANSLATORS: Object type
 #: PiFinder/obj_types.py:24
 msgid "Unkn"
-msgstr "미상"
+msgstr "미분류"
 
 #: PiFinder/server.py:48
 #, python-format
@@ -142,7 +142,7 @@ msgstr "%s은(는) 숫자여야 합니다"
 
 #: PiFinder/server.py:290
 msgid "Locked"
-msgstr "고정됨"
+msgstr "확정"
 
 #: PiFinder/server.py:290
 msgid "Not Locked"
@@ -150,19 +150,19 @@ msgstr "고정 안됨"
 
 #: PiFinder/server.py:312 views/base.html:60 views/base.html:74
 msgid "Home"
-msgstr "Home"
+msgstr "홈"
 
 #: PiFinder/server.py:340 PiFinder/server.py:348 views/login.html:31
 msgid "Login"
-msgstr "Login"
+msgstr "로그인"
 
 #: PiFinder/server.py:342
 msgid "Invalid Password"
-msgstr "Invalid Password"
+msgstr "비밀번호가 올바르지 않습니다"
 
 #: PiFinder/server.py:354 views/base.html:61 views/base.html:75
 msgid "Remote"
-msgstr "Remote"
+msgstr "원격 조작"
 
 #: PiFinder/server.py:360 PiFinder/ui/menu_structure.py:1277
 msgid "Advanced"
@@ -179,25 +179,25 @@ msgstr "네트워크"
 
 #: PiFinder/server.py:397
 msgid "GPS"
-msgstr "GPS"
+msgstr "위성항법"
 
 #: PiFinder/server.py:431 PiFinder/server.py:522 PiFinder/server.py:575
 #: views/base.html:64 views/base.html:78
 msgid "Locations"
-msgstr "위치"
+msgstr "관측지"
 
 #: PiFinder/server.py:478 PiFinder/server.py:539 views/indi_mount.html:177
 #: views/locations.html:63
 msgid "Latitude"
-msgstr "Latitude"
+msgstr "위도"
 
 #: PiFinder/server.py:479 PiFinder/server.py:540 views/indi_mount.html:181
 #: views/locations.html:64
 msgid "Longitude"
-msgstr "Longitude"
+msgstr "경도"
 
-#: PiFinder/server.py:480 PiFinder/server.py:541
-#: PiFinder/ui/menu_structure.py:499 views/locations.html:65
+#: PiFinder/server.py:480 PiFinder/server.py:541 PiFinder/ui/menu_structure.py:499
+#: views/locations.html:65
 msgid "Altitude"
 msgstr "고도"
 
@@ -208,28 +208,27 @@ msgstr "오류"
 
 #: PiFinder/server.py:488 PiFinder/server.py:549
 msgid "Location name is required"
-msgstr "Location name is required"
+msgstr "관측지 이름을 입력하세요"
 
 #: PiFinder/server.py:490 PiFinder/server.py:551
 msgid "Latitude must be between -90 and 90"
-msgstr "Latitude must be between -90 and 90"
+msgstr "위도는 -90~90도 범위여야 합니다"
 
 #: PiFinder/server.py:492 PiFinder/server.py:553
 msgid "Longitude must be between -180 and 180"
-msgstr "Longitude must be between -180 and 180"
+msgstr "경도는 -180~180도 범위여야 합니다"
 
 #: PiFinder/server.py:495 PiFinder/server.py:556
 msgid "Altitude must be between -1000 and 10000 meters"
-msgstr "Altitude must be between -1000 and 10000 meters"
+msgstr "해발고도는 -1000~10000미터 범위여야 합니다"
 
 #: PiFinder/server.py:498 PiFinder/server.py:559
 msgid "Error must be between 0 and 10000 meters"
-msgstr "Error must be between 0 and 10000 meters"
+msgstr "오차는 0~10000미터 범위여야 합니다"
 
 #: PiFinder/server.py:660
-#, fuzzy
 msgid "STA changes applied"
-msgstr "Save Changes"
+msgstr "외부 무선 연결 변경 사항을 적용했습니다"
 
 #: PiFinder/server.py:710 PiFinder/ui/menu_structure.py:1781
 msgid "Restart"
@@ -237,7 +236,7 @@ msgstr "재시작"
 
 #: PiFinder/server.py:713
 msgid "Settings saved. Use Apply & Restart to activate them."
-msgstr ""
+msgstr "설정을 저장했습니다. 적용 후 재시작을 눌러 반영하세요."
 
 #: PiFinder/server.py:729 PiFinder/server.py:738 PiFinder/server.py:742
 #: PiFinder/server.py:746 PiFinder/server.py:1101
@@ -248,19 +247,19 @@ msgstr "도구"
 
 #: PiFinder/server.py:730
 msgid "You must fill in all password fields"
-msgstr "You must fill in all password fields"
+msgstr "모든 비밀번호 항목을 입력하세요"
 
 #: PiFinder/server.py:738
 msgid "Password Changed"
-msgstr "Password Changed"
+msgstr "비밀번호를 변경했습니다"
 
 #: PiFinder/server.py:742
 msgid "Incorrect current password"
-msgstr "Incorrect current password"
+msgstr "현재 비밀번호가 올바르지 않습니다"
 
 #: PiFinder/server.py:746
 msgid "New passwords do not match"
-msgstr "New passwords do not match"
+msgstr "새 비밀번호가 일치하지 않습니다"
 
 #: PiFinder/server.py:771 PiFinder/server.py:782 PiFinder/server.py:799
 #: PiFinder/server.py:881 PiFinder/server.py:937 PiFinder/server.py:950
@@ -268,47 +267,47 @@ msgstr "New passwords do not match"
 #: PiFinder/ui/menu_structure.py:1633 views/base.html:65 views/base.html:79
 #: views/equipment.html:6
 msgid "Equipment"
-msgstr "장비"
+msgstr "관측 장비"
 
 #: PiFinder/server.py:788
 msgid "set as active instrument."
-msgstr "set as active instrument."
+msgstr "사용할 망원경으로 설정했습니다."
 
 #: PiFinder/server.py:805
 msgid "set as active eyepiece."
-msgstr "set as active eyepiece."
+msgstr "사용할 접안렌즈로 설정했습니다."
 
 #: PiFinder/server.py:883
 msgid "Equipment Imported, restart your MFNavis to use this new data"
-msgstr "Equipment Imported, restart your MFNavis to use this new data"
+msgstr "관측 장비를 가져왔습니다. 사용하려면 MFNavis를 재시작하세요"
 
 #: PiFinder/server.py:899
 msgid "Edit Eyepiece"
-msgstr "Edit Eyepiece"
+msgstr "접안렌즈 수정"
 
 #: PiFinder/server.py:939
 msgid "Eyepiece added, restart your MFNavis to use"
-msgstr "Eyepiece added, restart your MFNavis to use"
+msgstr "접안렌즈를 추가했습니다. 사용하려면 MFNavis를 재시작하세요"
 
 #: PiFinder/server.py:952
 msgid "Eyepiece Deleted, restart your MFNavis to remove from menu"
-msgstr "Eyepiece Deleted, restart your MFNavis to remove from menu"
+msgstr "접안렌즈를 삭제했습니다. 메뉴에 반영하려면 MFNavis를 재시작하세요"
 
 #: PiFinder/server.py:977
 msgid "Edit Instrument"
-msgstr "Edit Instrument"
+msgstr "망원경 수정"
 
 #: PiFinder/server.py:1025
 msgid "Instrument Added, restart your MFNavis to use"
-msgstr "Instrument Added, restart your MFNavis to use"
+msgstr "망원경을 추가했습니다. 사용하려면 MFNavis를 재시작하세요"
 
 #: PiFinder/server.py:1038
 msgid "Instrument Deleted, restart your MFNavis to remove from menu"
-msgstr "Instrument Deleted, restart your MFNavis to remove from menu"
+msgstr "망원경을 삭제했습니다. 메뉴에 반영하려면 MFNavis를 재시작하세요"
 
 #: PiFinder/server.py:1066 views/base.html:63 views/base.html:77
 msgid "Observations"
-msgstr "관측기록"
+msgstr "관측 기록"
 
 #: PiFinder/server.py:1095
 msgid "Session Log"
@@ -318,17 +317,17 @@ msgstr "세션 로그"
 #: PiFinder/server.py:1119 views/base.html:69 views/base.html:83
 #: views/livecam.html:144
 msgid "LiveCam"
-msgstr "LiveCam"
+msgstr "실시간 영상"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:1189
 #, python-format
 msgid ""
-"This INDI profile uses %(driver)s. OnStepX controls are available only "
-"when the active profile driver is LX200 OnStepX."
+"This INDI profile uses %(driver)s. OnStepX controls are available only when "
+"the active profile driver is LX200 OnStepX."
 msgstr ""
-"이 INDI 프로파일은 %(driver)s을(를) 사용합니다. OnStepX 컨트롤은 활성 프로파일 드라이버가 LX200 "
-"OnStepX일 때만 사용할 수 있습니다."
+"이 INDI 프로파일은 %(driver)s을(를) 사용합니다. OnStepX 컨트롤은 활성 프로파일 드라이버가 LX200 OnStepX일 "
+"때만 사용할 수 있습니다."
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:1193
@@ -350,7 +349,7 @@ msgstr "백래시는 0에서 %(max)d 사이여야 합니다"
 #: PiFinder/server.py:1506 PiFinder/server.py:1845 PiFinder/server.py:2165
 #: PiFinder/server.py:2180
 msgid "Mount-control process is not available"
-msgstr "마운트 제어 프로세스를 사용할 수 없습니다"
+msgstr "가대 제어 프로세스를 사용할 수 없습니다"
 
 #: PiFinder/server.py:1538 PiFinder/ui/menu_structure.py:81 views/base.html:66
 #: views/base.html:80 views/indi_mount.html:11
@@ -360,22 +359,22 @@ msgstr "INDI"
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:1642
 msgid "Invalid SkySafari mount status code"
-msgstr "잘못된 SkySafari 마운트 상태 코드"
+msgstr "잘못된 SkySafari 가대 상태 코드"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:1657
 msgid "SkySafari mount settings applied"
-msgstr "SkySafari 마운트 설정을 적용했습니다"
+msgstr "SkySafari 가대 설정을 적용했습니다"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:1664
 msgid "Invalid INDI GoTo method"
-msgstr "잘못된 INDI GoTo 방식"
+msgstr "잘못된 INDI 자동 도입 방식"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:1706
 msgid "INDI GoTo / Guide settings applied"
-msgstr "INDI GoTo / Guide 설정을 적용했습니다"
+msgstr "INDI 자동 도입 / Guide 설정을 적용했습니다"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:1713
@@ -385,7 +384,7 @@ msgstr "잘못된 동작"
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:1716
 msgid "GoTo/Guide service unavailable"
-msgstr "GoTo/Guide 서비스를 사용할 수 없음"
+msgstr "자동 도입/Guide 서비스를 사용할 수 없음"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:1720
@@ -409,9 +408,8 @@ msgstr "INDI 서버를 재시작하고 드라이버를 연결했습니다"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:1847
-#, fuzzy
 msgid "Mount controller reboot requested"
-msgstr "좌표 초기화를 요청했습니다"
+msgstr "가대 제어기 재시작을 요청했습니다"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:1980
@@ -441,7 +439,7 @@ msgstr "다지점 정렬을 시작했습니다"
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:2087
 msgid "Alignment star GoTo requested"
-msgstr "정렬 별 GoTo를 요청했습니다"
+msgstr "정렬 별 자동 도입를 요청했습니다"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:2096
@@ -482,12 +480,12 @@ msgstr "이동 테스트 반복 횟수는 1에서 %(max)d 사이여야 합니다
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:2169
 msgid "Solved GoTo motion test started"
-msgstr "해석 좌표 GoTo 이동 테스트를 시작했습니다"
+msgstr "해석 좌표 자동 도입 이동 테스트를 시작했습니다"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:2183
 msgid "Solved GoTo loop continue requested"
-msgstr "해석 좌표 GoTo 루프 계속을 요청했습니다"
+msgstr "해석 좌표 자동 도입 루프 계속을 요청했습니다"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:2208 views/indi_mount.html:1442
@@ -497,7 +495,7 @@ msgstr "백래시 이동 테스트 정지를 요청했습니다"
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:2214
 msgid "Backlash stop requested; waiting for mount-control process stop"
-msgstr "백래시 정지를 요청했습니다. 마운트 제어 프로세스 종료를 기다리는 중"
+msgstr "백래시 정지를 요청했습니다. 가대 제어 프로세스 종료를 기다리는 중"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/server.py:2230 views/indi_mount.html:1380
@@ -683,9 +681,9 @@ msgstr "제거"
 #: PiFinder/ui/menu_structure.py:1790 PiFinder/ui/software.py:325
 #: PiFinder/ui/software.py:385 PiFinder/ui/software.py:479
 #: views/edit_eyepiece.html:54 views/edit_instrument.html:108
-#: views/equipment.html:58 views/location_form.html:106
-#: views/locations.html:187 views/locations.html:200 views/network.html:118
-#: views/network.html:236 views/network_item.html:46 views/tools.html:97
+#: views/equipment.html:58 views/location_form.html:106 views/locations.html:187
+#: views/locations.html:200 views/network.html:118 views/network.html:236
+#: views/network_item.html:46 views/tools.html:97
 msgid "Cancel"
 msgstr "취소"
 
@@ -984,63 +982,54 @@ msgstr "망원경..."
 msgid "Eyepiece..."
 msgstr "아이피스..."
 
-#: PiFinder/ui/gps_time_sync_status.py:64
-#: PiFinder/ui/gps_time_sync_status.py:129
-#: PiFinder/ui/gps_time_sync_status.py:164
-#: PiFinder/ui/gps_time_sync_status.py:235
+#: PiFinder/ui/gps_time_sync_status.py:64 PiFinder/ui/gps_time_sync_status.py:129
+#: PiFinder/ui/gps_time_sync_status.py:164 PiFinder/ui/gps_time_sync_status.py:235
 msgid "Yes"
 msgstr "예"
 
-#: PiFinder/ui/gps_time_sync_status.py:66
-#: PiFinder/ui/gps_time_sync_status.py:129
-#: PiFinder/ui/gps_time_sync_status.py:164
-#: PiFinder/ui/gps_time_sync_status.py:235 PiFinder/ui/gpsstatus.py:291
+#: PiFinder/ui/gps_time_sync_status.py:66 PiFinder/ui/gps_time_sync_status.py:129
+#: PiFinder/ui/gps_time_sync_status.py:164 PiFinder/ui/gps_time_sync_status.py:235
+#: PiFinder/ui/gpsstatus.py:291
 msgid "No"
-msgstr "아니오"
+msgstr "아니요"
 
 #: PiFinder/ui/gps_time_sync_status.py:126
 msgid "No time sync status"
 msgstr "시간 동기화 상태 없음"
 
-#: PiFinder/ui/gps_time_sync_status.py:127
-#: PiFinder/ui/gps_time_sync_status.py:162
+#: PiFinder/ui/gps_time_sync_status.py:127 PiFinder/ui/gps_time_sync_status.py:162
 #: PiFinder/ui/gps_time_sync_status.py:227
 #, python-brace-format
 msgid "Helper: {state}"
 msgstr "헬퍼: {state}"
 
-#: PiFinder/ui/gps_time_sync_status.py:128
-#: PiFinder/ui/gps_time_sync_status.py:163
+#: PiFinder/ui/gps_time_sync_status.py:128 PiFinder/ui/gps_time_sync_status.py:163
 #, python-brace-format
 msgid "Request: {present}"
 msgstr "요청: {present}"
 
-#: PiFinder/ui/gps_time_sync_status.py:131
-#: PiFinder/ui/gps_time_sync_status.py:166
+#: PiFinder/ui/gps_time_sync_status.py:131 PiFinder/ui/gps_time_sync_status.py:166
 #, python-brace-format
 msgid "{square} Details"
 msgstr "{square} 상세"
 
-#: PiFinder/ui/gps_time_sync_status.py:144
-#: PiFinder/ui/gps_time_sync_status.py:193 PiFinder/ui/indi.py:105
+#: PiFinder/ui/gps_time_sync_status.py:144 PiFinder/ui/gps_time_sync_status.py:193
+#: PiFinder/ui/indi.py:105
 #, python-brace-format
 msgid "State: {state}"
 msgstr "상태: {state}"
 
-#: PiFinder/ui/gps_time_sync_status.py:145
-#: PiFinder/ui/gps_time_sync_status.py:195
+#: PiFinder/ui/gps_time_sync_status.py:145 PiFinder/ui/gps_time_sync_status.py:195
 #, python-brace-format
 msgid "Clock: {manager}"
 msgstr "시계: {manager}"
 
-#: PiFinder/ui/gps_time_sync_status.py:148
-#: PiFinder/ui/gps_time_sync_status.py:198
+#: PiFinder/ui/gps_time_sync_status.py:148 PiFinder/ui/gps_time_sync_status.py:198
 #, python-brace-format
 msgid "Selected: {source}"
 msgstr "선택: {source}"
 
-#: PiFinder/ui/gps_time_sync_status.py:151
-#: PiFinder/ui/gps_time_sync_status.py:214
+#: PiFinder/ui/gps_time_sync_status.py:151 PiFinder/ui/gps_time_sync_status.py:214
 #, python-brace-format
 msgid "Chrony: {state}"
 msgstr "Chrony: {state}"
@@ -1060,8 +1049,7 @@ msgstr "GPS 유효: {valid}"
 msgid "Source: {source}"
 msgstr "소스: {source}"
 
-#: PiFinder/ui/gps_time_sync_status.py:160
-#: PiFinder/ui/gps_time_sync_status.py:207
+#: PiFinder/ui/gps_time_sync_status.py:160 PiFinder/ui/gps_time_sync_status.py:207
 #, python-brace-format
 msgid "tAcc: {tacc}"
 msgstr "시간정확도: {tacc}"
@@ -1080,8 +1068,7 @@ msgstr "상태 파일 없음"
 msgid "Helper file: {state}"
 msgstr "헬퍼 파일: {state}"
 
-#: PiFinder/ui/gps_time_sync_status.py:182
-#: PiFinder/ui/gps_time_sync_status.py:247
+#: PiFinder/ui/gps_time_sync_status.py:182 PiFinder/ui/gps_time_sync_status.py:247
 #, python-brace-format
 msgid "{square} Summary"
 msgstr "{square} 요약"
@@ -1181,8 +1168,8 @@ msgstr "정확"
 msgid "Precise"
 msgstr "정밀"
 
-#: PiFinder/ui/gpsstatus.py:45 PiFinder/ui/menu_structure.py:1610
-#: views/gps.html:77 views/network.html:234
+#: PiFinder/ui/gpsstatus.py:45 PiFinder/ui/menu_structure.py:1610 views/gps.html:77
+#: views/network.html:234
 msgid "Save"
 msgstr "저장"
 
@@ -1651,9 +1638,8 @@ msgstr "불러오기"
 msgid "Rename"
 msgstr "이름변경"
 
-#: PiFinder/ui/location_list.py:30 views/locations.html:95
-#: views/locations.html:201 views/network_item.html:41
-#: views/network_item.html:45
+#: PiFinder/ui/location_list.py:30 views/locations.html:95 views/locations.html:201
+#: views/network_item.html:41 views/network_item.html:45
 msgid "Delete"
 msgstr "삭제"
 
@@ -2010,7 +1996,7 @@ msgstr "확인"
 #: views/catalogs/catalog.html:8 views/catalogs/index.html:2
 #: views/catalogs/index.html:6 views/catalogs/object.html:8
 msgid "Catalogs"
-msgstr "카탈로그"
+msgstr "천체 목록"
 
 #: PiFinder/ui/menu_structure.py:485 views/catalogs/catalog.html:55
 msgid "Type"
@@ -2059,7 +2045,7 @@ msgstr "절전 시간"
 #: PiFinder/ui/menu_structure.py:1729 PiFinder/ui/menu_structure.py:1745
 #: views/indi_mount.html:481
 msgid "Off"
-msgstr "끔"
+msgstr "꺼짐"
 
 #: PiFinder/ui/menu_structure.py:694
 msgid "Menu Anim"
@@ -2113,7 +2099,7 @@ msgstr "언어"
 
 #: PiFinder/ui/menu_structure.py:783
 msgid "English"
-msgstr "English"
+msgstr "영어"
 
 #: PiFinder/ui/menu_structure.py:787
 msgid "German"
@@ -2210,7 +2196,7 @@ msgstr "방위 표시"
 #: PiFinder/ui/menu_structure.py:1706 PiFinder/ui/menu_structure.py:1733
 #: PiFinder/ui/menu_structure.py:1749
 msgid "On"
-msgstr "켬"
+msgstr "켜짐"
 
 #: PiFinder/ui/menu_structure.py:956
 msgid "Object Size"
@@ -2258,10 +2244,9 @@ msgstr "1s"
 msgid "Camera Gain"
 msgstr "Gain"
 
-#: PiFinder/ui/menu_structure.py:1030 views/livecam.html:589
-#: views/livecam.html:590
+#: PiFinder/ui/menu_structure.py:1030 views/livecam.html:589 views/livecam.html:590
 msgid "Profile"
-msgstr "Profile"
+msgstr "설정 묶음"
 
 #: PiFinder/ui/menu_structure.py:1035
 msgid "1x"
@@ -2359,12 +2344,12 @@ msgstr "GoTo/Guide"
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/ui/menu_structure.py:1139 views/indi_mount.html:485
 msgid "GoTo Type"
-msgstr "GoTo 유형"
+msgstr "자동 도입 유형"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/ui/menu_structure.py:1150 views/indi_mount.html:482
 msgid "INDI Mount"
-msgstr "INDI 마운트"
+msgstr "INDI 가대"
 
 #: PiFinder/ui/menu_structure.py:1154 views/indi_mount.html:483
 msgid "MFNavis"
@@ -2568,8 +2553,7 @@ msgstr "캘리브레이션"
 msgid "Clear"
 msgstr "지우기"
 
-#: PiFinder/ui/menu_structure.py:1632 views/livecam.html:332
-#: views/network.html:133
+#: PiFinder/ui/menu_structure.py:1632 views/livecam.html:332 views/network.html:133
 msgid "Status"
 msgstr "상태"
 
@@ -2615,7 +2599,7 @@ msgstr "극축정렬"
 
 #: PiFinder/ui/menu_structure.py:1695 views/indi_mount.html:226
 msgid "Mount Control"
-msgstr "마운트 제어"
+msgstr "가대 제어"
 
 #: PiFinder/ui/menu_structure.py:1712
 msgid "Dev Tools"
@@ -2777,7 +2761,7 @@ msgstr ""
 
 #: PiFinder/ui/object_list.py:320 PiFinder/ui/object_list.py:925
 msgid "RA"
-msgstr "RA"
+msgstr "적경"
 
 #: PiFinder/ui/object_list.py:322 PiFinder/ui/object_list.py:639
 #: views/obs_session_log.html:21
@@ -3004,7 +2988,7 @@ msgstr "고도"
 
 #: PiFinder/ui/polar_align.py:486
 msgid "Az"
-msgstr "방위"
+msgstr "방위각"
 
 #: PiFinder/ui/polar_align.py:487
 msgid "Axis"
@@ -3044,7 +3028,7 @@ msgstr "노출"
 
 #: PiFinder/ui/preview.py:104 views/livecam.html:270
 msgid "Gain"
-msgstr "Gain"
+msgstr "이득"
 
 #: PiFinder/ui/radec_entry.py:516
 msgid "Full"
@@ -3127,11 +3111,8 @@ msgstr "릴리즈 정보"
 
 # AI-TRANSLATED (claude): needs human review
 #: PiFinder/ui/software.py:292
-#, fuzzy
 msgid "unavailable"
-msgstr ""
-"확인 불가IMU 명령\n"
-"사용 불가"
+msgstr "사용 불가"
 
 #: PiFinder/ui/software.py:303
 msgid "No Update"
@@ -3256,12 +3237,8 @@ msgid "The zodiacal light is visible and colorful. Gegenschein readily visible."
 msgstr "The zodiacal light is visible and colorful. Gegenschein readily visible."
 
 #: PiFinder/ui/sqm.py:352
-msgid ""
-"The Scorpius and Sagittarius regions of the Milky Way cast obvious "
-"shadows."
-msgstr ""
-"The Scorpius and Sagittarius regions of the Milky Way cast obvious "
-"shadows."
+msgid "The Scorpius and Sagittarius regions of the Milky Way cast obvious shadows."
+msgstr "The Scorpius and Sagittarius regions of the Milky Way cast obvious shadows."
 
 #: PiFinder/ui/sqm.py:355
 msgid "M33 is a direct naked-eye object. Airglow readily visible."
@@ -3277,11 +3254,11 @@ msgstr "Typical Truly Dark Site"
 
 #: PiFinder/ui/sqm.py:365
 msgid ""
-"The zodiacal light is distinctly yellowish and bright enough to cast "
-"shadows at dusk and dawn."
+"The zodiacal light is distinctly yellowish and bright enough to cast shadows "
+"at dusk and dawn."
 msgstr ""
-"The zodiacal light is distinctly yellowish and bright enough to cast "
-"shadows at dusk and dawn."
+"The zodiacal light is distinctly yellowish and bright enough to cast shadows "
+"at dusk and dawn."
 
 #: PiFinder/ui/sqm.py:368
 msgid "Clouds appear as dark silhouettes against the sky."
@@ -3328,12 +3305,8 @@ msgid "Light pollution domes apparent in multiple directions."
 msgstr "Light pollution domes apparent in multiple directions."
 
 #: PiFinder/ui/sqm.py:398
-msgid ""
-"The Milky Way well above the horizon is still impressive, but lacks "
-"detail."
-msgstr ""
-"The Milky Way well above the horizon is still impressive, but lacks "
-"detail."
+msgid "The Milky Way well above the horizon is still impressive, but lacks detail."
+msgstr "The Milky Way well above the horizon is still impressive, but lacks detail."
 
 #: PiFinder/ui/sqm.py:401
 msgid "M33 difficult to see."
@@ -3445,11 +3418,11 @@ msgstr "Many stars forming constellations invisible."
 
 #: PiFinder/ui/sqm.py:478
 msgid ""
-"Only the Moon, planets, bright satellites, and a few of the brightest "
-"star clusters observable."
+"Only the Moon, planets, bright satellites, and a few of the brightest star "
+"clusters observable."
 msgstr ""
-"Only the Moon, planets, bright satellites, and a few of the brightest "
-"star clusters observable."
+"Only the Moon, planets, bright satellites, and a few of the brightest star "
+"clusters observable."
 
 #: PiFinder/ui/telemetry_list.py:69
 msgid "Stop replay"
@@ -3489,11 +3462,11 @@ msgstr "로컬 시간 입력"
 
 #: views/advanced.html:7
 msgid "GPS location lock"
-msgstr "GPS location lock"
+msgstr "위성항법 위치 수신 확정"
 
 #: views/advanced.html:8
 msgid "GPS time lock"
-msgstr "GPS time lock"
+msgstr "위성항법 시각 수신 확정"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/base.html:45 views/base.html:87
@@ -3517,7 +3490,7 @@ msgstr "야간 적색"
 
 #: views/base.html:67 views/base.html:81
 msgid "Network Setup"
-msgstr "Network Setup"
+msgstr "네트워크 설정"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/base.html:91 views/livecam.html:206
@@ -3539,215 +3512,211 @@ msgstr "MFNavis Support Page"
 
 #: views/edit_eyepiece.html:7
 msgid "Add a new eyepiece"
-msgstr "Add a new eyepiece"
+msgstr "새 접안렌즈 추가"
 
 #: views/edit_eyepiece.html:9
 msgid "Edit eyepiece"
-msgstr "Edit eyepiece"
+msgstr "접안렌즈 수정"
 
 #: views/edit_eyepiece.html:18 views/edit_instrument.html:27
 #: views/equipment.html:68 views/equipment.html:116
 msgid "Make"
-msgstr "Make"
+msgstr "제조사"
 
 #: views/edit_eyepiece.html:24 views/equipment.html:69 views/equipment.html:117
 #: views/locations.html:62 views/network.html:222
 msgid "Name"
-msgstr "Name"
+msgstr "이름"
 
 #: views/edit_eyepiece.html:30 views/edit_instrument.html:45
 msgid "Focal Length (in mm)"
-msgstr "Focal Length (in mm)"
+msgstr "초점 거리(밀리미터)"
 
 #: views/edit_eyepiece.html:36
 msgid "Apparent Field of View (in °)"
-msgstr "Apparent Field of View (in °)"
+msgstr "겉보기 시야(도)"
 
 #: views/edit_eyepiece.html:42
 msgid "Field stop (in mm)"
-msgstr "Field stop (in mm)"
+msgstr "시야 조리개 지름(밀리미터)"
 
 #: views/edit_eyepiece.html:49
 msgid "Add eyepiece!"
-msgstr "Add eyepiece!"
+msgstr "접안렌즈 추가"
 
 #: views/edit_eyepiece.html:51
 msgid "Update eyepiece!"
-msgstr "Update eyepiece!"
+msgstr "접안렌즈 수정"
 
 #: views/edit_instrument.html:7
 msgid "Add a new instrument"
-msgstr "Add a new instrument"
+msgstr "새 망원경 추가"
 
 #: views/edit_instrument.html:9
 msgid "Edit instrument"
-msgstr "Edit instrument"
+msgstr "망원경 수정"
 
 #: views/edit_instrument.html:33
 msgid "Instrument Name"
-msgstr "Instrument Name"
+msgstr "망원경 이름"
 
 #: views/edit_instrument.html:39
 msgid "Aperture (in mm)"
-msgstr "Aperture (in mm)"
+msgstr "구경(밀리미터)"
 
 #: views/edit_instrument.html:51 views/equipment.html:72
 msgid "Obstruction %"
-msgstr "Obstruction %"
+msgstr "중앙 차폐율(%)"
 
 #: views/edit_instrument.html:69
 msgid "Flip image (upside down)"
-msgstr "Flip image (upside down)"
+msgstr "영상 상하 반전"
 
 #: views/edit_instrument.html:77
 msgid "Flop image (left right)"
-msgstr "Flop image (left right)"
+msgstr "영상 좌우 반전"
 
 #: views/edit_instrument.html:85 views/equipment.html:76
 msgid "Reverse Arrow A"
-msgstr "Reverse Arrow A"
+msgstr "방향 화살표 가 반전"
 
 #: views/edit_instrument.html:93 views/equipment.html:77
 msgid "Reverse Arrow B"
-msgstr "Reverse Arrow B"
+msgstr "방향 화살표 나 반전"
 
 #: views/edit_instrument.html:103
 msgid "Add instrument!"
-msgstr "Add instrument!"
+msgstr "망원경 추가"
 
 #: views/edit_instrument.html:105
 msgid "Update instrument!"
-msgstr "Update instrument!"
+msgstr "망원경 수정"
 
 #: views/equipment.html:28 views/equipment.html:65
 msgid "Instruments"
-msgstr "Instruments"
+msgstr "망원경"
 
 #: views/equipment.html:32 views/equipment.html:113
 msgid "Eyepieces"
-msgstr "Eyepieces"
+msgstr "접안렌즈"
 
 #: views/equipment.html:36
 msgid "Import from DeepskyLog"
-msgstr "Import from DeepskyLog"
+msgstr "DeepskyLog에서 가져오기"
 
 #: views/equipment.html:44
 msgid "Download instruments from DeepskyLog"
-msgstr "Download instruments from DeepskyLog"
+msgstr "DeepskyLog에서 관측 장비 가져오기"
 
 #: views/equipment.html:45
 msgid ""
-"This will delete all instruments and eyepieces from your MFNavis and "
-"replace them with the instruments and eyepieces from DeepskyLog. Are you "
-"really sure?"
-msgstr ""
-"This will delete all instruments and eyepieces from your MFNavis and "
-"replace them with the instruments and eyepieces from DeepskyLog. Are you "
-"really sure?"
+"This will delete all instruments and eyepieces from your MFNavis and replace "
+"them with the instruments and eyepieces from DeepskyLog. Are you really sure?"
+msgstr "MFNavis의 모든 망원경과 접안렌즈를 삭제하고 DeepskyLog의 관측 장비로 교체합니다. 계속하시겠습니까?"
 
 #: views/equipment.html:50
 msgid "DeepskyLog User Name"
-msgstr "DeepskyLog User Name"
+msgstr "DeepskyLog 사용자 이름"
 
 #: views/equipment.html:57
 msgid "Import!"
-msgstr "Import!"
+msgstr "가져오기"
 
 #: views/equipment.html:62
 msgid "Add new instrument"
-msgstr "Add new instrument"
+msgstr "새 망원경 추가"
 
 #: views/equipment.html:63
 msgid "Add new eyepiece"
-msgstr "Add new eyepiece"
+msgstr "새 접안렌즈 추가"
 
 #: views/equipment.html:70
 msgid "Aperture"
-msgstr "Aperture"
+msgstr "구경"
 
 #: views/equipment.html:71 views/equipment.html:118
 msgid "Focal Length (mm)"
-msgstr "Focal Length (mm)"
+msgstr "초점 거리(밀리미터)"
 
 #: views/equipment.html:74
 msgid "Flip"
-msgstr "Flip"
+msgstr "상하 반전"
 
 #: views/equipment.html:75
 msgid "Flop"
-msgstr "Flop"
+msgstr "좌우 반전"
 
 #: views/equipment.html:78 views/equipment.html:121
 msgid "Active"
-msgstr "Active"
+msgstr "사용 중"
 
 #: views/equipment.html:79 views/equipment.html:122 views/locations.html:68
 msgid "Actions"
-msgstr "Actions"
+msgstr "작업"
 
 #: views/equipment.html:119
 msgid "Apparent FOV"
-msgstr "Apparent FOV"
+msgstr "겉보기 시야"
 
 #: views/equipment.html:120
 msgid "Field Stop"
-msgstr "Field Stop"
+msgstr "시야 조리개"
 
 #: views/gps.html:16 views/location_form.html:43 views/locations.html:124
 msgid "Use DMS Format"
-msgstr "Use DMS Format"
+msgstr "도·분·초 형식 사용"
 
 #: views/gps.html:23 views/location_form.html:50 views/locations.html:131
 msgid "Latitude (Decimal)"
-msgstr "Latitude (Decimal)"
+msgstr "위도(십진수)"
 
 #: views/gps.html:27 views/location_form.html:55 views/locations.html:136
 msgid "Longitude (Decimal)"
-msgstr "Longitude (Decimal)"
+msgstr "경도(십진수)"
 
 #: views/gps.html:33 views/location_form.html:62 views/locations.html:143
 msgid "Latitude Degrees"
-msgstr "Latitude Degrees"
+msgstr "위도 도"
 
 #: views/gps.html:37 views/location_form.html:66 views/locations.html:147
 msgid "Latitude Minutes"
-msgstr "Latitude Minutes"
+msgstr "위도 분"
 
 #: views/gps.html:41 views/location_form.html:70 views/locations.html:151
 msgid "Latitude Seconds"
-msgstr "Latitude Seconds"
+msgstr "위도 초"
 
 #: views/gps.html:45 views/location_form.html:74 views/locations.html:155
 msgid "Longitude Degrees"
-msgstr "Longitude Degrees"
+msgstr "경도 도"
 
 #: views/gps.html:49 views/location_form.html:78 views/locations.html:159
 msgid "Longitude Minutes"
-msgstr "Longitude Minutes"
+msgstr "경도 분"
 
 #: views/gps.html:53 views/location_form.html:82 views/locations.html:163
 msgid "Longitude Seconds"
-msgstr "Longitude Seconds"
+msgstr "경도 초"
 
 #: views/gps.html:59
 msgid "Altitude in meter"
-msgstr "Altitude in meter"
+msgstr "해발고도(미터)"
 
 #: views/gps.html:65 views/obs_sessions.html:25
 msgid "Date"
-msgstr "Date"
+msgstr "날짜"
 
 #: views/gps.html:69
 msgid "UTC Time (h:m:s)"
-msgstr "UTC Time (h:m:s)"
+msgstr "협정세계시(시:분:초)"
 
 #: views/gps.html:72
 msgid "Set to Browser Date/Time"
-msgstr "Set to Browser Date/Time"
+msgstr "브라우저 날짜·시각으로 설정"
 
 #: views/index.html:6 views/remote.html:6
 msgid "MFNavis Screen"
-msgstr "MFNavis Screen"
+msgstr "MFNavis 화면"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/index.html:14 views/indi_mount.html:206 views/indi_mount.html:1087
@@ -3757,30 +3726,30 @@ msgstr "모드"
 
 #: views/index.html:21
 msgid "lat"
-msgstr "lat"
+msgstr "위도"
 
 #: views/index.html:21
 msgid "lon"
-msgstr "lon"
+msgstr "경도"
 
 #: views/index.html:29
 msgid "Sky Position"
-msgstr "Sky Position"
+msgstr "천구 좌표"
 
 #: views/index.html:36
 msgid "Software Version"
-msgstr "Software Version"
+msgstr "소프트웨어 버전"
 
 #: views/index.html:66 views/remote.html:59
 msgid "MFNavis server is currently unavailable. Please try again later."
-msgstr "MFNavis server is currently unavailable. Please try again later."
+msgstr "현재 MFNavis 서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요."
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:17
 msgid ""
-"System clock is not synchronized (no GPS/NTP sync since boot). Mount time"
-" sync is deferred until the clock is trusted."
-msgstr "시스템 시계가 동기화되지 않았습니다(부팅 후 GPS/NTP 동기 없음). 시계가 신뢰될 때까지 마운트 시간 동기화를 보류합니다."
+"System clock is not synchronized (no GPS/NTP sync since boot). Mount time "
+"sync is deferred until the clock is trusted."
+msgstr "시스템 시계가 동기화되지 않았습니다(부팅 후 GPS/NTP 동기 없음). 시계가 신뢰될 때까지 가대 시간 동기화를 보류합니다."
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:39
@@ -3790,10 +3759,9 @@ msgstr "현재 INDI 드라이버 상태"
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:41
 msgid "INDI Web Manager"
-msgstr "INDI Web Manager"
+msgstr "INDI 웹 관리"
 
 #: views/indi_mount.html:43
-#, fuzzy
 msgid "REBOOT INDI"
 msgstr "INDI 재시작"
 
@@ -3866,9 +3834,7 @@ msgstr "OnStep UTC 시간"
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:67
 #, python-format
-msgid ""
-"%(driver)s driver properties are not available. Start the INDI profile "
-"first."
+msgid "%(driver)s driver properties are not available. Start the INDI profile first."
 msgstr "%(driver)s 드라이버 속성을 사용할 수 없습니다. 먼저 INDI 프로파일을 시작하세요."
 
 # AI-TRANSLATED (claude): needs human review
@@ -3941,11 +3907,11 @@ msgstr "USB 시리얼 포트"
 #: views/indi_mount.html:141
 msgid ""
 "No /dev/serial/by-id, /dev/ttyUSB, or /dev/ttyACM ports are currently "
-"visible. Connect the USB-serial cable and reload this page, or use manual"
-" entry if the port name is known."
+"visible. Connect the USB-serial cable and reload this page, or use manual "
+"entry if the port name is known."
 msgstr ""
-"현재 보이는 /dev/serial/by-id, /dev/ttyUSB, /dev/ttyACM 포트가 없습니다. USB-시리얼 케이블을"
-" 연결하고 이 페이지를 다시 불러오거나, 포트 이름을 알면 수동 입력을 사용하세요."
+"현재 보이는 /dev/serial/by-id, /dev/ttyUSB, /dev/ttyACM 포트가 없습니다. USB-시리얼 케이블을 "
+"연결하고 이 페이지를 다시 불러오거나, 포트 이름을 알면 수동 입력을 사용하세요."
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:148
@@ -4025,17 +3991,17 @@ msgstr "RA (도)"
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:209
 msgid "Dec (deg)"
-msgstr "Dec (도)"
+msgstr "적위 (도)"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:210
 msgid "Mount Separation (deg)"
-msgstr "마운트 이격 (도)"
+msgstr "가대 이격 (도)"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:211
 msgid "IMU-Mount Separation (deg)"
-msgstr "IMU-마운트 이격 (도)"
+msgstr "IMU-가대 이격 (도)"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:212
@@ -4052,11 +4018,11 @@ msgstr "마지막 초기화"
 msgid ""
 "Reinitialize the fused coordinate when it has drifted from the sky "
 "(bad/absent plate solves, or IMU drift). With a valid plate solve it re-"
-"baselines from the solve; without one it aligns the mount to the current "
-"IMU coordinate."
+"baselines from the solve; without one it aligns the mount to the current IMU "
+"coordinate."
 msgstr ""
-"융합 좌표가 실제 하늘에서 벗어났을 때(플레이트 솔빙 실패/부재 또는 IMU 드리프트) 다시 초기화합니다. 유효한 솔빙이 있으면 "
-"솔빙 기준으로 다시 잡고, 없으면 마운트를 현재 IMU 좌표에 정렬합니다."
+"융합 좌표가 실제 하늘에서 벗어났을 때(플레이트 솔빙 실패/부재 또는 IMU 드리프트) 다시 초기화합니다. 유효한 솔빙이 있으면 솔빙 "
+"기준으로 다시 잡고, 없으면 가대를 현재 IMU 좌표에 정렬합니다."
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:229
@@ -4071,7 +4037,7 @@ msgstr "파크 상태"
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:237
 msgid "Raw Mount Status"
-msgstr "원시 마운트 상태"
+msgstr "원시 가대 상태"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:241
@@ -4159,7 +4125,7 @@ msgstr "수동"
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:332
 msgid "mag"
-msgstr "mag"
+msgstr "등급"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:336
@@ -4174,7 +4140,7 @@ msgstr "정렬 시작"
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:341
 msgid "GoTo Selected Star"
-msgstr "선택한 별로 GoTo"
+msgstr "선택한 별로 자동 도입"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:342
@@ -4209,10 +4175,10 @@ msgstr "자동 방식"
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:369
 msgid ""
-"Solved-coordinate GoTo round-trip test; repeated return/offset GoTo moves"
-" are recorded and filtered by direction before recommending candidate "
-"backlash values."
-msgstr "해석 좌표 GoTo 왕복 테스트. 반복적인 복귀/오프셋 GoTo 이동을 기록하고 방향별로 필터링한 뒤 후보 백래시 값을 추천합니다."
+"Solved-coordinate GoTo round-trip test; repeated return/offset GoTo moves are"
+" recorded and filtered by direction before recommending candidate backlash "
+"values."
+msgstr "해석 좌표 자동 도입 왕복 테스트. 반복적인 복귀/오프셋 자동 도입 이동을 기록하고 방향별로 필터링한 뒤 후보 백래시 값을 추천합니다."
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:372
@@ -4222,7 +4188,7 @@ msgstr "이동 명령"
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:373
 msgid "INDI GoTo"
-msgstr "INDI GoTo"
+msgstr "INDI 자동 도입"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:376
@@ -4274,8 +4240,8 @@ msgstr "INDI 드라이버"
 #: views/indi_mount.html:425
 #, python-format
 msgid ""
-"%(driver)s is selected in the active INDI profile. OnStepX-specific setup"
-" and motion controls are hidden for this driver."
+"%(driver)s is selected in the active INDI profile. OnStepX-specific setup and"
+" motion controls are hidden for this driver."
 msgstr ""
 "활성 INDI 프로파일에 %(driver)s이(가) 선택되어 있습니다. 이 드라이버에서는 OnStepX 전용 설정과 이동 컨트롤이 "
 "숨겨집니다."
@@ -4288,12 +4254,12 @@ msgstr "드라이버 없음"
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:433
 msgid "SkySafari Mount Mode"
-msgstr "SkySafari 마운트 모드"
+msgstr "SkySafari 가대 모드"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:438
 msgid "MFNavis Mount Type"
-msgstr "MFNavis 마운트 종류"
+msgstr "MFNavis 가대 종류"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:444
@@ -4308,7 +4274,7 @@ msgstr "독일식 EQ"
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:447
 msgid "SkySafari LX200 Mount Code"
-msgstr "SkySafari LX200 마운트 코드"
+msgstr "SkySafari LX200 가대 코드"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:454
@@ -4318,16 +4284,16 @@ msgstr "SkySafari 정렬/동기화를 INDI로 전달"
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:462
 msgid "Apply Planet Tracking Rate on SkySafari GoTo"
-msgstr "SkySafari GoTo에 행성 추적 속도 적용"
+msgstr "SkySafari 자동 도입에 행성 추적 속도 적용"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:464
 msgid ""
 "SkySafari sends coordinates without an object type, so a GoTo target is "
-"matched against the planet ephemeris to decide the tracking rate. Turn "
-"this off to treat every SkySafari target as sidereal."
+"matched against the planet ephemeris to decide the tracking rate. Turn this "
+"off to treat every SkySafari target as sidereal."
 msgstr ""
-"SkySafari는 천체 종류 없이 좌표만 보내므로, GoTo 대상을 행성 위치 계산과 대조해 추적 속도를 정합니다. 끄면 모든 "
+"SkySafari는 천체 종류 없이 좌표만 보내므로, 자동 도입 대상을 행성 위치 계산과 대조해 추적 속도를 정합니다. 끄면 모든 "
 "SkySafari 대상을 항성 속도로 취급합니다."
 
 # AI-TRANSLATED (claude): needs human review
@@ -4338,7 +4304,7 @@ msgstr "SkySafari 설정 적용"
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:476
 msgid "GoTo / Guide Settings"
-msgstr "GoTo / Guide 설정"
+msgstr "자동 도입 / Guide 설정"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:489
@@ -4348,7 +4314,7 @@ msgstr "정밀 보정 정확도 arcmin"
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:504
 msgid "Tracking Guide GoTo Recovery (re-slew when off target by more than 3 deg)"
-msgstr "추적 가이드 GoTo 복구 (목표에서 3° 이상 벗어나면 재슬루)"
+msgstr "추적 가이드 자동 도입 복구 (목표에서 3° 이상 벗어나면 재슬루)"
 
 #: views/indi_mount.html:512
 msgid ""
@@ -4358,20 +4324,20 @@ msgstr "수동 재타겟 (수동 이동 후 원위치 복귀 대신 새 위치�
 
 #: views/indi_mount.html:520
 msgid "Invert guide pulse RA/Az (WE)"
-msgstr "가이드 펄스 RA/Az(WE) 반전"
+msgstr "가이드 펄스 적경·방위각(WE) 반전"
 
 #: views/indi_mount.html:526
 msgid "Invert guide pulse Dec/Alt (NS)"
-msgstr "가이드 펄스 Dec/Alt(NS) 반전"
+msgstr "가이드 펄스 적위·고도(NS) 반전"
 
 #: views/indi_mount.html:537
 msgid "MFNavis GoTo: Max sync + GoTo iterations"
-msgstr "MFNavis GoTo: 최대 sync + GoTo 반복 횟수"
+msgstr "MFNavis 자동 도입: 최대 sync + 자동 도입 반복 횟수"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:541
 msgid "Apply GoTo / Guide Settings"
-msgstr "GoTo / Guide 설정 적용"
+msgstr "자동 도입 / Guide 설정 적용"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:542 views/indi_mount.html:1192
@@ -4381,7 +4347,7 @@ msgstr "가이드 일시정지"
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:545
 msgid "GoTo / Guide Status"
-msgstr "GoTo / Guide 상태"
+msgstr "자동 도입 / Guide 상태"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:546
@@ -4445,7 +4411,7 @@ msgstr "파크 실패"
 
 #: views/indi_mount.html:611
 msgid "Unknown"
-msgstr "미상"
+msgstr "알 수 없음"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:913
@@ -4588,20 +4554,18 @@ msgstr "재시작을 요청했습니다"
 
 #: views/indi_mount.html:1621
 msgid ""
-"Force-reboot the OnStep mount controller? The mount will be offline for "
-"about a minute."
-msgstr ""
+"Force-reboot the OnStep mount controller? The mount will be offline for about"
+" a minute."
+msgstr "OnStep 가대 제어기를 강제로 재시작하시겠습니까? 약 1분간 가대 연결이 끊깁니다."
 
 #: views/indi_mount.html:1624
-#, fuzzy
 msgid "Rebooting mount controller"
-msgstr "마운트 제어"
+msgstr "가대 제어기 재시작 중"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:1627
-#, fuzzy
 msgid "Reboot requested"
-msgstr "재시작을 요청했습니다"
+msgstr "재시작 요청됨"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:155
@@ -4611,12 +4575,12 @@ msgstr "처리 켜짐"
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:161
 msgid "Original RAW"
-msgstr "원본 RAW"
+msgstr "원본 원시 영상"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:162
 msgid "Cropped RAW"
-msgstr "잘라낸 RAW"
+msgstr "잘라낸 원시 영상"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:163
@@ -4651,7 +4615,7 @@ msgstr "입력 프레임"
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:173
 msgid "Latest RAW Preview"
-msgstr "최신 RAW 미리보기"
+msgstr "최신 원시 영상 미리보기"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:174
@@ -4691,7 +4655,7 @@ msgstr "스택 모드"
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:198
 msgid "Raw Display"
-msgstr "RAW 표시"
+msgstr "원시 영상 표시"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:199
@@ -4701,7 +4665,7 @@ msgstr "스트레치"
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:200
 msgid "Bayer 2x2 Avg"
-msgstr "Bayer 2x2 평균"
+msgstr "베이어 2x2 평균"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:202
@@ -4766,9 +4730,9 @@ msgstr "카메라 노출 / 게인"
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:257
 msgid ""
-"Global camera settings, shared with plate solving and the on-device "
-"Camera Exp / Camera Gain menus."
-msgstr "전역 카메라 설정입니다. 플레이트 솔빙과 기기의 Camera Exp / Camera Gain 메뉴가 같은 값을 사용합니다."
+"Global camera settings, shared with plate solving and the on-device Camera "
+"Exp / Camera Gain menus."
+msgstr "천구 좌표 해석과 기기의 카메라 노출·이득 메뉴에서 함께 사용하는 카메라 설정입니다."
 
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:265
@@ -4838,12 +4802,12 @@ msgstr "다운로드"
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:318
 msgid "Lossless 16-bit data, no display stretch"
-msgstr "무손실 16-bit 데이터, 표시용 스트레치 없음"
+msgstr "무손실 16비트 데이터, 표시용 스트레치 없음"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:319
 msgid "TIFF 16-bit"
-msgstr "TIFF 16-bit"
+msgstr "TIFF 16비트"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:324
@@ -4853,7 +4817,7 @@ msgstr "LiveCam 미리보기"
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:325
 msgid "Processing is off or no RAW frame is available."
-msgstr "처리가 꺼져 있거나 사용 가능한 RAW 프레임이 없습니다."
+msgstr "처리가 꺼져 있거나 사용 가능한 원시 영상 프레임이 없습니다."
 
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:335
@@ -4863,7 +4827,7 @@ msgstr "프레임 소스"
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:339
 msgid "RAW Shape"
-msgstr "RAW 형상"
+msgstr "원시 영상 형상"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:343
@@ -4873,7 +4837,7 @@ msgstr "표시 형상"
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:347
 msgid "RAW Type"
-msgstr "RAW 타입"
+msgstr "원시 영상 타입"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:351
@@ -4893,7 +4857,7 @@ msgstr "센서 (적용값)"
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:363
 msgid "RAW Levels (p1/p50/p99.5)"
-msgstr "RAW 레벨 (p1/p50/p99.5)"
+msgstr "원시 영상 레벨 (p1/p50/p99.5)"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/livecam.html:367
@@ -4902,7 +4866,7 @@ msgstr "마지막 오류"
 
 #: views/livecam.html:528
 msgid "Processing is on. Waiting for the camera to publish the next RAW frame"
-msgstr "처리가 켜져 있습니다. 카메라가 다음 RAW 프레임을 발행하기를 기다리는 중"
+msgstr "처리가 켜져 있습니다. 카메라가 다음 원시 영상 프레임을 발행하기를 기다리는 중"
 
 #: views/livecam.html:532
 msgid "Processing is off."
@@ -4934,82 +4898,80 @@ msgid "Lookup Coordinates"
 msgstr "좌표 조회"
 
 # AI-TRANSLATED (claude): needs human review
-#: views/location_form.html:16 views/location_form.html:18
-#: views/locations.html:622
+#: views/location_form.html:16 views/location_form.html:18 views/locations.html:622
 msgid "Country"
 msgstr "국가"
 
 # AI-TRANSLATED (claude): needs human review
-#: views/location_form.html:22 views/location_form.html:24
-#: views/locations.html:603 views/locations.html:638
+#: views/location_form.html:22 views/location_form.html:24 views/locations.html:603
+#: views/locations.html:638
 msgid "State / Province"
 msgstr "주 / 도"
 
 # AI-TRANSLATED (claude): needs human review
-#: views/location_form.html:28 views/location_form.html:30
-#: views/locations.html:608 views/locations.html:659
+#: views/location_form.html:28 views/location_form.html:30 views/locations.html:608
+#: views/locations.html:659
 msgid "County / District"
 msgstr "군 / 구"
 
 # AI-TRANSLATED (claude): needs human review
-#: views/location_form.html:34 views/location_form.html:36
-#: views/locations.html:615 views/locations.html:686
+#: views/location_form.html:34 views/location_form.html:36 views/locations.html:615
+#: views/locations.html:686
 msgid "City / Place"
 msgstr "도시 / 지역"
 
 #: views/location_form.html:88 views/locations.html:169
 msgid "Altitude (meters)"
-msgstr "Altitude (meters)"
+msgstr "해발고도(미터)"
 
 #: views/location_form.html:95 views/locations.html:176
 msgid "Error (meters)"
-msgstr "Error (meters)"
+msgstr "오차(미터)"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/location_form.html:99
 msgid "Manual Entry"
 msgstr "수동 입력"
 
-#: views/location_form.html:100 views/locations.html:67
-#: views/locations.html:181
+#: views/location_form.html:100 views/locations.html:67 views/locations.html:181
 msgid "Source"
-msgstr "Source"
+msgstr "출처"
 
 #: views/locations.html:31
 msgid "Location Management"
-msgstr "Location Management"
+msgstr "관측지 관리"
 
 #: views/locations.html:48
 msgid "Add New Location"
-msgstr "Add New Location"
+msgstr "관측지 추가"
 
 #: views/locations.html:89
 msgid "Set as Default"
-msgstr "Set as Default"
+msgstr "기본값으로 설정"
 
 #: views/locations.html:92
 msgid "Edit"
-msgstr "Edit"
+msgstr "수정"
 
 #: views/locations.html:111
 msgid "Edit Location"
-msgstr "Edit Location"
+msgstr "관측지 수정"
 
 #: views/locations.html:186
 msgid "Save Changes"
-msgstr "Save Changes"
+msgstr "변경 사항 저장"
 
 #: views/locations.html:196
 msgid "Confirm Delete"
-msgstr "Confirm Delete"
+msgstr "삭제 확인"
 
 #: views/locations.html:197
 msgid "Are you sure you want to delete the location"
-msgstr "Are you sure you want to delete the location"
+msgstr "이 관측지를 삭제하시겠습니까?"
 
 #: views/locations.html:197
 msgid "This action cannot be undone."
-msgstr "This action cannot be undone."
+msgstr "이 작업은 되돌릴 수 없습니다."
 
 #: views/locations.html:438 views/locations.html:772 views/locations.html:829
 msgid "This field is required"
@@ -5021,19 +4983,19 @@ msgstr "올바른 숫자를 입력하세요"
 
 #: views/locations.html:444
 msgid "Must be between -90 and 90"
-msgstr "Must be between -90 and 90"
+msgstr "-90~90 범위여야 합니다"
 
 #: views/locations.html:447
 msgid "Must be between -180 and 180"
-msgstr "Must be between -180 and 180"
+msgstr "-180~180 범위여야 합니다"
 
 #: views/locations.html:450
 msgid "Must be between -1000 and 10000 meters"
-msgstr "Must be between -1000 and 10000 meters"
+msgstr "-1000~10000미터 범위여야 합니다"
 
 #: views/locations.html:453
 msgid "Must be between 0 and 10000 meters"
-msgstr "Must be between 0 and 10000 meters"
+msgstr "0~10000미터 범위여야 합니다"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/locations.html:524
@@ -5042,31 +5004,31 @@ msgstr "위치 카탈로그를 불러올 수 없습니다"
 
 #: views/locations.html:797
 msgid "Please fix the validation errors before saving"
-msgstr "Please fix the validation errors before saving"
+msgstr "입력 오류를 수정한 뒤 저장하세요"
 
 #: views/login.html:6
 msgid "Login Required"
-msgstr "Login Required"
+msgstr "로그인 필요"
 
 #: views/login.html:23 views/network.html:228
 msgid "Password"
-msgstr "Password"
+msgstr "비밀번호"
 
 #: views/login.html:25
 msgid "Note: The default password is"
-msgstr "Note: The default password is"
+msgstr "기본 비밀번호:"
 
 #: views/login.html:25
 msgid "You can change this using the Tool menu option"
-msgstr "You can change this using the Tool menu option"
+msgstr "도구 메뉴에서 변경할 수 있습니다"
 
 #: views/logs.html:123
 msgid "MFNavis Logs"
-msgstr "MFNavis Logs"
+msgstr "MFNavis 로그"
 
 #: views/logs.html:141
 msgid "Download All Logs"
-msgstr "Download All Logs"
+msgstr "모든 로그 내려받기"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/logs.html:144
@@ -5075,39 +5037,39 @@ msgstr "SD로 저장"
 
 #: views/logs.html:147 views/logs.html:289 views/logs.html:301
 msgid "Pause"
-msgstr "Pause"
+msgstr "일시 정지"
 
 #: views/logs.html:150
 msgid "Resume from Current"
-msgstr "Resume from Current"
+msgstr "현재 위치부터 계속"
 
 #: views/logs.html:153
 msgid "Restart from End"
-msgstr "Restart from End"
+msgstr "최근 로그부터 다시 보기"
 
 #: views/logs.html:156
 msgid "Copy to Clipboard"
-msgstr "Copy to Clipboard"
+msgstr "클립보드에 복사"
 
 #: views/logs.html:159
 msgid "Upload Log Conf"
-msgstr "Upload Log Conf"
+msgstr "로그 설정 올리기"
 
 #: views/logs.html:163 views/logs.html:393
 msgid "Select Log Configuration"
-msgstr "Select Log Configuration"
+msgstr "로그 설정 선택"
 
 #: views/logs.html:167
 msgid "Total lines:"
-msgstr "Total lines:"
+msgstr "전체 줄 수:"
 
 #: views/logs.html:175
 msgid "Loading log files..."
-msgstr "Loading log files..."
+msgstr "로그 파일 불러오는 중…"
 
 #: views/logs.html:289
 msgid "Resume"
-msgstr "Resume"
+msgstr "계속"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/logs.html:351
@@ -5120,52 +5082,52 @@ msgstr "저장 실패"
 
 #: views/logs.html:375 views/logs.html:383
 msgid "Failed to copy"
-msgstr "Failed to copy"
+msgstr "복사하지 못했습니다"
 
 #: views/logs.html:380
 msgid "Copied!"
-msgstr "Copied!"
+msgstr "복사했습니다"
 
 #: views/logs.html:408
 msgid "Switch log configuration to"
-msgstr "Switch log configuration to"
+msgstr "로그 설정을 다음으로 변경:"
 
 #: views/logs.html:408
 msgid "and restart MFNavis?"
-msgstr "and restart MFNavis?"
+msgstr "변경하고 MFNavis를 재시작하시겠습니까?"
 
 #: views/logs.html:428
 msgid "File must be named logconf_<name>.json"
-msgstr "File must be named logconf_<name>.json"
+msgstr "파일 이름은 logconf_<name>.json 형식이어야 합니다"
 
 #: views/logs.html:440
 msgid "Upload failed:"
-msgstr "Upload failed:"
+msgstr "파일 올리기 실패:"
 
 #: views/network.html:6
 msgid "Network Settings"
-msgstr "Network Settings"
+msgstr "네트워크 설정"
 
 #: views/network.html:27
 msgid "Last Wi-Fi switch"
-msgstr ""
+msgstr "최근 무선 연결 전환"
 
 #: views/network.html:38
 msgid "Access Point"
-msgstr "Access Point"
+msgstr "무선 접속점"
 
 #: views/network.html:39
 msgid "Client"
-msgstr "Client"
+msgstr "무선 연결"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:40
 msgid "AP+STA"
-msgstr "AP+STA"
+msgstr "접속점·무선 연결 병행"
 
 #: views/network.html:42
 msgid "Wifi Mode"
-msgstr "Wifi Mode"
+msgstr "무선 연결 방식"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:49
@@ -5180,21 +5142,21 @@ msgstr "5 GHz 우선"
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:52
 msgid "STA Band Preference"
-msgstr "STA 대역 우선순위"
+msgstr "외부 무선 연결 대역 우선순위"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:53
 msgid "Use 2.4 GHz when AP+STA clients require a 2.4 GHz AP channel"
-msgstr "AP+STA 클라이언트가 2.4 GHz AP 채널을 요구할 때 2.4 GHz 사용"
+msgstr "접속점·외부 무선 연결 병행 클라이언트가 2.4 GHz 접속점 채널을 요구할 때 2.4 GHz 사용"
 
 #: views/network.html:59
 msgid "AP Network Name"
-msgstr "AP Network Name"
+msgstr "접속점 이름"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:65
 msgid "AP IP Address"
-msgstr "AP IP 주소"
+msgstr "접속점 IP 주소"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:66
@@ -5214,7 +5176,7 @@ msgstr "WPA2 비밀번호"
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:75
 msgid "AP Security"
-msgstr "AP 보안"
+msgstr "접속점 보안"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:78
@@ -5224,12 +5186,12 @@ msgstr "변경 없음"
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:79
 msgid "AP Password"
-msgstr "AP 비밀번호"
+msgstr "접속점 비밀번호"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:80 views/network.html:304
 msgid "Show current AP password"
-msgstr "현재 AP 비밀번호 표시"
+msgstr "현재 접속점 비밀번호 표시"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:83
@@ -5239,7 +5201,7 @@ msgstr "8~63자. 비워 두면 현재 비밀번호를 유지합니다"
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:91
 msgid "Share STA internet in AP+STA mode"
-msgstr "AP+STA 모드에서 STA 인터넷 공유"
+msgstr "접속점·외부 무선 연결 병행 모드에서 외부 무선 연결 인터넷 공유"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:94
@@ -5248,41 +5210,34 @@ msgstr "기본값은 꺼짐. 인터넷 공유는 시스템 부하를 늘리고 �
 
 #: views/network.html:101
 msgid "Host Name"
-msgstr "Host Name"
+msgstr "호스트 이름"
 
 #: views/network.html:107
-#, fuzzy
 msgid "Save Settings"
-msgstr "GPS 설정"
+msgstr "설정 저장"
 
 #: views/network.html:108
-#, fuzzy
 msgid "Apply & Restart"
-msgstr "Save and Restart"
+msgstr "적용 후 재시작"
 
 #: views/network.html:113
-#, fuzzy
 msgid "Apply and Restart"
-msgstr "Save and Restart"
+msgstr "적용 후 재시작"
 
 #: views/network.html:114
-#, fuzzy
 msgid ""
-"This will save the network settings, apply them and restart the MFNavis."
-" You may have to adjust your network settings to re-connect. Are you "
-"sure?"
-msgstr ""
-"This will update the network settings and restart the MFNavis. You may "
-"have to adjust your network settings to re-connect. Are you sure?"
+"This will save the network settings, apply them and restart the MFNavis. You "
+"may have to adjust your network settings to re-connect. Are you sure?"
+msgstr "네트워크 설정을 저장·적용한 뒤 MFNavis를 재시작합니다. 다시 연결하려면 접속 설정을 바꿔야 할 수 있습니다. 계속하시겠습니까?"
 
 #: views/network.html:117 views/tools.html:96
 msgid "Do It"
-msgstr "Do It"
+msgstr "실행"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:123
 msgid "AP Connected Devices"
-msgstr "AP 연결 장치"
+msgstr "접속점 연결 장치"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:134
@@ -5317,23 +5272,22 @@ msgstr "리스만"
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:165
 msgid "No AP clients are currently visible."
-msgstr "현재 보이는 AP 클라이언트가 없습니다."
+msgstr "현재 보이는 접속점 클라이언트가 없습니다."
 
 #: views/network.html:171
 msgid "Wifi Networks"
-msgstr "Wifi Networks"
+msgstr "무선 네트워크"
 
 #: views/network.html:183
 msgid ""
-"Saved network changes are not applied yet. Applying may briefly drop the "
-"Wifi connection."
-msgstr ""
+"Saved network changes are not applied yet. Applying may briefly drop the Wifi"
+" connection."
+msgstr "저장한 네트워크 변경 사항이 아직 적용되지 않았습니다. 적용 중 무선 연결이 잠시 끊길 수 있습니다."
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:187
-#, fuzzy
 msgid "Apply Now"
-msgstr "적용"
+msgstr "지금 적용"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:209
@@ -5347,33 +5301,33 @@ msgstr "주변 Wi-Fi"
 
 #: views/network.html:229
 msgid "Too Short"
-msgstr "Too Short"
+msgstr "너무 짧습니다"
 
 #: views/network.html:229
 msgid "Min 8 Characters or leave None"
-msgstr "Min 8 Characters or leave None"
+msgstr "8자 이상 입력하거나 비워 두세요"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:307
 msgid "No current AP password is set."
-msgstr "현재 AP 비밀번호가 설정되어 있지 않습니다."
+msgstr "현재 접속점 비밀번호가 설정되어 있지 않습니다."
 
 # AI-TRANSLATED (claude): needs human review
 #: views/network.html:310
 msgid "Hide current AP password"
-msgstr "현재 AP 비밀번호 숨기기"
+msgstr "현재 접속점 비밀번호 숨기기"
 
 #: views/network_item.html:4
 msgid "Higher priority"
-msgstr ""
+msgstr "우선순위 높이기"
 
 #: views/network_item.html:9
 msgid "Lower priority"
-msgstr ""
+msgstr "우선순위 낮추기"
 
 #: views/network_item.html:22
 msgid "Security"
-msgstr "Security"
+msgstr "보안"
 
 #: views/network_item.html:26
 msgid "Currently connected"
@@ -5381,49 +5335,49 @@ msgstr "현재 접속 중"
 
 #: views/network_item.html:29
 msgid "Connect to this network now"
-msgstr ""
+msgstr "지금 이 네트워크에 연결"
 
 #: views/network_item.html:42
 msgid ""
-"This removes the saved network. It takes effect when you apply the "
-"pending changes."
-msgstr ""
+"This removes the saved network. It takes effect when you apply the pending "
+"changes."
+msgstr "저장된 네트워크를 삭제합니다. 대기 중인 변경 사항을 적용하면 반영됩니다."
 
 #: views/obs_session_log.html:4
 msgid "Observing Session"
-msgstr "Observing Session"
+msgstr "관측 회차"
 
 #: views/obs_session_log.html:11 views/obs_sessions.html:25
 msgid "Hours"
-msgstr "Hours"
+msgstr "시간"
 
 #: views/obs_session_log.html:21
 msgid "Time"
-msgstr "Time"
+msgstr "시각"
 
 #: views/obs_session_log.html:21
 msgid "Sequence"
-msgstr "Sequence"
+msgstr "번호"
 
 #: views/obs_session_log.html:21
 msgid "Notes"
-msgstr "Notes"
+msgstr "메모"
 
 #: views/obs_sessions.html:4
 msgid "Observing Sessions"
-msgstr "Observing Sessions"
+msgstr "관측 기록"
 
 #: views/obs_sessions.html:7
 msgid "Sessions"
-msgstr "Sessions"
+msgstr "관측 회차"
 
 #: views/obs_sessions.html:15
 msgid "Total Hours"
-msgstr "Total Hours"
+msgstr "총 관측 시간"
 
 #: views/obs_sessions.html:25
 msgid "Location"
-msgstr "Location"
+msgstr "관측지"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/remote.html:28
@@ -5432,41 +5386,34 @@ msgstr "경도"
 
 #: views/restart.html:6
 msgid "Restarting System"
-msgstr "Restarting System"
+msgstr "시스템 재시작 중"
 
 #: views/restart.html:7
 msgid ""
-"This will take approximately 45 seconds and you should be redirected to "
-"the home page."
-msgstr ""
-"This will take approximately 45 seconds and you should be redirected to "
-"the home page."
+"This will take approximately 45 seconds and you should be redirected to the "
+"home page."
+msgstr "약 45초 후 홈 화면으로 이동합니다."
 
 #: views/restart.html:9
 msgid ""
-"You may need to change the URL above or connect to a different wifi "
-"network on your phone/tablet/computer depending on the changes you made "
-"to the MFNavis configuration."
-msgstr ""
-"You may need to change the URL above or connect to a different wifi "
-"network on your phone/tablet/computer depending on the changes you made "
-"to the MFNavis configuration."
+"You may need to change the URL above or connect to a different wifi network "
+"on your phone/tablet/computer depending on the changes you made to the "
+"MFNavis configuration."
+msgstr "MFNavis 설정 변경 내용에 따라 위 주소를 바꾸거나 휴대전화·태블릿·컴퓨터를 다른 무선 네트워크에 연결해야 할 수 있습니다."
 
 #: views/restart.html:11 views/restart_pifinder.html:8
 msgid "If you are not automatically redirected"
-msgstr "If you are not automatically redirected"
+msgstr "자동으로 이동하지 않으면"
 
 #: views/restart.html:11 views/restart_pifinder.html:8
 msgid "Click Here"
-msgstr "Click Here"
+msgstr "여기를 누르세요"
 
 #: views/restart_pifinder.html:7
 msgid ""
-"This will take approximately 20 seconds and you should be redirected to "
-"the home page."
-msgstr ""
-"This will take approximately 20 seconds and you should be redirected to "
-"the home page."
+"This will take approximately 20 seconds and you should be redirected to the "
+"home page."
+msgstr "약 20초 후 홈 화면으로 이동합니다."
 
 #: views/tools.html:28 views/tools.html:49
 msgid "Change Password"
@@ -5474,8 +5421,8 @@ msgstr "비밀번호 변경"
 
 #: views/tools.html:30
 msgid ""
-"This will change the password for this web interface and the current "
-"system user account for SSH and other tools"
+"This will change the password for this web interface and the current system "
+"user account for SSH and other tools"
 msgstr "웹 인터페이스와 SSH 등에서 쓰는 현재 시스템 사용자 계정의 비밀번호를 변경합니다"
 
 #: views/tools.html:36
@@ -5488,198 +5435,173 @@ msgstr "새 비밀번호"
 
 #: views/tools.html:44
 msgid "Re-Enter New Password"
-msgstr "Re-Enter New Password"
+msgstr "새 비밀번호 확인"
 
 #: views/tools.html:58
 msgid "User Data and Settings"
-msgstr "User Data and Settings"
+msgstr "사용자 자료 및 설정"
 
 #: views/tools.html:60
 msgid ""
-"You can download a zip file of all your personal settings, observations "
-"and observing lists for safe keeping."
-msgstr ""
-"You can download a zip file of all your personal settings, observations "
-"and observing lists for safe keeping."
+"You can download a zip file of all your personal settings, observations and "
+"observing lists for safe keeping."
+msgstr "개인 설정·관측 기록·관측 목록을 압축 파일로 내려받아 보관할 수 있습니다."
 
 #: views/tools.html:63
 msgid "Download Backup File"
-msgstr "Download Backup File"
+msgstr "백업 파일 내려받기"
 
 #: views/tools.html:69
 msgid "To restore a previously downloaded backup, upload it below"
-msgstr "To restore a previously downloaded backup, upload it below"
+msgstr "이전에 내려받은 백업을 복원하려면 아래에 파일을 올리세요"
 
 #: views/tools.html:73
 msgid "Choose file"
-msgstr "Choose file"
+msgstr "파일 선택"
 
 #: views/tools.html:78
 msgid "Select backup file to restore"
-msgstr "Select backup file to restore"
+msgstr "복원할 백업 파일 선택"
 
 #: views/tools.html:85
 msgid "Upload and Restore"
-msgstr "Upload and Restore"
+msgstr "파일을 올려 복원"
 
 #: views/tools.html:92
 msgid "Restore User Data"
-msgstr "Restore User Data"
+msgstr "사용자 자료 복원"
 
 #: views/tools.html:93
 msgid ""
 "This will use the provided file to restore your user data. This will "
 "overwrite any existing preference and observations. Are you sure?"
-msgstr ""
-"This will use the provided file to restore your user data. This will "
-"overwrite any existing preference and observations. Are you sure?"
+msgstr "선택한 파일로 사용자 자료를 복원합니다. 기존 설정과 관측 기록을 덮어씁니다. 계속하시겠습니까?"
 
 #: views/catalogs/catalog.html:10 views/catalogs/index.html:7
 #: views/catalogs/index.html:23
-#, fuzzy
 msgid "objects"
 msgstr "천체"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/catalogs/catalog.html:13
-#, fuzzy
 msgid "Filter by name…"
-msgstr "필터됨"
+msgstr "이름으로 거르기…"
 
 #: views/catalogs/catalog.html:15
-#, fuzzy
 msgid "Type: All"
-msgstr "종류"
+msgstr "종류: 전체"
 
 #: views/catalogs/catalog.html:21
-#, fuzzy
 msgid "Constellation: All"
-msgstr "별자리"
+msgstr "별자리: 전체"
 
 #: views/catalogs/catalog.html:27
 msgid "Mag: All"
-msgstr ""
+msgstr "등급: 전체"
 
 #: views/catalogs/catalog.html:34
-#, fuzzy
 msgid "Observed: All"
-msgstr "관측됨"
+msgstr "관측 여부: 전체"
 
 #: views/catalogs/catalog.html:36
-#, fuzzy
 msgid "Not observed"
 msgstr "미관측"
 
 #: views/catalogs/catalog.html:39
 msgid "Disabled for large catalogs or without GPS lock"
-msgstr ""
+msgstr "대형 천체 목록이거나 위성항법 위치 미확정 시 사용할 수 없습니다"
 
 #: views/catalogs/catalog.html:40
-#, fuzzy
 msgid "Up now"
-msgstr "지금 업데이트"
+msgstr "현재 지평선 위"
 
 #: views/catalogs/catalog.html:42
-#, fuzzy, python-brace-format
+#, python-brace-format
 msgid "Sort: Number"
-msgstr "위치 {number}"
+msgstr "정렬: 번호"
 
 #: views/catalogs/catalog.html:43
-#, fuzzy
 msgid "Sort: Altitude"
-msgstr "고도"
+msgstr "정렬: 고도"
 
 #: views/catalogs/catalog.html:44
-#, fuzzy
 msgid "Sort: Magnitude"
-msgstr "등급"
+msgstr "정렬: 등급"
 
 #: views/catalogs/catalog.html:54
-#, fuzzy
 msgid "Object"
 msgstr "천체"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/catalogs/catalog.html:56
-#, fuzzy
 msgid "Const"
-msgstr "호스트"
+msgstr "별자리"
 
 # AI-TRANSLATED (claude): needs human review
 #: views/catalogs/catalog.html:57
-#, fuzzy
 msgid "Mag"
-msgstr "mag"
+msgstr "등급"
 
 #: views/catalogs/catalog.html:58 views/catalogs/object.html:54
-#, fuzzy, python-brace-format
+#, python-brace-format
 msgid "Size"
-msgstr "크기:{size}"
+msgstr "시직경"
 
 #: views/catalogs/catalog.html:60
-#, fuzzy
 msgid "Obs"
-msgstr "천체"
+msgstr "관측"
 
 #: views/catalogs/catalog.html:64
-#, fuzzy
 msgid "Loading…"
-msgstr "로드 중..."
+msgstr "불러오는 중…"
 
 #: views/catalogs/index.html:7
-#, fuzzy
 msgid "catalogs"
-msgstr "카탈로그"
+msgstr "천체 목록"
 
 #: views/catalogs/index.html:11
 msgid "Search all catalogs — name or designation (M31, NGC 224, Andromeda…)"
-msgstr ""
+msgstr "모든 천체 목록에서 이름·식별자로 검색(안드로메다은하, M31, NGC 224 등)"
 
 #: views/catalogs/index.html:12
 msgid "Search all catalogs"
-msgstr ""
+msgstr "모든 천체 목록 검색"
 
 #: views/catalogs/object.html:31
-#, fuzzy
 msgid "Altitude (next 18h)"
-msgstr "Altitude (meters)"
+msgstr "고도 변화(향후 18시간)"
 
 #: views/catalogs/object.html:33
-#, fuzzy
 msgid "Altitude curve"
-msgstr "고도"
+msgstr "고도 변화 곡선"
 
 #: views/catalogs/object.html:57
 msgid "Surface Br."
-msgstr ""
+msgstr "표면 밝기"
 
 #: views/catalogs/object.html:60
-#, fuzzy
 msgid "Now"
-msgstr "아니오"
+msgstr "현재"
 
 #: views/catalogs/object.html:64
-#, fuzzy
 msgid "Transit"
-msgstr "직선형"
+msgstr "남중"
 
 #: views/catalogs/object.html:67
-#, fuzzy
 msgid "Track rate"
-msgstr "정확"
+msgstr "추적 속도"
 
 #: views/catalogs/object.html:74
-#, fuzzy
 msgid "Push to MFNavis"
-msgstr "MFNavis 재시작"
+msgstr "MFNavis로 천체 보내기"
 
 #: views/catalogs/object.html:75
 msgid "Stop GoTo"
-msgstr "GoTo 정지"
+msgstr "자동 도입 정지"
 
 #: views/catalogs/object.html:80
 msgid "GoTo"
-msgstr "GoTo"
+msgstr "자동 도입"
 
 #: views/catalogs/object.html:82
 msgid "To target"
@@ -5691,7 +5613,832 @@ msgstr "오차"
 
 #: views/catalogs/object.html:93
 msgid "Also"
+msgstr "다른 이름"
+
+#: PiFinder/server.py views/indi_mount.html
+msgid "Auto (Find connected OnStep)"
+msgstr "자동 (연결된 OnStep 찾기)"
+
+#: views/indi_mount.html
+msgid "Auto (Detect with port)"
+msgstr "자동 (포트와 함께 속도 찾기)"
+
+#: views/indi_mount.html
+msgid "Serial Auto Discovery"
+msgstr "시리얼 자동찾기"
+
+#: PiFinder/server.py
+msgid "OnStep serial port and communication-speed discovery started"
+msgstr "OnStep 시리얼 포트와 통신속도 자동찾기를 시작했습니다"
+
+#: PiFinder/server.py views/equipment_validation.html
+#, python-format
+msgid "%(field)s must be between %(minimum)s and %(maximum)s"
+msgstr "%(field)s 값은 %(minimum)s~%(maximum)s 범위여야 합니다"
+
+#: PiFinder/server.py views/equipment_validation.html
+#, python-format
+msgid "%(field)s must be %(maximum)s characters or fewer"
+msgstr "%(field)s 항목은 %(maximum)s자 이하여야 합니다"
+
+#: PiFinder/server.py views/equipment_validation.html
+msgid "Focal length"
+msgstr "초점거리"
+
+#: PiFinder/server.py views/equipment_validation.html
+msgid "Apparent field of view"
+msgstr "겉보기 시야각"
+
+#: PiFinder/server.py views/equipment_validation.html
+msgid "Field stop"
+msgstr "필드 스톱"
+
+#: PiFinder/server.py views/equipment_validation.html
+#, python-format
+msgid "%s is not a valid mount type"
+msgstr "%s: 올바른 가대 형식이 아닙니다"
+
+#: PiFinder/server.py views/equipment_validation.html
+msgid "Instrument name"
+msgstr "장비 이름"
+
+#: PiFinder/server.py views/equipment_validation.html
+msgid "Obstruction"
+msgstr "차폐율"
+
+#: PiFinder/server.py views/equipment_validation.html
+msgid "Date and time must be YYYY-MM-DD h:m:s"
+msgstr "날짜와 시간은 YYYY-MM-DD h:m:s 형식이어야 합니다"
+
+#: PiFinder/server.py views/equipment_validation.html
+msgid "No such instrument"
+msgstr "해당 장비가 없습니다"
+
+#: PiFinder/server.py views/equipment_validation.html
+msgid "No such eyepiece"
+msgstr "해당 접안렌즈가 없습니다"
+
+#: PiFinder/server.py views/equipment_validation.html
+#, python-format
+msgid "%s entries were skipped because DeepskyLog had no usable values for them."
+msgstr "DeepskyLog의 값이 유효하지 않아 %s개 항목을 건너뛰었습니다."
+
+#: PiFinder/server.py views/equipment_validation.html
+#, python-format
+msgid "Could not save eyepiece: %s"
+msgstr "접안렌즈를 저장하지 못했습니다: %s"
+
+#: PiFinder/server.py views/equipment_validation.html
+#, python-format
+msgid "Could not save instrument: %s"
+msgstr "장비를 저장하지 못했습니다: %s"
+
+#: PiFinder/server.py views/equipment_validation.html
+msgid "Leave at 0 if unknown"
+msgstr "모르면 0으로 두세요"
+
+#: PiFinder/server.py views/equipment_validation.html
+msgid "Leave at 0 for a refractor"
+msgstr "굴절망원경은 0으로 두세요"
+
+#: PiFinder/server.py views/equipment_validation.html
+#, python-format
+msgid "Must be between %(minimum)s and %(maximum)s"
+msgstr "%(minimum)s~%(maximum)s 범위여야 합니다"
+
+#: PiFinder/server.py views/equipment_validation.html
+#, python-format
+msgid "Must be %(maximum)s characters or fewer"
+msgstr "%(maximum)s자 이하여야 합니다"
+
+#: PiFinder/ui/menu_structure.py
+msgid "Center Object"
+msgstr "중앙 천체"
+
+#: PiFinder/ui/object_details.py
+msgid "Moving"
+msgstr "이동 중"
+
+#: PiFinder/ui/object_details.py
+msgid "Adjusting"
+msgstr "보정 중"
+
+#: PiFinder/ui/object_details.py
+msgid "Settling"
+msgstr "안정 대기"
+
+#: PiFinder/ui/object_details.py
+msgid "Waiting for solve"
+msgstr "솔빙 대기"
+
+#: PiFinder/ui/object_details.py
+msgid "WAIT"
+msgstr "대기"
+
+#: PiFinder/ui/object_details.py
+msgid "Stopped"
+msgstr "정지"
+
+#: PiFinder/ui/object_details.py
+msgid "Complete"
+msgstr "완료"
+
+#: PiFinder/ui/object_details.py
+#, python-brace-format
+msgid "Solve {interval}"
+msgstr "솔빙 {interval}"
+
+msgid "Manual Slew Rate"
+msgstr "수동 이동 속도"
+
+msgid "Pulse Guide Rate"
+msgstr "펄스 가이드 속도"
+
+msgid "Saved for fine correction. Large errors use at least 1x sidereal."
+msgstr "미세 보정용으로 저장합니다. 오차가 크면 1배 항성시 속도로 보정합니다."
+
+msgid "Korea"
+msgstr "한국"
+
+msgid "Open-source licenses"
+msgstr "오픈소스 사용권 고지"
+
+msgid "Source code and installation guide"
+msgstr "소스 코드 및 설치 안내"
+
+msgid "AP"
+msgstr "무선 접속점"
+
+msgid "Dec"
+msgstr "적위"
+
+msgid "DEC"
+msgstr "적위"
+
+msgid "Collecting frames"
+msgstr "영상 수집 중"
+
+msgid "Distance"
+msgstr "각거리"
+
+msgid "Failed"
+msgstr "실패"
+
+msgid "Fast RAW after movement"
+msgstr "이동 후 원시 영상 빠른 처리"
+
+msgid "Last Solve Result"
+msgstr "최근 천구 좌표 해석 결과"
+
+msgid "Last Successful Solve"
+msgstr "최근 천구 좌표 해석 성공"
+
+msgid "Mark"
+msgstr "표식"
+
+msgid "No successful solve yet"
+msgstr "아직 천구 좌표 해석에 성공하지 못했습니다"
+
+msgid "Preprocess for solving"
+msgstr "천구 좌표 해석용 전처리"
+
+msgid "Preview error"
+msgstr "미리보기 오류"
+
+msgid "Processing in background"
+msgstr "백그라운드 처리 중"
+
+msgid "Ready"
+msgstr "준비 완료"
+
+msgid "Reset: moving"
+msgstr "이동 감지로 초기화"
+
+msgid "Show alignment reticle and target direction"
+msgstr "정렬 십자선 및 대상 천체 방향 표시"
+
+msgid "Solver Preprocessing"
+msgstr "천구 좌표 해석 전처리"
+
+msgid "Solver Stars (Detected / Matched)"
+msgstr "좌표 해석 기준별(검출 / 대응)"
+
+msgid "Solver preprocessing"
+msgstr "천구 좌표 해석 전처리"
+
+msgid "Sort this catalog by estimated visibility, then distance from current pointing"
+msgstr "추정 관측 용이성 및 현재 지향점과의 각거리 순으로 정렬"
+
+msgid "Star-only preprocessing (5 frames)"
+msgstr "별 검출용 전처리(영상 5장)"
+
+msgid "Success"
+msgstr "성공"
+
+msgid "Unavailable"
+msgstr "사용 불가"
+
+msgid "Visibility (est.)"
+msgstr "관측 용이성(추정)"
+
+msgid "Waiting"
+msgstr "대기 중"
+
+msgid "Waiting for RAW"
+msgstr "원시 영상 대기 중"
+
+msgid "Waiting for first solve"
+msgstr "첫 천구 좌표 해석 대기 중"
+
+msgid "Waiting for stars"
+msgstr "별 검출 대기 중"
+
+msgid "Mount"
+msgstr "가대"
+
+msgid "No results"
+msgstr "검색 결과 없음"
+
+msgid "No objects match"
+msgstr "조건에 맞는 천체가 없습니다"
+
+msgid "shown"
+msgstr "개 표시"
+
+msgid "visibility, then distance"
+msgstr "관측 용이성·각거리 순"
+
+msgid "nearest first"
+msgstr "가까운 순"
+
+msgid " · Set telescope and eyepiece for visibility ranking"
+msgstr " · 관측 용이성 계산을 위해 망원경과 접안렌즈를 설정하세요"
+
+msgid " · SQM reading expired; using distance"
+msgstr " · 하늘 밝기 측정값이 만료되어 각거리 순으로 표시합니다"
+
+msgid " · No sky measurement or configured Bortle; using distance"
+msgstr " · 하늘 밝기 측정값이나 보틀 등급 설정이 없어 각거리 순으로 표시합니다"
+
+msgid "Plate solve"
+msgstr "천구 좌표 해석"
+
+msgid "Solve + IMU"
+msgstr "천구 좌표 해석·관성 센서"
+
+msgid "Mount + IMU"
+msgstr "가대·관성 센서"
+
+msgid "IMU estimate (heading not aligned)"
+msgstr "관성 센서 추정(방향 미정렬)"
+
+msgid "IMU estimate"
+msgstr "관성 센서 추정"
+
+msgid "Altitude unavailable (waiting for GPS lock)"
+msgstr "고도 계산 불가(위성항법 위치 수신 대기 중)"
+
+msgid "Load failed"
+msgstr "불러오기 실패"
+
+msgid "Waiting for GPS lock"
+msgstr "위성항법 위치 수신 대기 중"
+
+msgid " · max +"
+msgstr " · 최고 고도 +"
+
+msgid "Alt "
+msgstr "고도 "
+
+msgid "° · Az "
+msgstr "° · 방위각 "
+
+msgid " · slewing"
+msgstr " · 가대 이동 중"
+
+msgid "Az "
+msgstr "방위각 "
+
+msgid " · Alt "
+msgstr " · 고도 "
+
+msgid " E"
+msgstr " 동"
+
+msgid " W"
+msgstr " 서"
+
+msgid " N"
+msgstr " 북"
+
+msgid " S"
+msgstr " 남"
+
+msgid "RA "
+msgstr "적경 "
+
+msgid " · Dec "
+msgstr " · 적위 "
+
+msgid "Pushed "
+msgstr "전송 완료: "
+
+msgid " · GoTo started"
+msgstr " · 자동 도입 시작"
+
+msgid " · tracking reset to sidereal"
+msgstr " · 항성시 추적으로 복귀"
+
+msgid " · tracking "
+msgstr " · 추적 "
+
+msgid "Push failed"
+msgstr "천체 전송 실패"
+
+msgid "GoTo stopped"
+msgstr "자동 도입 중지됨"
+
+msgid "stopped"
+msgstr "중지됨"
+
+msgid "Stop failed"
+msgstr "중지 실패"
+
+msgid "Configured Bortle"
+msgstr "설정 보틀 등급"
+
+msgid "Measured Bortle"
+msgstr "측정 보틀 등급"
+
+msgid "Applied Bortle"
+msgstr "적용 보틀 등급"
+
+msgid "NASA — public domain"
+msgstr "NASA — 저작권 제한 없음"
+
+msgid "POSS — Palomar Observatory Sky Survey"
+msgstr "팔로마 천문대 전천 탐사"
+
+msgid "RA / Dec (J2000)"
+msgstr "적경 / 적위(기준 역기점 2000.0)"
+
+msgid "original_raw"
+msgstr "원본 원시 영상"
+
+msgid "cropped_raw"
+msgstr "잘라낸 원시 영상"
+
+msgid "preprocessed_raw"
+msgstr "전처리 원시 영상"
+
+msgid "solver_preprocessed"
+msgstr "좌표 해석용 전처리 영상"
+
+msgid "latest_selected_raw"
+msgstr "최근 선택 원시 영상"
+
+msgid "stack"
+msgstr "합성 영상"
+
+msgid "idle"
+msgstr "대기"
+
+msgid "running"
+msgstr "실행 중"
+
+msgid "waiting"
+msgstr "대기 중"
+
+msgid "slewing"
+msgstr "이동 중"
+
+msgid "tracking"
+msgstr "추적 중"
+
+msgid "settling"
+msgstr "진동 안정 대기"
+
+msgid "guiding"
+msgstr "추적 보정 중"
+
+msgid "complete"
+msgstr "완료"
+
+msgid "completed"
+msgstr "완료"
+
+msgid "failed"
+msgstr "실패"
+
+msgid "error"
+msgstr "오류"
+
+msgid "connected"
+msgstr "연결됨"
+
+msgid "disconnected"
+msgstr "연결 끊김"
+
+msgid "on"
+msgstr "켜짐"
+
+msgid "off"
+msgstr "꺼짐"
+
+msgid "Deep Sky"
+msgstr "심원천체"
+
+msgid "Double & Variable Stars"
+msgstr "이중성·변광성"
+
+msgid "Observing Lists"
+msgstr "관측 대상 목록"
+
+msgid "Other"
+msgstr "기타"
+
+msgid "Solar System"
+msgstr "태양계"
+
+msgid "Planets & Moon — live positions computed on device"
+msgstr "행성·달 — 기기에서 실시간 위치 계산"
+
+msgid "Moon"
+msgstr "달"
+
+msgid "Mercury"
+msgstr "수성"
+
+msgid "Venus"
+msgstr "금성"
+
+msgid "Mars"
+msgstr "화성"
+
+msgid "Jupiter"
+msgstr "목성"
+
+msgid "Saturn"
+msgstr "토성"
+
+msgid "Uranus"
+msgstr "천왕성"
+
+msgid "Neptune"
+msgstr "해왕성"
+
+msgid "Debug"
+msgstr "디버깅"
+
+msgid "Solver"
+msgstr "천구 좌표 해석"
+
+msgid "Gps"
+msgstr "위성항법"
+
+msgid "Webserver"
+msgstr "웹 서버"
+
+msgid ""
+"To compare raw-frame storage overhead, record a separate segment with results"
+" and timing only. Only frames used by the solver are recorded; dropped "
+"records appear below. Storage limits apply per recorder."
 msgstr ""
+"원시 영상 저장 부하를 비교하려면 수집 내용을 ‘결과·시간만’으로 바꿔 별도 구간을 기록하세요. 솔버가 사용한 프레임을 기록하며 저장 "
+"누락은 아래에 표시합니다. 저장 한도는 기록 프로세스별로 적용됩니다."
+
+msgid ""
+"Choose the light pollution level and start recording. Raw frames, plate-"
+"solving results, timing, coordinate updates and current settings are saved "
+"automatically."
+msgstr "광해 정도를 선택하고 기록을 시작하세요. 원본 영상, 솔빙 성공·실패 결과, 처리 시간, 좌표 반영 기록과 현재 설정을 자동으로 저장합니다."
+
+msgid ""
+"Recording defaults to 60 seconds and stops at 120 attempts or the 512 MiB "
+"storage limit. The save location and progress appear below."
+msgstr ""
+"기본 60초 동안 기록하며, 120회 또는 저장 한도 512MiB에 먼저 도달하면 해당 기록이 자동 종료됩니다. 저장 위치와 진행 상황은 "
+"아래에 표시됩니다."
+
+msgid ""
+"No changes are needed for ordinary recording. Stages classify the data "
+"without changing plate solving."
+msgstr "일반 기록에는 변경할 필요가 없습니다. 단계는 자료 분류용이며 솔빙 방식을 변경하지 않습니다."
+
+msgid ""
+"Recording requested. Data is being saved when the status below shows "
+"Recording."
+msgstr "자동 기록을 요청했습니다. 아래에 ‘수집 중’이 표시되면 자료가 저장되고 있습니다."
+
+msgid "Stop requested. Please wait for the remaining records to be saved."
+msgstr "종료를 요청했습니다. 남은 자료 저장이 끝날 때까지 기다려 주세요."
+
+msgid "A segment marker will be applied to subsequent frames."
+msgstr "이후 처리되는 프레임에 구간 표시를 적용합니다."
+
+msgid "Light source position, movement time, reference objects"
+msgstr "광원 위치, 이동 시점, 기준 천체 등"
+
+msgid "Direct light from street lamps or nearby sources"
+msgstr "가로등 등 직접적인 빛이 있음"
+
+msgid "Storage limit (MiB per recorder)"
+msgstr "저장 한도(MiB, 기록 프로세스별)"
+
+msgid "Detailed test settings (optional)"
+msgstr "세부 시험 설정 (선택)"
+
+msgid "Plate-solving diagnostic capture"
+msgstr "솔빙 테스트 자료 수집"
+
+msgid "Separate asynchronous processing"
+msgstr "비동기 작업 분리"
+
+msgid "Reuse the same raw frame"
+msgstr "동일 원시 영상 재사용"
+
+msgid "Maximum duration (seconds)"
+msgstr "최대 시간(초)"
+
+msgid "Saving remaining records"
+msgstr "남은 자료 저장 중"
+
+msgid "Detailed recording status"
+msgstr "상세 기록 상태"
+
+msgid "Status request failed: "
+msgstr "상태 조회 실패: "
+
+msgid "Candidate count check"
+msgstr "후보 수 사전 검사"
+
+msgid "SEP detection timing"
+msgstr "SEP 검출 시점"
+
+msgid "Time budget per path"
+msgstr "경로별 시간 배분"
+
+msgid "Mode switching policy"
+msgstr "모드 전환 정책"
+
+msgid "Raw frames and results"
+msgstr "원시 영상와 결과"
+
+msgid "Results and timing only"
+msgstr "결과·시간만"
+
+msgid "Mark current segment"
+msgstr "현재 구간 표시"
+
+msgid "Strong light pollution"
+msgstr "광해 심함"
+
+msgid "Coordinate integration"
+msgstr "좌표 반영"
+
+msgid "Baseline measurement"
+msgstr "기준 측정"
+
+msgid "Capture requested"
+msgstr "수집 요청 활성"
+
+msgid "Checking status…"
+msgstr "상태 확인 중…"
+
+msgid "Accumulation state"
+msgstr "누적 상태"
+
+msgid "Maximum attempts"
+msgstr "최대 시도 수"
+
+msgid "Capture stopped"
+msgstr "수집 요청 종료"
+
+msgid "Waiting to record"
+msgstr "기록 대기"
+
+msgid "Save location: "
+msgstr "저장 위치: "
+
+msgid "Final validation"
+msgstr "최종 검증"
+
+msgid "Capture contents"
+msgstr "수집 내용"
+
+msgid "Response delayed"
+msgstr "응답 지연"
+
+msgid " · Raw frames "
+msgstr " · 원시 영상 "
+
+msgid "Light pollution"
+msgstr "광해 정도"
+
+msgid "Start recording"
+msgstr "기록 시작"
+
+msgid "Stop recording"
+msgstr "기록 종료"
+
+msgid "Request failed"
+msgstr "요청 실패"
+
+msgid "Storage error"
+msgstr "저장 오류"
+
+msgid " · Records "
+msgstr " · 기록 "
+
+msgid " · Dropped "
+msgstr " · 누락 "
+
+msgid "Test stage"
+msgstr "테스트 단계"
+
+msgid "Plate solver"
+msgstr "솔버"
+
+msgid "Dark sky"
+msgstr "광해 적음"
+
+msgid "Recording"
+msgstr "수집 중"
+
+msgid "Finished"
+msgstr "종료"
+
+msgid "Favorable"
+msgstr "관측 용이"
+
+msgid "Challenging"
+msgstr "관측 어려움"
+
+msgid "Unlikely"
+msgstr "관측 가능성 낮음"
+
+msgid "alt/az"
+msgstr "경위대"
+
+msgid "eq"
+msgstr "적도의"
+
+msgid "equatorial"
+msgstr "적도의"
+
+msgid "UNKN"
+msgstr "알 수 없음"
+
+msgid "NONE"
+msgstr "없음"
+
+msgid "Messier catalog"
+msgstr "메시에 천체 목록"
+
+msgid "NGC catalog"
+msgstr "신성운성단목록"
+
+msgid "IC catalog"
+msgstr "신성운성단 보충목록"
+
+msgid "Caldwell catalog"
+msgstr "콜드웰 천체 목록"
+
+msgid "Herschel 400 catalog"
+msgstr "허셜 400 천체 목록"
+
+msgid "Collinder catalog"
+msgstr "콜린더 산개성단 목록"
+
+msgid "Harris globular cluster catalog"
+msgstr "해리스 구상성단 목록"
+
+msgid "Abell planetary nebula catalog"
+msgstr "아벨 행성상성운 목록"
+
+msgid "Arp peculiar galaxy catalog"
+msgstr "아프 특이은하 목록"
+
+msgid "Barnard dark nebula catalog"
+msgstr "바너드 암흑성운 목록"
+
+msgid "Sharpless emission nebula catalog"
+msgstr "샤플리스 발광성운 목록"
+
+msgid "Extragalactic globular cluster catalog"
+msgstr "외부은하 구상성단 목록"
+
+msgid "Lynga open cluster catalog"
+msgstr "륑오 산개성단 목록"
+
+msgid "Washington double star catalog"
+msgstr "워싱턴 이중성 목록"
+
+msgid "Saguaro double star catalog"
+msgstr "사와로 이중성 목록"
+
+msgid "RASC double star observing list"
+msgstr "캐나다 왕립천문학회 이중성 관측 목록"
+
+msgid "Saguaro red star catalog"
+msgstr "사와로 붉은별 목록"
+
+msgid "Northern variable star catalog"
+msgstr "북반구 변광성 목록"
+
+msgid "Named bright stars"
+msgstr "이름 있는 밝은별 목록"
+
+msgid "TAAS 200 observing list"
+msgstr "앨버커키 천문학회 200 관측 목록"
+
+msgid "Saguaro asterism catalog"
+msgstr "사와로 성군 목록"
+
+msgid "Live position computed on device."
+msgstr "기기에서 계산한 실시간 위치입니다."
+
+msgid "Exit Fullscreen"
+msgstr "전체 화면 종료"
+
+msgid "Location and UTC time sync is already running"
+msgstr "관측지·협정세계시 동기화가 이미 진행 중입니다"
+
+msgid "Location and UTC time sync is running"
+msgstr "관측지·협정세계시 동기화 중입니다"
+
+msgid "Location and UTC time sync started"
+msgstr "관측지·협정세계시 동기화를 시작했습니다"
+
+msgid "Location/time sent; reading back mount values"
+msgstr "관측지·시각을 전송했습니다. 가대의 설정값을 확인하는 중입니다"
+
+msgid "Manual speed change queued"
+msgstr "수동 이동 속도 변경을 요청했습니다"
+
+msgid "Motion command queued"
+msgstr "가대 이동을 요청했습니다"
+
+msgid "Camera status failed"
+msgstr "카메라 상태 조회 실패"
+
+msgid "LiveCam update failed"
+msgstr "실시간 영상 설정 변경 실패"
+
+msgid "Camera update failed"
+msgstr "카메라 설정 변경 실패"
+
+msgid "INDI command failed"
+msgstr "INDI 명령 실행 실패"
+
+msgid "LiveCam settings reset to defaults"
+msgstr "실시간 영상 설정을 기본값으로 되돌렸습니다"
+
+msgid "LiveCam settings updated"
+msgstr "실시간 영상 설정을 변경했습니다"
+
+msgid "Camera settings queued"
+msgstr "카메라 설정 변경을 요청했습니다"
+
+msgid "Camera command queue unavailable"
+msgstr "카메라 제어를 사용할 수 없습니다"
+
+msgid "Current time"
+msgstr "현재 시각"
+
+msgid "GPS / loaded location"
+msgstr "위성항법·불러온 관측지"
+
+msgid "Not locked"
+msgstr "미확정"
+
+msgid "Unauthorized"
+msgstr "로그인이 필요합니다"
+
+msgid "Invalid path"
+msgstr "잘못된 경로입니다"
+
+msgid "Not found"
+msgstr "찾을 수 없습니다"
+
+msgid "JSON object required"
+msgstr "요청 자료의 형식이 올바르지 않습니다"
+
+#, python-format
+msgid "Default location fallback: %(name)s"
+msgstr "기본 관측지 사용: %(name)s"
+
+msgid "Add to Observations"
+msgstr "관측 기록에 추가"
+
+msgid "Saving observation…"
+msgstr "관측 기록 저장 중…"
+
+msgid "Could not record observation."
+msgstr "관측 기록을 저장하지 못했습니다."
+
+msgid "Location and time are required to record an observation."
+msgstr "관측 기록을 저장하려면 관측지와 시각이 필요합니다."
 
 #~ msgid "Cluster/Neb"
 #~ msgstr "성단/성운"
@@ -5937,145 +6684,3 @@ msgstr ""
 
 #~ msgid "This will take effect immediately and can not be undone. Are you sure?"
 #~ msgstr "This will take effect immediately and can not be undone. Are you sure?"
-
-#: PiFinder/server.py views/indi_mount.html
-msgid "Auto (Find connected OnStep)"
-msgstr "자동 (연결된 OnStep 찾기)"
-
-#: views/indi_mount.html
-msgid "Auto (Detect with port)"
-msgstr "자동 (포트와 함께 속도 찾기)"
-
-#: views/indi_mount.html
-msgid "Serial Auto Discovery"
-msgstr "시리얼 자동찾기"
-
-#: PiFinder/server.py
-msgid "OnStep serial port and communication-speed discovery started"
-msgstr "OnStep 시리얼 포트와 통신속도 자동찾기를 시작했습니다"
-
-#: PiFinder/server.py views/equipment_validation.html
-#, python-format
-msgid "%(field)s must be between %(minimum)s and %(maximum)s"
-msgstr "%(field)s 값은 %(minimum)s~%(maximum)s 범위여야 합니다"
-
-#: PiFinder/server.py views/equipment_validation.html
-#, python-format
-msgid "%(field)s must be %(maximum)s characters or fewer"
-msgstr "%(field)s 항목은 %(maximum)s자 이하여야 합니다"
-
-#: PiFinder/server.py views/equipment_validation.html
-msgid "Focal length"
-msgstr "초점거리"
-
-#: PiFinder/server.py views/equipment_validation.html
-msgid "Apparent field of view"
-msgstr "겉보기 시야각"
-
-#: PiFinder/server.py views/equipment_validation.html
-msgid "Field stop"
-msgstr "필드 스톱"
-
-#: PiFinder/server.py views/equipment_validation.html
-#, python-format
-msgid "%s is not a valid mount type"
-msgstr "%s: 올바른 마운트 형식이 아닙니다"
-
-#: PiFinder/server.py views/equipment_validation.html
-msgid "Instrument name"
-msgstr "장비 이름"
-
-#: PiFinder/server.py views/equipment_validation.html
-msgid "Obstruction"
-msgstr "차폐율"
-
-#: PiFinder/server.py views/equipment_validation.html
-msgid "Date and time must be YYYY-MM-DD h:m:s"
-msgstr "날짜와 시간은 YYYY-MM-DD h:m:s 형식이어야 합니다"
-
-#: PiFinder/server.py views/equipment_validation.html
-msgid "No such instrument"
-msgstr "해당 장비가 없습니다"
-
-#: PiFinder/server.py views/equipment_validation.html
-msgid "No such eyepiece"
-msgstr "해당 접안렌즈가 없습니다"
-
-#: PiFinder/server.py views/equipment_validation.html
-#, python-format
-msgid "%s entries were skipped because DeepskyLog had no usable values for them."
-msgstr "DeepskyLog의 값이 유효하지 않아 %s개 항목을 건너뛰었습니다."
-
-#: PiFinder/server.py views/equipment_validation.html
-#, python-format
-msgid "Could not save eyepiece: %s"
-msgstr "접안렌즈를 저장하지 못했습니다: %s"
-
-#: PiFinder/server.py views/equipment_validation.html
-#, python-format
-msgid "Could not save instrument: %s"
-msgstr "장비를 저장하지 못했습니다: %s"
-
-#: PiFinder/server.py views/equipment_validation.html
-msgid "Leave at 0 if unknown"
-msgstr "모르면 0으로 두세요"
-
-#: PiFinder/server.py views/equipment_validation.html
-msgid "Leave at 0 for a refractor"
-msgstr "굴절망원경은 0으로 두세요"
-
-#: PiFinder/server.py views/equipment_validation.html
-#, python-format
-msgid "Must be between %(minimum)s and %(maximum)s"
-msgstr "%(minimum)s~%(maximum)s 범위여야 합니다"
-
-#: PiFinder/server.py views/equipment_validation.html
-#, python-format
-msgid "Must be %(maximum)s characters or fewer"
-msgstr "%(maximum)s자 이하여야 합니다"
-
-#: PiFinder/ui/menu_structure.py
-msgid "Center Object"
-msgstr "중앙 천체"
-
-#: PiFinder/ui/object_details.py
-msgid "Moving"
-msgstr "이동 중"
-
-#: PiFinder/ui/object_details.py
-msgid "Adjusting"
-msgstr "보정 중"
-
-#: PiFinder/ui/object_details.py
-msgid "Settling"
-msgstr "안정 대기"
-
-#: PiFinder/ui/object_details.py
-msgid "Waiting for solve"
-msgstr "솔빙 대기"
-
-#: PiFinder/ui/object_details.py
-msgid "WAIT"
-msgstr "대기"
-
-#: PiFinder/ui/object_details.py
-msgid "Stopped"
-msgstr "정지"
-
-#: PiFinder/ui/object_details.py
-msgid "Complete"
-msgstr "완료"
-
-#: PiFinder/ui/object_details.py
-#, python-brace-format
-msgid "Solve {interval}"
-msgstr "솔빙 {interval}"
-
-msgid "Manual Slew Rate"
-msgstr "수동 이동 속도"
-
-msgid "Pulse Guide Rate"
-msgstr "펄스 가이드 속도"
-
-msgid "Saved for fine correction. Large errors use at least 1x sidereal."
-msgstr "미세 보정용으로 저장합니다. 오차가 크면 1배 항성시 속도로 보정합니다."

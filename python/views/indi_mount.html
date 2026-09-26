@@ -811,7 +811,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }).then(function(response) {
       return response.json().then(function(payload) {
         if (!response.ok || !payload.ok) {
-          throw new Error(payload.error || payload.message || 'INDI command failed');
+          throw new Error(payload.error || payload.message || pfT('INDI command failed'));
         }
         return payload;
       });
@@ -1038,8 +1038,8 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function formatAltAz(alt, az, digits) {
-    return 'Alt ' + textOrDash(formatNumber(alt, digits)) +
-      ' / Az ' + textOrDash(formatNumber(az, digits));
+    return pfT('Alt ') + textOrDash(formatNumber(alt, digits)) +
+      ' / ' + pfT('Az ') + textOrDash(formatNumber(az, digits));
   }
 
   function formatLocation(lat, lon, elev) {
@@ -1049,7 +1049,7 @@ document.addEventListener('DOMContentLoaded', function() {
   function setText(id, value) {
     var element = document.getElementById(id);
     if (element) {
-      element.textContent = typeof value === 'string' ? value.replace(/pifinder/gi, 'MFNavis') : value;
+      element.textContent = typeof value === 'string' ? pfT(value.replace(/pifinder/gi, 'MFNavis')) : value;
     }
   }
 

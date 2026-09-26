@@ -1,3 +1,20 @@
+@font-face {
+  font-family: "MFNavis Korean";
+  src: url("/css/mfnavis-korean.woff2") format("woff2");
+  font-display: swap;
+  unicode-range: U+1100-11FF, U+3130-318F, U+AC00-D7AF;
+}
+
+html[lang="ko"],
+html[lang="ko"] body,
+html[lang="ko"] button,
+html[lang="ko"] input,
+html[lang="ko"] select,
+html[lang="ko"] textarea {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", "MFNavis Korean", sans-serif;
+}
+
 body {
      display: flex;
      min-height: 100vh;
@@ -85,6 +102,15 @@ html[data-theme="red"] {
 
 main {
  flex: 1 0 auto;
+}
+
+/* Share compact outer gutters across the page and navigation chrome.
+   LiveCam keeps its own preview layout and responsive container width. */
+.pf-nav-shell.container,
+main > .container:not(.pf-livecam-container),
+.page-footer > .container {
+  width: calc(100% - clamp(12px, 2vw, 24px) * 2);
+  max-width: none;
 }
 
 .icon-block {
@@ -185,7 +211,8 @@ main {
   }
 }
 
-.pf-theme-menu {
+.pf-theme-menu,
+.pf-language-menu {
   display: flex;
   align-items: center;
   min-height: 2.5rem;
@@ -223,7 +250,8 @@ main {
   background-color: var(--pf-button-hover);
 }
 
-.pf-theme-select {
+.pf-theme-select,
+.pf-language-select {
   width: auto;
   min-width: 7.5rem;
   height: 2.25rem;
@@ -520,7 +548,10 @@ select option {
 }
 
 .input-field .select-wrapper + label {
-  top: -0.4rem;
+  /* Keep the caption above the opaque select input, including its transform. */
+  top: 0;
+  transform: translateY(-100%) scale(0.8);
+  transform-origin: 0 0;
 }
 
 .select-wrapper .caret {
@@ -800,4 +831,10 @@ textarea.materialize-textarea:disabled,
 textarea.materialize-textarea[readonly="readonly"] {
   color: var(--pf-text-muted);
   border-bottom-color: var(--pf-border);
+}
+
+.pf-sidenav-preferences {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }

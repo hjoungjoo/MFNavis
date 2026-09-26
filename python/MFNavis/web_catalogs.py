@@ -32,6 +32,7 @@ import os
 import re
 import sqlite3
 import threading
+import uuid
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
@@ -50,6 +51,7 @@ from flask import (
 from PiFinder import nonsidereal, utils
 from PiFinder.calc_utils import FastAltAz, dec_to_dms, ra_to_hms
 from PiFinder.composite_object import CompositeObject, MagnitudeObject, SizeObject
+from PiFinder.db.observations_db import ObservationsDatabase
 from PiFinder.obj_types import OBJ_TYPES
 from PiFinder.web_catalog_visibility import sky_conditions, visibility
 
@@ -996,6 +998,49 @@ def register_catalog_routes(app, server_instance):
             except requests.RequestException:
                 logger.debug("CDN image fetch failed for %s", image_name)
         return None
+
+    @app.route("/catalogs/api/observe/<int:object_id>", methods=["POST"])
+    @app.route("/catalogs/api/observe_planet/<name>", methods=["POST"])
+    def catalogs_api_observe(object_id=None, name=None):
+        if not _auth_ok():
+            return _json_response({"error": "Unauthorized"}, 401)
+        bundle = _planet_bundle(name) if name else _load_object_bundle(object_id)
+        if bundle is None:
+            return _json_response({"error": "Object not found"}, 404)
+        shared_state = server_instance.shared_state
+        location = shared_state.location()
+        now = shared_state.local_datetime()
+        if location is None or now is None:
+            return _json_response(
+                {"error": "Location and time are required to record an observation."},
+                409,
+            )
+        # Keep this browser's observations together for the local observing date.
+        key = f"{now.date()}:{location.lat:.2f}:{location.lon:.2f}:{location.timezone}"
+        previous = session.get("web_observing_session", {})
+        db = ObservationsDatabase()
+        try:
+            uid = previous.get("uid") if previous.get("key") == key else None
+            if not uid or not db.get_sessions(uid):
+                uid = str(uuid.uuid4())
+                db.create_obs_session(
+                    now.timestamp(), location.lat, location.lon, location.timezone, uid
+                )
+            db.log_object(
+                uid,
+                now.timestamp(),
+                bundle["catalog_code"],
+                bundle["sequence"],
+                shared_state.solution(),
+                {},
+            )
+        except Exception:
+            logger.exception("Could not record web observation")
+            return _json_response({"error": "Could not record observation."}, 500)
+        finally:
+            db.close()
+        session["web_observing_session"] = {"key": key, "uid": uid}
+        return _json_response({"success": True, "url": f"/observations/{uid}"})
 
     @app.route("/catalogs/api/push/<int:object_id>", methods=["POST"])
     def catalogs_api_push(object_id):

@@ -5,7 +5,8 @@
    offline tooling) have no such global, so default to showing the link.
    Failing visible beats a missing registration hiding the page silently. #}
 {% set show_indi = mount_control_enabled() if mount_control_enabled is defined else True %}
-<html data-theme="grey">
+{% set language = web_language() if web_language is defined else "en" %}
+<html lang="{{ language }}" data-theme="grey">
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0"/>
@@ -40,7 +41,7 @@
   <link rel="apple-touch-icon" href="/images/mfnavis-logo.png">
   <link href="/css/material_icons.css" rel="stylesheet">
   <link href="/css/materialize.css" type="text/css" rel="stylesheet" media="screen,projection"/>
-  <link href="/css/style.css?v=8" type="text/css" rel="stylesheet" media="screen,projection"/>
+  <link href="/css/style.css?v=11" type="text/css" rel="stylesheet" media="screen,projection"/>
 </head>
 <body class="grey darken-3">
   <nav class="grey darken-1 pf-main-nav" role="navigation">
@@ -59,6 +60,10 @@
               <option value="red">{{ _('Red Night') }}</option>
             </select>
           </div>
+          <div class="pf-language-menu"><select class="browser-default pf-language-select" aria-label="{{ _('Language') }}">
+              <option value="en" {% if language == 'en' %}selected{% endif %}>{{ _('English') }}</option>
+              <option value="ko" {% if language == 'ko' %}selected{% endif %}>{{ _('Korean') }}</option>
+            </select></div>
         </div>
         <a href="#" data-target="nav-mobile" class="sidenav-trigger pf-mobile-trigger"><i class="material-icons">menu</i></a>
       </div>
@@ -95,11 +100,17 @@
           </button>
         </li>
         <li class="pf-sidenav-theme">
-          <span>{{ _('Theme') }}</span>
+          <span>{{ _('Theme') }} · {{ _('Language') }}</span>
+          <div class="pf-sidenav-preferences">
           <select class="browser-default pf-theme-select" aria-label="{{ _('Web theme') }}">
             <option value="grey">{{ _('Gray') }}</option>
             <option value="red">{{ _('Red Night') }}</option>
           </select>
+          <select class="browser-default pf-language-select" aria-label="{{ _('Language') }}">
+              <option value="en" {% if language == 'en' %}selected{% endif %}>{{ _('English') }}</option>
+              <option value="ko" {% if language == 'ko' %}selected{% endif %}>{{ _('Korean') }}</option>
+            </select>
+          </div>
         </li>
       </ul>
     </div>
@@ -117,21 +128,25 @@
       <div class="row">
         <div class="col l3 s12">
           <ul>
-            <li>MFNavis · FNPD 한국 · MagicFly</li>
-            <li><a class="white-text" href="/legal/THIRD_PARTY_NOTICES.md">Open-source licenses / 오픈소스 고지</a></li>
-            <li><a class="white-text" href="/legal/docs/MFNAVIS_RELEASE_ko.md">소스 제공·수정판 설치 안내</a></li>
+            <li>MFNavis · FNPD {{ _('Korea') }} · MagicFly</li>
+            <li><a class="white-text" href="/legal/THIRD_PARTY_NOTICES{{ '_ko' if language == 'ko' else '' }}.md">{{ _('Open-source licenses') }}</a></li>
+            <li><a class="white-text" href="/legal/docs/MFNAVIS_RELEASE_{{ language }}.md">{{ _('Source code and installation guide') }}</a></li>
           </ul>
         </div>
       </div>
     </div>
   </footer>
 
+  <script>
+    window.pfMessages = {{ (web_messages() if web_messages is defined else {})|tojson }};
+    window.pfT = function(text) { return window.pfMessages[text] || text; };
+  </script>
   <!--  Scripts-->
   <script src="/js/jquery-2.1.1.min.js"></script>
   <script src="/js/materialize.js"></script>
-  <script src="/js/init.js?v=2"></script>
+  <script src="/js/init.js?v=4"></script>
   <!-- Must load before the page block so page scripts can capture pfPageAlive. -->
-  <script src="/js/spa.js?v=3"></script>
+  <script src="/js/spa.js?v=4"></script>
   {% block scripts %}{% endblock %}
 
   </body>

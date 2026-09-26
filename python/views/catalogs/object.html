@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ obj.display }}{% endblock %}
+{% block title %}{{ _(obj.display) }}{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="/css/catalogs.css?v=7">
 <div class="pfcat"
@@ -7,7 +7,7 @@
   <div class="pfcat-crumb">
     <a href="/catalogs">{{ _('Catalogs') }}</a> /
     <a href="/catalogs/{{ obj.catalog_code }}">{{ obj.catalog_code }}</a> /
-    {{ obj.display }}
+    {{ _(obj.display) }}
   </div>
 
   <div class="pfcat-detailgrid">
@@ -15,16 +15,16 @@
       {% if obj.planet %}
       <div class="pfcat-imgcard">
         <img id="pfcat-obj-image" src="/images/planets/{{ obj.planet | lower }}.jpg"
-             alt="{{ obj.display }}"
+             alt="{{ _(obj.display) }}"
              onerror="this.parentElement.classList.add('noimg'); this.remove();">
-        <div class="pfcat-credit">NASA — public domain</div>
+        <div class="pfcat-credit">{{ _('NASA — public domain') }}</div>
       </div>
       {% else %}
       <div class="pfcat-imgcard">
         <img id="pfcat-obj-image" src="/catalogs/image/{{ obj.object_id }}"
-             alt="{{ obj.display }}"
+             alt="{{ _(obj.display) }}"
              onerror="this.parentElement.classList.add('noimg'); this.remove();">
-        <div class="pfcat-credit">POSS — Palomar Observatory Sky Survey</div>
+        <div class="pfcat-credit">{{ _('POSS — Palomar Observatory Sky Survey') }}</div>
       </div>
       {% endif %}
       <div class="pfcat-altcard">
@@ -37,17 +37,17 @@
 
     <div>
       <div class="pfcat-titleline">
-        <h4>{{ obj.display }}</h4>
+        <h4>{{ _(obj.display) }}</h4>
         {% if obj.names %}<span class="pfcat-common">{{ obj.names | join(' · ') }}</span>{% endif %}
       </div>
       <div class="pfcat-badges">
-        <span class="pfcat-badge">{{ obj.type_label }}</span>
+        <span class="pfcat-badge">{{ _(obj.type_label) }}</span>
         <span class="pfcat-badge">{{ obj.const }}</span>
         {% if obj.observed %}<span class="pfcat-badge">{{ _('Observed') }} ✓</span>{% endif %}
       </div>
 
       <div class="pfcat-facts">
-        <div class="pfcat-fact"><div class="pfcat-k">RA / Dec (J2000)</div>
+        <div class="pfcat-fact"><div class="pfcat-k">{{ _('RA / Dec (J2000)') }}</div>
           <div class="pfcat-v mono">{{ obj.ra_str }} · {{ obj.dec_str }}</div></div>
         <div class="pfcat-fact"><div class="pfcat-k">{{ _('Magnitude') }}</div>
           <div class="pfcat-v mono">{{ obj.mag_str }}</div></div>
@@ -59,7 +59,7 @@
         {% endif %}
         <div class="pfcat-fact"><div class="pfcat-k">{{ _('Now') }}</div>
           <div class="pfcat-v mono" id="pfcat-now-altaz">
-            {% if obj.alt is not none %}Alt {{ obj.alt }}° · Az {{ obj.az }}°{% else %}—{% endif %}
+            {% if obj.alt is not none %}{{ _('Alt') }} {{ obj.alt }}° · {{ _('Az') }} {{ obj.az }}°{% else %}—{% endif %}
           </div></div>
         <div class="pfcat-fact"><div class="pfcat-k">{{ _('Transit') }}</div>
           <div class="pfcat-v mono" id="pfcat-transit">—</div></div>
@@ -73,7 +73,9 @@
       <div class="pfcat-actions">
         <button class="pfcat-btn primary" id="pfcat-push">{{ _('Push to MFNavis') }}</button>
         <button class="pfcat-btn" id="pfcat-stop">{{ _('Stop GoTo') }}</button>
+        <button class="pfcat-btn" id="pfcat-observe">{{ _('Add to Observations') }}</button>
         <span id="pfcat-push-result" class="pfcat-muted"></span>
+        <span id="pfcat-observe-result" class="pfcat-muted" role="status"></span>
       </div>
 
       <div id="pfcat-goto-status" style="display:none">
@@ -86,7 +88,7 @@
       </div>
 
       {% if obj.description %}
-      <p class="pfcat-desc">{{ obj.description }}</p>
+      <p class="pfcat-desc">{{ _(obj.description) }}</p>
       {% endif %}
       {% for entry in obj.other_entries %}
       <p class="pfcat-desc">
@@ -99,6 +101,6 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/js/catalogs.js?v=9"></script>
+<script src="/js/catalogs.js?v=11"></script>
 <script>pfcatInitObject();</script>
 {% endblock %}

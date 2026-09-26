@@ -70,3 +70,47 @@ def test_logo_and_help_fit_supported_displays(size):
             rendered = render_help_text(text, font)
             assert rendered.size == (128, 128)
             assert rendered.getbbox() is not None
+
+
+@pytest.mark.parametrize(
+    "language,notice,guide,heading",
+    [
+        ("en", "THIRD_PARTY_NOTICES.md", "MFNAVIS_RELEASE_en.md", "Product identity"),
+        ("ko", "THIRD_PARTY_NOTICES_ko.md", "MFNAVIS_RELEASE_ko.md", "제품 정체성"),
+    ],
+)
+def test_footer_legal_documents_follow_web_language(
+    client, language, notice, guide, heading
+):
+    import re
+
+    client.set_cookie("mfnavis_web_language", language)
+    page = client.get("/login").text
+    notice_url = f"/legal/{notice}"
+    guide_url = f"/legal/docs/{guide}"
+    assert f'href="{notice_url}"' in page
+    assert f'href="{guide_url}"' in page
+    notice_response = client.get(notice_url)
+    guide_response = client.get(guide_url)
+    assert notice_response.status_code == guide_response.status_code == 200
+    assert heading in guide_response.text
+    assert f"docs/{guide}" in notice_response.text
+    if language == "en":
+        assert not re.search("[가-힣]", notice_response.text + guide_response.text)
+    else:
+        assert "제3자 고지" in notice_response.text
+    for link in re.findall(r"\]\(([^)]+)\)", notice_response.text):
+        assert client.get("/legal/" + link).status_code == 200, link
+
+
+def test_legal_allowlist_does_not_expose_other_source_files(client):
+    assert (
+        client.get("/legal/python/views/css/mfnavis-korean.LICENSE.txt").status_code
+        == 200
+    )
+    for path in (
+        "python/MFNavis/server.py",
+        "docs/WEB_LANGUAGE_ko.md",
+        "LICENSES/../python/pifinder_logconf.json",
+    ):
+        assert client.get("/legal/" + path).status_code == 404

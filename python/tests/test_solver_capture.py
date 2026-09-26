@@ -318,9 +318,14 @@ def test_trace_keeps_cascade_order_and_early_return():
 
 def test_web_capture_controls_and_auth(paths):
     app = Flask(__name__, template_folder=str(Path(__file__).parents[1] / "views"))
+    app.jinja_env.add_extension("jinja2.ext.i18n")
+    app.jinja_env.install_null_translations()
+    app.jinja_env.globals["web_language"] = lambda: "en"
     register_api_routes(app, SimpleNamespace())
     client = app.test_client()
-    assert "기록 시작" in client.get("/solver-capture").get_data(as_text=True)
+    page = client.get("/solver-capture")
+    assert page.status_code == 200
+    assert "Start recording" in page.get_data(as_text=True)
     assert client.post("/api/solver-capture", json=[]).status_code == 400
     assert (
         client.post(

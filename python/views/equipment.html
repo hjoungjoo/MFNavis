@@ -85,11 +85,11 @@
         <td>{{ instrument.aperture_mm|measurement }}</td>
         <td>{{ instrument.focal_length_mm|measurement }}</td>
         <td>{{ instrument.obstruction_perc|measurement }}</td>
-        <td>{{ instrument.mount_type }}</td>
-        <td>{{ instrument.flip_image }}</td>
-        <td>{{ instrument.flop_image }}</td>
-        <td>{{ instrument.reverse_arrow_a }}</td>
-        <td>{{ instrument.reverse_arrow_b }}</td>
+        <td>{{ _(instrument.mount_type) }}</td>
+        <td>{{ _('Yes') if instrument.flip_image else _('No') }}</td>
+        <td>{{ _('Yes') if instrument.flop_image else _('No') }}</td>
+        <td>{{ _('Yes') if instrument.reverse_arrow_a else _('No') }}</td>
+        <td>{{ _('Yes') if instrument.reverse_arrow_b else _('No') }}</td>
         <td>
                 <label>
                     <a href="/equipment/set_active_instrument/{{ loop.index0 }}">

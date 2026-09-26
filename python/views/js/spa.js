@@ -291,6 +291,11 @@
     });
   }
 
+  function finishNavigation() {
+    navigating = false;
+    document.documentElement.classList.remove('pf-spa-loading');
+  }
+
   function loadPage(url, push) {
     if (navigating) {
       return;
@@ -313,13 +318,13 @@
       });
     }).then(function(result) {
       return swapDocument(result.html, result.finalUrl, push);
-    }).then(function() {
-      navigating = false;
-      document.documentElement.classList.remove('pf-spa-loading');
-    }).catch(function(error) {
+    }).then(finishNavigation).catch(function(error) {
       // Any doubt at all: hand the navigation back to the browser. Losing
       // fullscreen is far better than showing a broken control page.
       console.warn('MFNavis SPA: falling back to full navigation', error);
+      // The browser may cache this document for Back/Forward restoration.
+      // Do not freeze it with the SPA navigation lock still held.
+      finishNavigation();
       window.location.href = url;
     });
   }
@@ -343,6 +348,9 @@
     }
     const url = new URL(href, window.location.href);
     if (url.origin !== window.location.origin) {
+      return false;
+    }
+    if (url.pathname.indexOf('/legal/') === 0) {
       return false;
     }
     // Let the browser handle in-page anchors and non-page assets.
@@ -380,6 +388,12 @@
 
   window.addEventListener('popstate', function() {
     loadPage(window.location.href, false);
+  });
+
+  window.addEventListener('pageshow', function(event) {
+    if (event.persisted) {
+      finishNavigation();
+    }
   });
 
   window.history.replaceState({ pfSpa: true }, '', window.location.href);

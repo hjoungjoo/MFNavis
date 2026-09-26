@@ -567,7 +567,7 @@ function renderStatus(data, syncControls = false) {
     applySettingsToControls(settings);
     controlsHydrated = true;
   }
-  setText('statusSource', frame.source || settings.input_frame_source);
+  setText('statusSource', pfT(frame.source || settings.input_frame_source));
   renderSolverStatus(settings, preprocess, data.solver || {});
   setText('statusShape', frame.shape ? frame.shape.join(' x ') : null);
   setText('statusDisplayShape', stack.display_shape ? stack.display_shape.join(' x ') : null);
@@ -852,11 +852,11 @@ async function fetchCameraControls(hydrate) {
     const response = await fetch('/api/camera/controls');
     const data = await response.json();
     if (!response.ok || data.error) {
-      throw new Error(data.error || 'Camera status failed');
+      throw new Error(pfT(data.error) || pfT('Camera status failed'));
     }
     renderCameraStatus(data, hydrate || !cameraHydrated);
   } catch (error) {
-    cameraControls.message.textContent = error.toString();
+    cameraControls.message.textContent = pfT(error.message || String(error));
   }
 }
 
@@ -943,7 +943,7 @@ async function fetchStatus() {
     renderStatus(data);
     message.textContent = '';
   } catch (error) {
-    message.textContent = error.toString();
+    message.textContent = pfT(error.message || String(error));
   }
   try {
     // A quarter of the status rate: this reads config from disk server-side
@@ -971,10 +971,10 @@ async function postControl(payload) {
   });
   const data = await response.json();
   if (!response.ok || data.error) {
-    throw new Error(data.error || 'LiveCam update failed');
+    throw new Error(pfT(data.error) || pfT('LiveCam update failed'));
   }
   renderStatus(data, true);
-  message.textContent = data.message || '';
+  message.textContent = pfT(data.message || '');
   if (!PAGE_ALIVE || PAGE_ALIVE()) {
     pollTimer = setTimeout(fetchStatus, 1000);
   }
@@ -984,7 +984,7 @@ document.getElementById('applySettings').addEventListener('click', async () => {
   try {
     await postControl(collectSettings());
   } catch (error) {
-    message.textContent = error.toString();
+    message.textContent = pfT(error.message || String(error));
   }
 });
 
@@ -992,7 +992,7 @@ document.getElementById('resetStack').addEventListener('click', async () => {
   try {
     await postControl({...collectSettings(), reset_stack: true});
   } catch (error) {
-    message.textContent = error.toString();
+    message.textContent = pfT(error.message || String(error));
   }
 });
 
@@ -1000,7 +1000,7 @@ document.getElementById('resetDefaults').addEventListener('click', async () => {
   try {
     await postControl({reset_defaults: true});
   } catch (error) {
-    message.textContent = error.toString();
+    message.textContent = pfT(error.message || String(error));
   }
 });
 
@@ -1014,15 +1014,15 @@ document.getElementById('applyCamera').addEventListener('click', async () => {
     });
     const data = await response.json();
     if (!response.ok || data.error) {
-      throw new Error(data.error || 'Camera update failed');
+      throw new Error(pfT(data.error) || pfT('Camera update failed'));
     }
     // Deliberately no re-hydrate: the camera process applies the command on
     // its next loop pass, so this response still carries the previous
     // exposure/gain and would snap the controls back to it.
     renderCameraStatus(data, false);
-    cameraControls.message.textContent = data.message || '';
+    cameraControls.message.textContent = pfT(data.message || '');
   } catch (error) {
-    cameraControls.message.textContent = error.toString();
+    cameraControls.message.textContent = pfT(error.message || String(error));
   }
 });
 

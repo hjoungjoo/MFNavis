@@ -1,32 +1,33 @@
 <!doctype html>
-<html lang="ko">
+<html lang="{{ web_language() }}">
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>솔빙 테스트 자료 수집</title>
+<link rel="stylesheet" href="/css/style.css?v=11">
+<title>{{ _("Plate-solving diagnostic capture") }}</title>
 <style>
 body{max-width:720px;margin:24px auto;padding:0 18px;background:#151515;color:#eee;font:16px system-ui}
 label{display:block;margin:14px 0}input,select,textarea,button{font:inherit;padding:9px;background:#252525;color:#eee;border:1px solid #777;border-radius:5px}
 textarea{width:95%}button{margin:8px 8px 8px 0;cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#222;padding:14px}small{color:#bbb}
 </style>
-<h1>솔빙 테스트 자료 수집</h1>
-<p>광해 정도를 선택하고 기록을 시작하세요. 원본 영상, 솔빙 성공·실패 결과, 처리 시간, 좌표 반영 기록과 현재 설정을 자동으로 저장합니다.</p>
-<label>광해 정도 <select id="scene">
-<option value="dark_sky">광해 적음</option><option value="light_pollution">광해 심함</option><option value="local_lamp">가로등 등 직접적인 빛이 있음</option></select></label>
-<button id="start">기록 시작</button><button id="stop">기록 종료</button>
-<p><small>기본 60초 동안 기록하며, 120회 또는 저장 한도 512MiB에 먼저 도달하면 해당 기록이 자동 종료됩니다. 저장 위치와 진행 상황은 아래에 표시됩니다.</small></p>
-<details><summary>세부 시험 설정 (선택)</summary>
-<p><small>일반 기록에는 변경할 필요가 없습니다. 단계는 자료 분류용이며 솔빙 방식을 변경하지 않습니다.</small></p>
-<label>테스트 단계 <select id="stage">
-<option value="baseline">기준 측정</option><option value="candidate_gate">후보 수 사전 검사</option><option value="frame_reuse">동일 RAW 재사용</option><option value="lazy_sep">SEP 검출 시점</option><option value="path_budget">경로별 시간 배분</option><option value="mode_policy">모드 전환 정책</option><option value="async_worker">비동기 작업 분리</option><option value="temporal_state">누적 상태</option><option value="validation">최종 검증</option></select></label>
-<label>수집 내용 <select id="mode"><option value="raw">RAW와 결과</option><option value="telemetry">결과·시간만</option></select></label>
-<label>최대 시간(초) <input id="duration" type="number" value="60" min="1" max="3600"></label>
-<label>최대 시도 수 <input id="max_frames" type="number" value="120" min="1" max="10000"></label>
-<label>저장 한도(MiB, 기록 프로세스별) <input id="max_mib" type="number" value="512" min="16" max="8192"></label>
-<label>메모 <textarea id="note" maxlength="500" rows="2" placeholder="광원 위치, 이동 시점, 기준 천체 등"></textarea></label>
-<button id="mark">현재 구간 표시</button>
-<p><small>RAW 저장 부하를 비교하려면 수집 내용을 ‘결과·시간만’으로 바꿔 별도 구간을 기록하세요. 솔버가 사용한 프레임을 기록하며 저장 누락은 아래에 표시합니다. 저장 한도는 기록 프로세스별로 적용됩니다.</small></p>
+<h1>{{ _("Plate-solving diagnostic capture") }}</h1>
+<p>{{ _("Choose the light pollution level and start recording. Raw frames, plate-solving results, timing, coordinate updates and current settings are saved automatically.") }}</p>
+<label>{{ _("Light pollution") }} <select id="scene">
+<option value="dark_sky">{{ _("Dark sky") }}</option><option value="light_pollution">{{ _("Strong light pollution") }}</option><option value="local_lamp">{{ _("Direct light from street lamps or nearby sources") }}</option></select></label>
+<button id="start">{{ _("Start recording") }}</button><button id="stop">{{ _("Stop recording") }}</button>
+<p><small>{{ _("Recording defaults to 60 seconds and stops at 120 attempts or the 512 MiB storage limit. The save location and progress appear below.") }}</small></p>
+<details><summary>{{ _("Detailed test settings (optional)") }}</summary>
+<p><small>{{ _("No changes are needed for ordinary recording. Stages classify the data without changing plate solving.") }}</small></p>
+<label>{{ _("Test stage") }} <select id="stage">
+<option value="baseline">{{ _("Baseline measurement") }}</option><option value="candidate_gate">{{ _("Candidate count check") }}</option><option value="frame_reuse">{{ _("Reuse the same raw frame") }}</option><option value="lazy_sep">{{ _("SEP detection timing") }}</option><option value="path_budget">{{ _("Time budget per path") }}</option><option value="mode_policy">{{ _("Mode switching policy") }}</option><option value="async_worker">{{ _("Separate asynchronous processing") }}</option><option value="temporal_state">{{ _("Accumulation state") }}</option><option value="validation">{{ _("Final validation") }}</option></select></label>
+<label>{{ _("Capture contents") }} <select id="mode"><option value="raw">{{ _("Raw frames and results") }}</option><option value="telemetry">{{ _("Results and timing only") }}</option></select></label>
+<label>{{ _("Maximum duration (seconds)") }} <input id="duration" type="number" value="60" min="1" max="3600"></label>
+<label>{{ _("Maximum attempts") }} <input id="max_frames" type="number" value="120" min="1" max="10000"></label>
+<label>{{ _("Storage limit (MiB per recorder)") }} <input id="max_mib" type="number" value="512" min="16" max="8192"></label>
+<label>{{ _("Notes") }} <textarea id="note" maxlength="500" rows="2" placeholder="{{ _("Light source position, movement time, reference objects") }}"></textarea></label>
+<button id="mark">{{ _("Mark current segment") }}</button>
+<p><small>{{ _("To compare raw-frame storage overhead, record a separate segment with results and timing only. Only frames used by the solver are recorded; dropped records appear below. Storage limits apply per recorder.") }}</small></p>
 </details>
-<p id="message" role="status"></p><pre id="status">상태 확인 중…</pre>
-<details><summary>상세 기록 상태</summary><pre id="details"></pre></details>
+<p id="message" role="status"></p><pre id="status">{{ _("Checking status\u2026") }}</pre>
+<details><summary>{{ _("Detailed recording status") }}</summary><pre id="details"></pre></details>
 <script>
 const byId=id=>document.getElementById(id);
 const token=new URLSearchParams(location.search).get('token');
@@ -35,15 +36,15 @@ let busy=false;
 async function refresh(){
   try{
     const response=await fetch(api);
-    if(!response.ok)throw new Error('상태 조회 실패: '+response.status);
+    if(!response.ok)throw new Error({{ _("Status request failed: ")|tojson }}+response.status);
     const data=await response.json();
-    const states={recording:'수집 중',draining:'남은 자료 저장 중',complete:'종료',error:'저장 오류'};
-    const lines=[data.requested_active?'수집 요청 활성':'수집 요청 종료'];
-    for(const [key,label] of [['solver','솔버'],['integrator','좌표 반영']]){
+    const states={recording:{{ _("Recording")|tojson }},draining:{{ _("Saving remaining records")|tojson }},complete:{{ _("Finished")|tojson }},error:{{ _("Storage error")|tojson }}};
+    const lines=[data.requested_active?{{ _("Capture requested")|tojson }}:{{ _("Capture stopped")|tojson }}];
+    for(const [key,label] of [['solver',{{ _("Plate solver")|tojson }}],['integrator',{{ _("Coordinate integration")|tojson }}]]){
       const row=data[key]||{};
       const stale=row.updated&&Date.now()/1000-row.updated>10&&['recording','draining'].includes(row.state);
-      lines.push(label+': '+(stale?'응답 지연':states[row.state]||'기록 대기')+' · 기록 '+(row.records||0)+' · RAW '+(row.raw_frames||0)+' · 누락 '+(row.dropped_records||0));
-      if(row.directory)lines.push('저장 위치: '+row.directory);
+      lines.push(label+': '+(stale?{{ _("Response delayed")|tojson }}:states[row.state]||{{ _("Waiting to record")|tojson }})+{{ _(" \u00b7 Records ")|tojson }}+(row.records||0)+{{ _(" \u00b7 Raw frames ")|tojson }}+(row.raw_frames||0)+{{ _(" \u00b7 Dropped ")|tojson }}+(row.dropped_records||0));
+      if(row.directory)lines.push({{ _("Save location: ")|tojson }}+row.directory);
       if(row.state==='error')lines.push(row.reason||'');
     }
     byId('status').textContent=lines.join('\n');
@@ -58,8 +59,8 @@ async function control(action){
     for(const key of ['duration','max_frames','max_mib'])payload[key]=Number(byId(key).value);
     const response=await fetch(api,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const data=await response.json();
-    if(!response.ok)throw new Error(data.error||'요청 실패');
-    byId('message').textContent=action==='start'?'자동 기록을 요청했습니다. 아래에 ‘수집 중’이 표시되면 자료가 저장되고 있습니다.':action==='stop'?'종료를 요청했습니다. 남은 자료 저장이 끝날 때까지 기다려 주세요.':'이후 처리되는 프레임에 구간 표시를 적용합니다.';
+    if(!response.ok)throw new Error(data.error||{{ _("Request failed")|tojson }});
+    byId('message').textContent=action==='start'?{{ _("Recording requested. Data is being saved when the status below shows Recording.")|tojson }}:action==='stop'?{{ _("Stop requested. Please wait for the remaining records to be saved.")|tojson }}:{{ _("A segment marker will be applied to subsequent frames.")|tojson }};
     await refresh();
   }catch(error){byId('message').textContent=error.message;}finally{busy=false;}
 }

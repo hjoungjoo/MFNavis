@@ -287,7 +287,8 @@ class MockSharedState:
 
 
 def server_locale():
-    return DEFAULT_WEB_LANGUAGE
+    language = request.cookies.get("mfnavis_web_language", DEFAULT_WEB_LANGUAGE)
+    return language if language in {"en", "ko"} else DEFAULT_WEB_LANGUAGE
 
 
 class Server:
@@ -377,6 +378,13 @@ class Server:
         app.config["BABEL_TRANSLATION_DIRECTORIES"] = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..", "locale")
         )
+
+        @app.after_request
+        def vary_web_language(response):
+            if response.mimetype == "text/html":
+                response.vary.add("Cookie")
+            return response
+
         # Register the custom signed integer converter
         app.url_map.converters["signed_int"] = SignedIntConverter
 
@@ -390,6 +398,11 @@ class Server:
         app.jinja_env.add_extension("jinja2.ext.i18n")
 
         app.jinja_env.globals["_"] = gettext
+        app.jinja_env.globals["web_language"] = server_locale
+        from PiFinder.web_i18n import catalog_description, web_messages
+
+        app.jinja_env.globals["web_messages"] = web_messages
+        app.jinja_env.globals["catalog_description"] = catalog_description
 
         def mount_control_enabled() -> bool:
             """Whether the INDI mount-control process is switched on."""
@@ -437,7 +450,13 @@ class Server:
             from flask import abort, send_from_directory
 
             repo = os.path.dirname(os.path.dirname(views2_path))
-            if filename in {"THIRD_PARTY_NOTICES.md", "docs/MFNAVIS_RELEASE_ko.md"}:
+            if filename in {
+                "THIRD_PARTY_NOTICES.md",
+                "THIRD_PARTY_NOTICES_ko.md",
+                "docs/MFNAVIS_RELEASE_en.md",
+                "docs/MFNAVIS_RELEASE_ko.md",
+                "python/views/css/mfnavis-korean.LICENSE.txt",
+            }:
                 return send_from_directory(repo, filename, mimetype="text/plain")
             for prefix in ("LICENSES/", "OPEN_SOURCE_LICENSES/"):
                 if filename.startswith(prefix):
@@ -1533,7 +1552,7 @@ class Server:
             return gps_time_sync.read_clock_trust_marker() is not None
 
         def _pifinder_location_time_values():
-            source = "Current time"
+            source = _("Current time")
             lat = lon = elev = ""
             location_locked = False
             source_type = "none"
@@ -1546,7 +1565,7 @@ class Server:
                 lat = location.lat
                 lon = location.lon
                 elev = location.altitude if location.altitude is not None else 0
-                source = "GPS / loaded location"
+                source = _("GPS / loaded location")
                 source_type = "gps_locked"
                 location_locked = True
             else:
@@ -1557,7 +1576,10 @@ class Server:
                     lat = default_location.latitude
                     lon = default_location.longitude
                     elev = default_location.height
-                    source = f"Default location fallback: {default_location.name}"
+                    source = _(
+                        "Default location fallback: %(name)s",
+                        name=default_location.name,
+                    )
                     source_type = "default_location"
 
             return {
@@ -1570,7 +1592,7 @@ class Server:
                 "source": source,
                 "source_type": source_type,
                 "location_locked": location_locked,
-                "lock_status": "Locked" if location_locked else "Not locked",
+                "lock_status": _("Locked") if location_locked else _("Not locked"),
             }
 
         def _current_pifinder_utc_datetime():
@@ -2817,7 +2839,7 @@ class Server:
                 configs.append(
                     {
                         "file": path,
-                        "name": display,
+                        "name": _(display),
                         "active": os.path.realpath(path) == active,
                     }
                 )

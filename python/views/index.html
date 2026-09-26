@@ -11,7 +11,7 @@
     <td>
       <i class="material-icons medium">wifi</i>
     </td>
-    <td class="grey-text text-lighten-1">{{ wifi_mode }} {{ _('Mode') }}<br>{{ network_name }}<br>{{ ip }}</td>
+    <td class="grey-text text-lighten-1">{{ _(wifi_mode) }} {{ _('Mode') }}<br>{{ network_name }}<br>{{ ip }}</td>
     <td><a href="/network" class="grey-text"><i class="material-icons">edit</i></a></td>
 </tr>
 <tr>
@@ -26,7 +26,7 @@
     <td>
       <i class="material-icons medium">{{ camera_icon }}</i>
     </td>
-    <td class="grey-text text-lighten-1">{{ _('Sky Position') }}<br>RA: {{ ra_text }} / DEC: {{ dec_text }}</td>
+    <td class="grey-text text-lighten-1">{{ _('Sky Position') }}<br>{{ _('RA') }}: {{ ra_text }} / {{ _('Dec') }}: {{ dec_text }}</td>
     <td></td>
 </tr>
 <tr>

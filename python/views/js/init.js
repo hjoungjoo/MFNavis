@@ -71,7 +71,7 @@
   function updateFullscreenButtons() {
     const isFullscreen = fullscreenElement() !== null;
     const icon = isFullscreen ? 'fullscreen_exit' : 'fullscreen';
-    const label = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
+    const label = window.pfT(isFullscreen ? 'Exit Fullscreen' : 'Fullscreen');
     $('.pf-fullscreen-button').attr('title', label).attr('aria-label', label);
     $('.pf-fullscreen-button .material-icons').text(icon);
     $('#pf-fullscreen-restore').prop('hidden', isFullscreen || !fullscreenWanted());
@@ -152,6 +152,14 @@
       applyTheme(this.value);
     });
 
+    $('.pf-language-select').on('change', function() {
+      const language = this.value;
+      if (['en', 'ko'].indexOf(language) === -1) return;
+      document.cookie = 'mfnavis_web_language=' + language + '; Path=/; Max-Age=31536000; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
+      if (fullscreenElement()) setFullscreenWanted(true);
+      window.location.reload();
+    });
+
     $('.pf-fullscreen-button').on('click', function() {
       toggleFullscreen();
     });
@@ -166,6 +174,11 @@
 
     window.addEventListener('beforeunload', function() {
       navigatingAway = true;
+    });
+
+    window.addEventListener('pageshow', function() {
+      navigatingAway = false;
+      updateFullscreenButtons();
     });
 
     document.addEventListener('fullscreenchange', onFullscreenChange);

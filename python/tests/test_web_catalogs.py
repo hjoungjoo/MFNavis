@@ -891,3 +891,88 @@ def test_planet_detail_and_push(web_app):
     assert command["label"] == "Moon"
     # Moon rate is slower than sidereal -> below 60.164 Hz
     assert command["hz"] < 60.16
+
+
+@pytest.fixture
+def observation_store(web_app, monkeypatch, tmp_path):
+    from datetime import datetime, timezone
+    from PiFinder import web_catalogs
+    from PiFinder.db.observations_db import ObservationsDatabase
+
+    path = tmp_path / "observations.db"
+    monkeypatch.setattr(
+        web_catalogs, "ObservationsDatabase", lambda: ObservationsDatabase(path)
+    )
+    app, server = web_app
+    server.shared_state.location = lambda: SimpleNamespace(
+        lat=37.5, lon=127.1, altitude=0, lock=True, timezone="Asia/Seoul"
+    )
+    server.shared_state.local_datetime = lambda: datetime.now(timezone.utc)
+    server.shared_state.solution = lambda: None
+    return app, server, lambda: ObservationsDatabase(path)
+
+
+@pytest.mark.unit
+def test_catalog_observation_records_selected_object_and_reuses_session(
+    observation_store,
+):
+    app, server, open_db = observation_store
+    client = _login(app.test_client())
+    oid = _m31_object_id()
+    response = client.post(f"/catalogs/api/observe/{oid}")
+    assert response.status_code == 200
+    url = response.json["url"]
+    assert url.startswith("/observations/")
+    assert client.post(f"/catalogs/api/observe/{oid}").json["url"] == url
+    db = open_db()
+    try:
+        sessions = db.get_sessions()
+        assert len(sessions) == 1
+        assert sessions[0]["observations"] == 2
+        rows = db.get_logs_by_session(sessions[0]["UID"])
+        assert all(row["catalog"] == "M" and row["sequence"] == 31 for row in rows)
+    finally:
+        db.close()
+    assert server.ui_queue.empty()
+    assert server.mountcontrol_queue.empty()
+    assert server.goto_guide_queue.empty()
+    assert 'id="pfcat-observe"' in client.get(f"/catalogs/object/{oid}").text
+
+
+@pytest.mark.unit
+def test_catalog_observation_rejects_unauthorized_missing_object_and_location(
+    observation_store,
+):
+    app, server, open_db = observation_store
+    client = app.test_client()
+    oid = _m31_object_id()
+    assert client.post(f"/catalogs/api/observe/{oid}").status_code == 401
+    assert client.post("/catalogs/api/observe_planet/moon").status_code == 401
+    _login(client)
+    assert client.post("/catalogs/api/observe/999999999").status_code == 404
+    assert client.post("/catalogs/api/observe_planet/nonexistent").status_code == 404
+    server.shared_state.location = lambda: None
+    assert client.post(f"/catalogs/api/observe/{oid}").status_code == 409
+    db = open_db()
+    try:
+        assert db.get_sessions() == []
+    finally:
+        db.close()
+
+
+@pytest.mark.unit
+def test_catalog_observation_planet(observation_store):
+    from PiFinder.web_catalogs import PLANET_SEQUENCE
+
+    app, _server, open_db = observation_store
+    client = _login(app.test_client())
+    response = client.post("/catalogs/api/observe_planet/moon")
+    assert response.status_code == 200
+    db = open_db()
+    try:
+        rows = db.get_logs_by_session(response.json["url"].split("/")[-1])
+        assert len(rows) == 1
+        assert rows[0]["catalog"] == "PL"
+        assert rows[0]["sequence"] == PLANET_SEQUENCE.index("MOON") + 1
+    finally:
+        db.close()

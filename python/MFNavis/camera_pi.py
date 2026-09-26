@@ -262,7 +262,7 @@ class CameraPI(CameraInterface):
                     target.exposure_us, target.gain
                 )
                 controller.mark_submitted(target, self._capture_sequence)
-                logger.info(
+                logger.debug(
                     "Auto(Star) framewise: %sus/%sx -> %dus/%gx (%s)",
                     int(actual_exposure),
                     f"{actual_gain:g}",
