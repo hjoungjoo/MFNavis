@@ -8,10 +8,23 @@
 단계에서 멈춘 것이다.
 
 연결된 INDI 서버를 직접 조회한 `Slew elevation Limit` 값은
-`minAlt=-10`, `maxAlt=80`이었다. 사용자는 상한 85°로 알고 있었지만
-당시 드라이버가 실제로 내보낸 값은 80°였다. 드라이버 소스는 `:Go#` 응답을
+`minAlt=-10`, `maxAlt=80`이었다. 이후 사용자가 OnStepX 설정 화면에서
+**Axis2 Dec/Alt의 Max limit = 85°**를 확인했다. 이 축 제한은 아래의
+Overhead Limit과 별도 항목이므로 두 값은 동시에 존재할 수 있다.
+당시 드라이버가 실제로 내보낸 Overhead Limit은 80°였다. 드라이버 소스는 `:Go#` 응답을
 `maxAlt`에 게시한다. MFNavis의 연결된 마운트 제한 조회는 해당 값을 사용하고
 80°를 고정으로 덮어쓰지 않는다. 이 점검에서 고도 제한을 변경하지 않았다.
+
+OnStepX의 [제한 명령 구현](https://github.com/hjd1964/OnStepX/blob/main/src/telescope/mount/limits/Limits.command.cpp)은
+`:Go#`에서 `settings.altitude.max`(Overhead Limit)를 반환하고,
+`:GXED#`에서 `axis2.getLimitMax()`(Axis2 축 최대 제한)를 반환한다.
+[대상 검증 구현](https://github.com/hjd1964/OnStepX/blob/main/src/telescope/mount/limits/Limits.cpp)은
+고도가 Overhead Limit을 넘으면 `CE_SLEW_ERR_ABOVE_OVERHEAD`로 거절한다.
+따라서 Axis2가 85°여도 별도 Overhead Limit이 80°인 상태에서는
+81.4° Sync가 거절된다. 사용자 설정이 잘못되었다는 뜻은 아니다.
+화면의 Axis2 85°는 사용자가 제공한 증거이며, 별도 축 조회 명령으로
+실장비에서 직접 재확인한 값은 아니다. 01:47 KST INDI 재조회에서도
+Overhead Limit은 80°로 게시됐다.
 
 이동 없이 IMU 좌표 Sync만 보내 확인한 결과:
 
