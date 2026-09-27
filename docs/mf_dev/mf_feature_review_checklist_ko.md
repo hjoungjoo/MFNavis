@@ -700,14 +700,14 @@ MF_PiFinder에 추가되었거나 원본과 다르게 수정된 기능을 검토
 - MF docs 추가
 - upstream patch reference 문서 추가
 - feature별 install/test docs 추가
-- NixOS PR build CI 반영
+- Nox 코드 품질·테스트·Trixie 문서 빌드 CI
 - case/accessory assets 반영
 - test coverage 추가
 
 주요 파일:
 
 - `docs/mf_dev/*.md`, `docs/mf_report/*.md`
-- `.github/workflows/nixos-pr-build.yml`
+- `.github/workflows/nox.yml`
 - `.github/scripts/*`
 - `case/accessories/*`
 - `python/tests/test_*.py`

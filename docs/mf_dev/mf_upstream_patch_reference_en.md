@@ -28,7 +28,7 @@ Upstream comparison target:
 
 As of 2026-07-03, the branch includes these selected upstream changes:
 
-- NixOS PR build CI
+- NixOS PR build CI (workflow later removed on 2026-09-28 because it is unused)
 - case/accessory STL changes
 - observing-list CSV import improvements
 - UTC-aware datetime handling
@@ -170,7 +170,7 @@ This is not a full change history.  For feature-by-feature history, see
 
 | Area | Status | Notes |
 | --- | --- | --- |
-| NixOS PR build CI | Applied | GitHub Actions and manifest scripts; no runtime impact |
+| NixOS PR build CI | Workflow removed | Initially applied; unused workflow removed on 2026-09-28. Manifest scripts retained |
 | case/accessory files | Applied | STL/JPG/README changes only |
 | Observing-list CSV import | Applied | `obslist_formats.py`, docs, tests |
 | Observing-list Stellarium 2.0 import | Applied | #527 `39412ac`. Extends the `obslist_formats.py` Stellarium reader |

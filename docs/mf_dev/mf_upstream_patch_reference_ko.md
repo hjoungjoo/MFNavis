@@ -157,7 +157,7 @@ upstream 전체 병합이나 커밋 단위 일괄 cherry-pick은 하지 않았�
 2026-07-03 기준 최근 반영 상황:
 
 - upstream selected commits applied:
-  - NixOS PR build CI
+  - NixOS PR build CI (이후 미사용으로 2026-09-28 워크플로 제거)
   - case/accessory STL changes
   - observing list CSV import improvements
   - UTC-aware datetime handling
@@ -431,7 +431,7 @@ ADR 번호 규칙 (2026-07-29 확정):
 
 | 영역 | 상태 | 비고 |
 | --- | --- | --- |
-| NixOS PR build CI | 적용됨 | 런타임 영향 없음. GitHub Actions와 manifest script 추가 |
+| NixOS PR build CI | 워크플로 제거됨 | 최초 반영 후 미사용으로 2026-09-28 워크플로 제거. manifest script는 유지 |
 | case/accessory files | 적용됨 | 코드 영향 없음. STL/JPG/README 변경 |
 | Observing list CSV import | 적용됨 | `obslist_formats.py`, docs, tests 적용 |
 | Observing list Stellarium 2.0 import | 적용됨 | #527 `39412ac`. `obslist_formats.py` Stellarium reader 확장 |

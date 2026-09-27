@@ -705,14 +705,14 @@ Main changes:
 - MF docs
 - Upstream patch reference docs
 - Feature-specific install/test docs
-- NixOS PR build CI
+- Nox code quality, tests, and Trixie documentation CI
 - case/accessory assets
 - Additional tests
 
 Key files:
 
 - `docs/mf_dev/*.md`, `docs/mf_report/*.md`
-- `.github/workflows/nixos-pr-build.yml`
+- `.github/workflows/nox.yml`
 - `.github/scripts/*`
 - `case/accessories/*`
 - `python/tests/test_*.py`
