@@ -67,6 +67,12 @@ jobs:
       - uses: actions/checkout@v5
         with:
           submodules: false
+      # Ruff follows the tracked MFDS integration symlinks even in this
+      # hardware-free job, so the pinned package must exist before linting.
+      - name: Install pinned MFDS release
+        uses: ./.github/actions/install-mfds
+      - name: Create tetra3 import alias
+        run: bash ../scripts/ensure_tetra3_link.sh ..
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
