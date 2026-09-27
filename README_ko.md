@@ -10,7 +10,7 @@
 [English](./README.md) | **한국어**
 
 MFNavis는 원본 [PiFinder™](https://github.com/brickbots/PiFinder)를 기반으로
-Raspberry Pi OS Bookworm 64-bit가 설치된 Pi 4/Pi 5/CM5에서 동작합니다.
+Raspberry Pi OS Trixie 64-bit가 설치된 Pi 4/Pi 5/CM5에서 동작합니다.
 한국어 운영 문서, 웹 카탈로그, INDI 마운트 제어 등 실사용 기능을 확장합니다.
 원 제작자의 기본 사용법과 프로젝트 설명은 [원본 프로젝트 안내 보관본](./README.upstream.md#original-pifinder-project)를 참고하세요.
 
@@ -19,9 +19,14 @@ Raspberry Pi OS Bookworm 64-bit가 설치된 Pi 4/Pi 5/CM5에서 동작합니다
 ### 1. Raspberry Pi OS 준비
 
 Raspberry Pi Imager로 Pi 4/Pi 5/CM5의 부팅 저장장치에
-**Raspberry Pi OS Bookworm 64-bit**를 설치합니다. 처음 부팅하기 전에 사용자명,
+**Raspberry Pi OS Trixie 64-bit**를 설치합니다. 처음 부팅하기 전에 사용자명,
 호스트명, SSH, Wi-Fi를 설정하고, 부팅 후 해당 사용자로 로그인해 인터넷 연결을
-확인하세요. 이 설치에서는 OS 버전을 Bookworm으로 명시적으로 선택합니다.
+확인하세요. 이 설치에서는 OS 버전을 Trixie로 명시적으로 선택합니다.
+운영 Python은 3.13이며 `.venv-trixie`를 사용합니다. 자세한 구성은
+[Trixie 설치 안내](docs/mf_dev/mf_trixie_install_ko.md)를 참고하세요.
+
+아래 `main` 설치는 Trixie 기준입니다. 공개 태그는 해당 릴리즈의 OS 요구사항을
+따릅니다. 과거 Bookworm 릴리즈에는 그에 맞는 OS와 아카이브가 필요합니다.
 
 이미지 기록과 첫 부팅의 자세한 절차는
 [Raspberry Pi 공식 OS 설치 안내](https://www.raspberrypi.com/documentation/computers/getting-started.html#install-an-operating-system)를,
@@ -115,8 +120,10 @@ sudo reboot
 안전상 중단합니다. 위의 `main`·릴리즈 갱신에는 전체 설치 스크립트를 사용하세요.
 
 패키지 구성은 [MFDS 바이너리 설치 안내](./docs/MFDS_BINARY_DISTRIBUTION_ko.md)를 참고하세요.
-INDI 마운트 지원은 선택 사항으로, 설치 스크립트가 INDI 아카이브를 찾거나 지정받은
-경우에만 설치합니다. 그 외에는 [INDI 설치 안내](./docs/mf_dev/mf_indi_mount_install_ko.md)를 따르세요.
+설치 스크립트는 기본적으로 현재 OS에 맞는 INDI 아카이브를 필수로 검증·설치하며,
+아카이브가 없거나 호환되지 않으면 중단합니다. 앱의 마운트 제어는 별도로 켜기 전까지
+꺼져 있습니다. INDI 없는 설치를 위한 `MFNAVIS_INSTALL_INDI_ARCHIVE=false` 등은
+[INDI 설치 안내](./docs/mf_dev/mf_indi_mount_install_ko.md)를 참고하세요.
 
 ### 3. 오프라인 캐시 다운로드
 

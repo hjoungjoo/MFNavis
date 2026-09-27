@@ -1,5 +1,10 @@
 # MF_PiFinder Feature Review and Test Checklist
 
+Platform section updated 2026-09-27 for Trixie/Python 3.13. The remaining
+upstream comparison is a dated review baseline. Current installation and
+field-test scope are in the [Trixie guide](mf_trixie_install_en.md); unchecked
+items below are not claims of completed validation.
+
 Created: 2026-07-03 / fully refreshed: 2026-08-05
 
 This document lists functional changes and additions in the current
@@ -25,7 +30,7 @@ Summary:
   - bring-up bench tool, keypad matrix split, NixOS release CI
 - Major MF additions or changed areas (§1–§15 = the 07-03 baseline,
   §17–§25 = added since):
-  - Bookworm/RPi4/RPi5/CM5 install and board profiles
+  - Trixie/RPi4/RPi5/CM5 install and board profiles
   - AP+STA Wi-Fi / Bluetooth+USB HID keyboard / joystick
   - Red Night/PWA Web UI / web catalogs & unified search / Locations catalog
   - chronyd-based time management
@@ -46,7 +51,7 @@ Related documents:
 
 - `docs/mf_dev/mf_upstream_patch_reference_en.md`: upstream sync and patch reference
 - `docs/mf_dev/mf_change_history_en.md`: full change history
-- `docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_en.md`: Pi4/Pi5/CM5 Bookworm compatibility
+- `docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_en.md`: Pi4/Pi5/CM5 Trixie compatibility
 - `docs/mf_dev/mf_indi_mount_install_en.md`: INDI install/operation
 - `docs/mf_dev/mf_wifi_apsta_en.md`: AP+STA Wi-Fi
 - `docs/mf_dev/mf_time_sync_en.md`: time sync
@@ -60,15 +65,15 @@ Related documents:
 | P1 | Major feature. Test on real hardware or realistic network conditions |
 | P2 | Supporting feature/docs/developer convenience. Regression check |
 
-## 1. Platform / Bookworm / Raspberry Pi 4, 5, CM5 Compatibility
+## 1. Platform / Trixie / Raspberry Pi 4, 5, CM5 Compatibility
 
 Priority: P0
 
 Main changes:
 
-- Raspberry Pi OS Bookworm 64-bit install support
+- Raspberry Pi OS Trixie 64-bit install support
 - Prefer `/boot/firmware/config.txt`, fallback to legacy `/boot/config.txt`
-- Render `PiFinder_data`, systemd, and Samba paths for the current OS user
+- Render `MFNavis_data`, systemd, and Samba paths for the current OS user
 - GPS UART board profiles for Pi4/Pi5/CM5
 - Use `uart2-pi5` on Pi5/CM5 to avoid OLED CS conflicts
 - Support both `/dev/spidev0.0` and `/dev/spidev10.0`
@@ -76,22 +81,22 @@ Main changes:
 
 Key files:
 
-- `pifinder_paths.sh`
-- `pifinder_setup.sh`
-- `pifinder_update.sh`
-- `pifinder_post_update.sh`
-- `python/PiFinder/board_config.py`
-- `python/PiFinder/boot_config.py`
-- `python/PiFinder/hardware_detect.py`
-- `python/PiFinder/displays.py`
-- `python/PiFinder/main.py`
-- `python/PiFinder/splash.py`
-- `python/PiFinder/sys_utils.py`
+- `mfnavis_paths.sh`
+- `mfnavis_setup.sh`
+- `mfnavis_update.sh`
+- `mfnavis_post_update.sh`
+- `python/MFNavis/board_config.py`
+- `python/MFNavis/boot_config.py`
+- `python/MFNavis/hardware_detect.py`
+- `python/MFNavis/displays.py`
+- `python/MFNavis/main.py`
+- `python/MFNavis/splash.py`
+- `python/MFNavis/sys_utils.py`
 - `pi_config_files/*.service`
 
 Review points:
 
-- [ ] Fresh OS install completes with `pifinder_setup.sh` as a normal user
+- [ ] Fresh OS install completes with `mfnavis_setup.sh` as a normal user
 - [ ] Pi4 `gps_port=auto` resolves to `/dev/ttyAMA3`
 - [ ] Pi5/CM5 `gps_port=auto` resolves to `/dev/ttyAMA2`
 - [ ] Boot config changes go to the active boot config path
@@ -102,9 +107,9 @@ Review points:
 
 Test items:
 
-- [ ] Pi4 Bookworm 64-bit fresh install
-- [ ] Pi5 or CM5 Bookworm 64-bit fresh install
-- [ ] `systemctl status pifinder cedar_detect pifinder_splash`
+- [ ] Pi4 Trixie 64-bit fresh install
+- [ ] Pi5 or CM5 Trixie 64-bit fresh install
+- [ ] `systemctl status mfnavis mfnavis_splash indiwebmanager`
 - [ ] `ls /dev/spidev* /dev/ttyAMA*`
 - [ ] Web UI access
 - [ ] LCD/OLED splash display

@@ -1,5 +1,8 @@
 # MF PiFinder GPS Aiding Plan (u-blox 전용)
 
+> 아래 OS 언급은 당시 설계·전환 기준이다. 현재 MFNavis 설치는
+> [Trixie 64-bit / Python 3.13 안내](mf_trixie_install_ko.md)를 따른다.
+
 작성일: 2026-07-14
 상태: 설계 초안 (구현 전 검토용)
 

@@ -1,9 +1,14 @@
 # New Device Checklist
 
-Date: 2026-06-26
+This checklist targets the MFNavis `main` branch on Trixie 64-bit / Python 3.13.
+Current installation and validation scope:
+[Trixie guide](mf_trixie_install_en.md).
+Past Bookworm keyboard measurements below retain their original OS.
+
+Date: 2026-06-26 / updated: 2026-09-27
 
 This document is the install and verification checklist for the
-`hjoungjoo/MF_PiFinder` fork's `mf_pifinder` branch on a new Raspberry Pi device.
+`hjoungjoo/MFNavis` fork's `main` branch on a new Raspberry Pi device.
 Raspberry Pi 4, Raspberry Pi 5, and CM5 should be checked against the board
 profiles documented in `docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_en.md`.
 
@@ -12,15 +17,15 @@ For background, read:
 ```text
 docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_en.md
 docs/mf_dev/mf_change_history_en.md
-docs/mf_dev/mf_bookworm_install_en.md
+docs/mf_dev/mf_trixie_install_en.md
 ```
 
 ## Goals
 
 The core goals for a new device are:
 
-1. Confirm the `mf_pifinder` branch installs on the new OS.
-2. Confirm the CM5/Bookworm changes do not break Raspberry Pi 4 behavior.
+1. Confirm the `main` branch installs on the new OS.
+2. Confirm the CM5/Trixie changes do not break Raspberry Pi 4 behavior.
 3. Confirm Raspberry Pi 5-class boards use the `pi5_class` UART/GPS/SPI paths.
 4. If problems appear, save logs and fix them on the same branch.
 
@@ -29,7 +34,7 @@ The core goals for a new device are:
 Recommended OS:
 
 ```text
-Raspberry Pi OS Bookworm 64-bit
+Raspberry Pi OS Trixie 64-bit
 ```
 
 Raspberry Pi Imager settings:
@@ -78,7 +83,7 @@ groups
 Create a log directory:
 
 ```bash
-mkdir -p ~/mf-pifinder-test-logs
+mkdir -p ~/mfnavis-test-logs
 ```
 
 Save the initial state:
@@ -94,7 +99,7 @@ Save the initial state:
   groups
   nmcli device status 2>/dev/null || true
   ip addr
-} | tee ~/mf-pifinder-test-logs/00_initial_state.txt
+} | tee ~/mfnavis-test-logs/00_initial_state.txt
 ```
 
 ## 2. Clone Source
@@ -104,8 +109,8 @@ sudo apt update
 sudo apt install -y git
 
 cd ~
-git clone --recursive --branch mf_pifinder https://github.com/hjoungjoo/MF_PiFinder.git PiFinder
-cd ~/PiFinder
+git clone --recursive --branch main https://github.com/hjoungjoo/MFNavis.git MFNavis
+cd ~/MFNavis
 ```
 
 Check the branch and commit:
@@ -119,14 +124,14 @@ git submodule status
 Expected state:
 
 ```text
-branch: mf_pifinder
-remote: hjoungjoo/MF_PiFinder
+branch: main
+remote: hjoungjoo/MFNavis
 ```
 
 ## 3. Read Compatibility And Change Notes
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 sed -n '1,220p' docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_en.md
 sed -n '1,180p' docs/mf_dev/mf_change_history_en.md
 ```
@@ -134,8 +139,8 @@ sed -n '1,180p' docs/mf_dev/mf_change_history_en.md
 When continuing in a new Codex conversation, start with:
 
 ```text
-I want to test the PiFinder CM5/Bookworm work on a new Raspberry Pi device.
-The branch is hjoungjoo/MF_PiFinder mf_pifinder.
+I want to test the PiFinder CM5/Trixie work on a new Raspberry Pi device.
+The repository is hjoungjoo/MFNavis and the installation branch is main.
 Please read docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_en.md,
 docs/mf_dev/mf_pifinder_new_device_tasks_en.md,
 and docs/mf_dev/mf_change_history_en.md, then continue.
@@ -145,7 +150,7 @@ If install or hardware testing finds problems, I want to fix them on the same br
 ## 4. Save Pre-Install State
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 
 {
   date
@@ -154,7 +159,7 @@ cd ~/PiFinder
   git remote -v
   ls -l /boot/config.txt /boot/firmware/config.txt 2>/dev/null || true
   grep -n "dtparam\|dtoverlay\|camera_auto_detect" /boot/config.txt /boot/firmware/config.txt 2>/dev/null || true
-} | tee ~/mf-pifinder-test-logs/01_before_install.txt
+} | tee ~/mfnavis-test-logs/01_before_install.txt
 ```
 
 ## 5. Run Installer
@@ -162,14 +167,14 @@ cd ~/PiFinder
 Important:
 
 ```text
-Do not run sudo ./pifinder_setup.sh
+Do not run sudo ./mfnavis_setup.sh
 ```
 
 Run the installer as the normal OS user:
 
 ```bash
-cd ~/PiFinder
-./pifinder_setup.sh 2>&1 | tee ~/mf-pifinder-test-logs/02_pifinder_setup.log
+cd ~/MFNavis
+MFNAVIS_INSTALL_BRANCH=main bash ./mfnavis_setup.sh 2>&1 | tee ~/mfnavis-test-logs/02_mfnavis_setup.log
 ```
 
 Watch for:
@@ -177,7 +182,9 @@ Watch for:
 - `apt-get install` failures
 - successful `dhcpcd` package install
 - gpsd configuration prompts or hangs
-- `pip install --break-system-packages` failures
+- `.venv-trixie` Python 3.13 / `requirements-trixie.txt` installation failures
+- Trixie INDI archive checksum, OS, and Python ABI verification
+- MFDS binary installation and app/INDI service interpreter selection
 - `hip_main.dat` download success
 - service/Samba template rendering success
 - user group update success
@@ -187,10 +194,10 @@ If installation fails, save this summary and stop:
 ```bash
 {
   date
-  git -C ~/PiFinder status --short --branch
-  tail -n 120 ~/mf-pifinder-test-logs/02_pifinder_setup.log
-  systemctl status pifinder cedar_detect pifinder_splash --no-pager 2>/dev/null || true
-} | tee ~/mf-pifinder-test-logs/02_install_failed_summary.txt
+  git -C ~/MFNavis status --short --branch
+  tail -n 120 ~/mfnavis-test-logs/02_mfnavis_setup.log
+  systemctl status mfnavis mfnavis_splash indiwebmanager --no-pager 2>/dev/null || true
+} | tee ~/mfnavis-test-logs/02_install_failed_summary.txt
 ```
 
 ## 6. Pre-Reboot Check
@@ -200,13 +207,13 @@ If installation completed, save state before rebooting:
 ```bash
 {
   date
-  git -C ~/PiFinder status --short --branch
+  git -C ~/MFNavis status --short --branch
   groups
   ls -l /boot/config.txt /boot/firmware/config.txt 2>/dev/null || true
   grep -n "dtparam\|dtoverlay\|camera_auto_detect" /boot/config.txt /boot/firmware/config.txt 2>/dev/null || true
-  systemctl is-enabled pifinder cedar_detect pifinder_splash 2>/dev/null || true
-  systemctl status pifinder cedar_detect pifinder_splash --no-pager 2>/dev/null || true
-} | tee ~/mf-pifinder-test-logs/03_before_reboot.txt
+  systemctl is-enabled mfnavis mfnavis_splash indiwebmanager 2>/dev/null || true
+  systemctl status mfnavis mfnavis_splash indiwebmanager --no-pager 2>/dev/null || true
+} | tee ~/mfnavis-test-logs/03_before_reboot.txt
 ```
 
 If remote access is Wi-Fi-only, confirm the reconnect address first:
@@ -224,17 +231,17 @@ sudo reboot
 After reconnecting:
 
 ```bash
-mkdir -p ~/mf-pifinder-test-logs
+mkdir -p ~/mfnavis-test-logs
 
 {
   date
   hostname -I
   groups
-  systemctl status pifinder cedar_detect pifinder_splash --no-pager
-} | tee ~/mf-pifinder-test-logs/04_after_reboot_services.txt
+  systemctl status mfnavis mfnavis_splash indiwebmanager --no-pager
+} | tee ~/mfnavis-test-logs/04_after_reboot_services.txt
 
-journalctl -u pifinder -b --no-pager > ~/mf-pifinder-test-logs/04_pifinder_after_reboot.log
-journalctl -u cedar_detect -b --no-pager > ~/mf-pifinder-test-logs/04_cedar_detect_after_reboot.log
+journalctl -u mfnavis -b --no-pager > ~/mfnavis-test-logs/04_mfnavis_after_reboot.log
+journalctl -u indiwebmanager -b --no-pager > ~/mfnavis-test-logs/04_indiwebmanager_after_reboot.log
 ```
 
 ## 8. Hardware Connection Order
@@ -252,7 +259,7 @@ Connect and verify hardware in stages:
 Check logs after each stage:
 
 ```bash
-journalctl -u pifinder -b -n 200 --no-pager
+journalctl -u mfnavis -b -n 200 --no-pager
 ```
 
 ## 9. LCD / Keypad / IMU
@@ -279,7 +286,7 @@ Save logs:
   date
   ls -l /dev/i2c-* /dev/spidev* 2>/dev/null || true
   i2cdetect -y 1 || true
-} | tee ~/mf-pifinder-test-logs/05_lcd_keypad_imu.txt
+} | tee ~/mfnavis-test-logs/05_lcd_keypad_imu.txt
 ```
 
 ## 10. Camera
@@ -295,7 +302,7 @@ rpicam-hello --list-cameras
 If the camera type needs switching:
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 sudo python3 python/PiFinder/switch_camera.py imx477
 # or imx296 / imx462
 sudo reboot
@@ -305,8 +312,8 @@ After reboot:
 
 ```bash
 rpicam-hello --list-cameras
-rpicam-still -o ~/mf-pifinder-test-logs/camera-test.jpg --timeout 2000
-journalctl -u pifinder -b -n 300 --no-pager | tee ~/mf-pifinder-test-logs/06_camera_journal.txt
+rpicam-still -o ~/mfnavis-test-logs/camera-test.jpg --timeout 2000
+journalctl -u mfnavis -b -n 300 --no-pager | tee ~/mfnavis-test-logs/06_camera_journal.txt
 ```
 
 Check:
@@ -356,7 +363,7 @@ Save logs:
   date
   ls -l /dev/serial* /dev/ttyAMA* /dev/ttyUSB* /dev/ttyACM* 2>/dev/null || true
   systemctl status gpsd gpsd.socket --no-pager || true
-} | tee ~/mf-pifinder-test-logs/07_gps.txt
+} | tee ~/mfnavis-test-logs/07_gps.txt
 ```
 
 ## 12. USB / Bluetooth Keyboard
@@ -399,10 +406,11 @@ Check:
 - If no keyboard event node exists and `bluetoothd` shows HID Information or
   Report Reference read failures, classify it as a BlueZ/HID issue before
   PiFinder input mapping.
-- On Pi4 Bookworm, `K06 BLE Keyboard` created an event device after enabling
+- The earlier Pi4 Bookworm test found that `K06 BLE Keyboard` created an event
+  device after enabling
   `UserspaceHID=true` and `LEAutoSecurity=true` in `/etc/bluetooth/input.conf`.
   On existing installs, restart with `sudo systemctl restart bluetooth` and
-  `sudo systemctl restart pifinder` after changing that file.
+  `sudo systemctl restart mfnavis` after changing that file.
 - Use `libinput debug-events --device /dev/input/eventX` to confirm real key
   events.
 
@@ -426,7 +434,7 @@ Check:
 If a problem appears, run:
 
 ```bash
-mkdir -p ~/mf-pifinder-test-logs
+mkdir -p ~/mfnavis-test-logs
 
 {
   date
@@ -436,24 +444,24 @@ mkdir -p ~/mf-pifinder-test-logs
   python3 --version
   id
   groups
-  git -C ~/PiFinder status --short --branch
-  git -C ~/PiFinder log --oneline --decorate -n 5
-  git -C ~/PiFinder rev-parse HEAD
+  git -C ~/MFNavis status --short --branch
+  git -C ~/MFNavis log --oneline --decorate -n 5
+  git -C ~/MFNavis rev-parse HEAD
   ls -l /boot/config.txt /boot/firmware/config.txt 2>/dev/null || true
   grep -n "dtparam\|dtoverlay\|camera_auto_detect" /boot/config.txt /boot/firmware/config.txt 2>/dev/null || true
   ls -l /dev/i2c-* /dev/spidev* /dev/serial* /dev/ttyAMA* /dev/ttyUSB* /dev/ttyACM* /dev/video* /dev/media* /dev/input/event* 2>/dev/null || true
-  systemctl status pifinder cedar_detect pifinder_splash gpsd gpsd.socket --no-pager || true
-} | tee ~/mf-pifinder-test-logs/problem-summary.txt
+  systemctl status mfnavis mfnavis_splash indiwebmanager gpsd gpsd.socket --no-pager || true
+} | tee ~/mfnavis-test-logs/problem-summary.txt
 
-journalctl -u pifinder -b --no-pager > ~/mf-pifinder-test-logs/problem-pifinder.log
-journalctl -u cedar_detect -b --no-pager > ~/mf-pifinder-test-logs/problem-cedar-detect.log
-dmesg > ~/mf-pifinder-test-logs/problem-dmesg.log
+journalctl -u mfnavis -b --no-pager > ~/mfnavis-test-logs/problem-mfnavis.log
+journalctl -u indiwebmanager -b --no-pager > ~/mfnavis-test-logs/problem-indiwebmanager.log
+dmesg > ~/mfnavis-test-logs/problem-dmesg.log
 ```
 
 Start the Codex handoff like this:
 
 ```text
-I hit a problem while testing the mf_pifinder branch on a new Pi4 device.
+I hit a problem while testing the MFNavis Trixie changes on a new Pi4 device.
 I followed docs/mf_dev/mf_pifinder_new_device_tasks_en.md.
 The problem is <short description>.
 Please inspect the logs below and fix it.
@@ -464,7 +472,7 @@ Please inspect the logs below and fix it.
 After fixing a problem:
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 git status --short
 git add -A
 git commit -m "Fix Pi4 <problem summary>"
@@ -475,22 +483,21 @@ Examples:
 
 ```bash
 git commit -m "Fix Pi4 SPI display detection"
-git commit -m "Fix setup package install on Bookworm"
+git commit -m "Fix setup package install on Trixie"
 git commit -m "Update Pi4 install checklist"
 ```
 
-If a Draft PR already exists for `mf_pifinder`, pushing updates the PR
-automatically.
+Target `main` when preparing a pull request for device fixes.
 
 ## 16. PR Preparation
 
 When opening a pull request on GitHub:
 
 ```text
-base repository: brickbots/PiFinder
+base repository: hjoungjoo/MFNavis
 base branch: main
-head repository: hjoungjoo/MF_PiFinder
-compare branch: mf_pifinder
+head repository: hjoungjoo/MFNavis
+compare branch: <your-fix-branch>
 ```
 
 Open it as a Draft PR first.
@@ -505,7 +512,7 @@ After Pi4 testing:
 ## 17. Forbidden Or Risky Actions
 
 - Do not test network switching blindly when remote access is Wi-Fi-only.
-- Do not run `sudo ./pifinder_setup.sh`.
+- Do not run `sudo ./mfnavis_setup.sh`.
 - Do not replace `/usr/bin/python3` with another version.
 - Do not push directly to upstream `brickbots/PiFinder` `release` or `main`.
 - Do not paste authentication tokens or GitHub tokens into chat.

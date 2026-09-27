@@ -4,6 +4,7 @@
 날짜에 묶인 기록이므로 **이후 코드가 바뀌어도 갱신하지 않는다** — 그 시점의
 관측 사실로 읽는다. 설계·구현 문서는 [`../mf_dev/`](../mf_dev/)에 있다.
 
+- [2026-09-27 Trixie GoTo 실테스트 사용자 결과](mfnavis_trixie_goto_field_20260927_ko.md)
 - [2026-09-26 Trixie 구름 많은 하늘·마운트 미연결 고정 장비 점검](mfnavis_trixie_cloudy_fixed_20260926_ko.md)
 - [2026-09-26 점검 후 혜성 계산·번역·테스트 간 간섭 수정](mfnavis_trixie_cloudy_fixes_20260926_ko.md)
 - [2026-09-27 실내 OnStepX 시리얼 Auto 적용 복구](mfnavis_trixie_serial_auto_20260927_ko.md)

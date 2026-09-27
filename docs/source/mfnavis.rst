@@ -12,6 +12,40 @@ The MFNavis logo appears during device boot and service startup, and in the
 web interface and home-screen app icon. Device help pages describe MFNavis.
 Original project logos and manuals are kept only as historical references.
 
+Installation on Trixie
+----------------------
+
+The MFNavis installation baseline is **Raspberry Pi OS Trixie 64-bit** on
+Raspberry Pi 4, Pi 5, and CM5, using **Python 3.13**. Prepare the OS with
+Raspberry Pi Imager and configure your own username, hostname, SSH, and Wi-Fi.
+
+Install the Trixie-based ``main`` branch as the target OS user:
+
+.. code-block:: bash
+
+   wget -O /tmp/mfnavis-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavis/main/mfnavis_setup.sh &&
+   MFNAVIS_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh
+
+Published releases retain their own OS requirements.
+Source updates do not upgrade Bookworm to Trixie; back up user data before
+preparing the new OS.
+
+Setup creates ``~/MFNavis/.venv-trixie`` with access to OS Picamera2/GPIO
+packages, installs the pinned MFDS binary, and verifies the Trixie/Python 3.13
+INDI archive. INDI archive installation is required by default; app mount
+control stays disabled until selected. MFNavis, splash, and INDI Web Manager
+use the same runtime Python. Development uses ``.venv-dev-trixie``.
+
+See the repository's
+`English installation guide <https://github.com/hjoungjoo/MFNavis/blob/main/docs/mf_dev/mf_trixie_install_en.md>`_
+and
+`Korean installation guide <https://github.com/hjoungjoo/MFNavis/blob/main/docs/mf_dev/mf_trixie_install_ko.md>`_
+for archive selection, custom paths, startup checks, and development commands.
+
+The 2026-09-27 GoTo field test was reported by the user to have no major
+problems on the tested Trixie setup. Earlier Pi 4/CM5 Bookworm checks are
+historical results; separate Trixie hardware validation is still required.
+
 Connect
 -------
 

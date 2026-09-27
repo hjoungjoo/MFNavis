@@ -18,7 +18,7 @@ Status labels: **living** = kept in sync with source / **install** = install &
 ops guide / **plan** = pre- or partial implementation / **one-time** = completed
 analysis/verification record (not maintained).
 
-Last updated: 2026-08-04. The KO version (`mf_docs_index_ko.md`) is authoritative.
+Last updated: 2026-09-27 (Trixie installation entries). The KO version (`mf_docs_index_ko.md`) is authoritative.
 
 ## INDI mount — coordinates & pointing (core)
 
@@ -55,7 +55,7 @@ Last updated: 2026-08-04. The KO version (`mf_docs_index_ko.md`) is authoritativ
 
 | Doc | ko/en | Status | Summary |
 |---|---|---|---|
-| [bookworm_install](mf_dev/mf_bookworm_install_en.md) | both | install | Bookworm install / path foundation. |
+| [trixie_install](mf_dev/mf_trixie_install_en.md) | both | install | Trixie 64-bit / Python 3.13 installation and paths. |
 | [pifinder_new_device_tasks](mf_dev/mf_pifinder_new_device_tasks_en.md) | both | install | New-device setup task list. |
 | [pifinder_rpi4_pi5_compatibility](mf_dev/mf_pifinder_rpi4_pi5_compatibility_en.md) | both | living | Pi4/5/CM5 board + GPS/UART compatibility. |
 | [wifi_apsta](mf_dev/mf_wifi_apsta_en.md) | both | living | Simultaneous AP+STA Wi-Fi mode. |

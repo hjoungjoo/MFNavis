@@ -9,6 +9,9 @@ catalog/star-data caches and download the catalog survey images:
 python3 scripts/warm_mfnavis_caches.py
 ```
 
+On Trixie, the cache command automatically uses `.venv-trixie`. Development
+commands below use Python 3.13 in `.venv-dev-trixie`.
+
 The default downloads both POSS and SDSS images. The catalog and web detail
 views use POSS; use this smaller option when that is all that is required:
 
@@ -26,11 +29,13 @@ but are a good starting point.
 Scripts can be generated like this:
 
 ```bash
-python3.9 generate_script new_random_1k 1000
+cd ~/MFNavis
+source scripts/activate_dev_trixie.sh
+python ../scripts/generate_script.py new_random_1k 1000
 ```
 
 Scripts can be run locally like this:
 
 ```bash
-python3.9 -m PiFinder.main -fh --camera debug --keyboard local -x --script new_random_1k   # 1k is the number of frames
+python -m MFNavis.main -fh --camera debug --keyboard local -x --script new_random_1k   # 1k is the number of frames
 ```

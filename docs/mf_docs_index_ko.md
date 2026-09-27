@@ -16,7 +16,7 @@
 상태 라벨: **living** = 소스에 맞춰 계속 갱신 / **install** = 설치·운영 가이드 /
 **plan** = 구현 전/부분 구현 계획 / **1회성** = 완료된 분석·검증 기록(유지 대상 아님).
 
-최종 갱신: 2026-08-25.
+최종 갱신: 2026-09-27 (Trixie 설치 항목).
 
 ## INDI 마운트 — 좌표·포인팅 (핵심)
 
@@ -56,7 +56,7 @@
 
 | 문서 | ko/en | 상태 | 요약 |
 |---|---|---|---|
-| [bookworm_install](mf_dev/mf_bookworm_install_ko.md) | 둘 다 | install | Bookworm 설치/경로 기반. |
+| [trixie_install](mf_dev/mf_trixie_install_ko.md) | 둘 다 | install | Trixie 64-bit / Python 3.13 설치·경로 안내. |
 | [pifinder_new_device_tasks](mf_dev/mf_pifinder_new_device_tasks_ko.md) | 둘 다 | install | 신규 기기 셋업 작업 목록. |
 | [pifinder_rpi4_pi5_compatibility](mf_dev/mf_pifinder_rpi4_pi5_compatibility_ko.md) | 둘 다 | living | Pi4/5/CM5 보드·GPS/UART 호환성. |
 | [wifi_apsta](mf_dev/mf_wifi_apsta_ko.md) | 둘 다 | living | AP+STA 동시 Wi-Fi 모드. |

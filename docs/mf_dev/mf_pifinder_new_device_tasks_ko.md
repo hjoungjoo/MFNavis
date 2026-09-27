@@ -1,8 +1,12 @@
 # 새 디바이스 작업 체크리스트
 
-작성일: 2026-06-26
+이 체크리스트는 MFNavis `main` 브랜치의 Trixie 64-bit / Python 3.13 기준이다.
+현재 설치·검증 범위는 [Trixie 안내](mf_trixie_install_ko.md)를 참고한다.
+아래 과거 Bookworm 키보드 실측은 당시 OS를 그대로 기록한다.
 
-이 문서는 `hjoungjoo/MF_PiFinder` fork의 `mf_pifinder` 브랜치를 새 Raspberry Pi
+작성일: 2026-06-26 / 갱신: 2026-09-27
+
+이 문서는 `hjoungjoo/MFNavis` fork의 `main` 브랜치를 새 Raspberry Pi
 디바이스에서 설치하고 검증하기 위한 실행 순서이다. Raspberry Pi 4, Raspberry Pi 5,
 CM5는 `docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_ko.md`의 보드 profile 기준으로
 확인한다.
@@ -12,15 +16,15 @@ CM5는 `docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_ko.md`의 보드 profile 
 ```text
 docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_ko.md
 docs/mf_dev/mf_change_history_ko.md
-docs/mf_dev/mf_bookworm_install_ko.md
+docs/mf_dev/mf_trixie_install_ko.md
 ```
 
 ## 목표
 
 새 디바이스에서 확인할 핵심 목표는 네 가지이다.
 
-1. `mf_pifinder` 브랜치가 새 OS에서 설치되는지 확인한다.
-2. CM5/Bookworm 대응 수정이 Raspberry Pi 4 동작을 깨지 않는지 확인한다.
+1. `main` 브랜치가 새 OS에서 설치되는지 확인한다.
+2. CM5/Trixie 대응 수정이 Raspberry Pi 4 동작을 깨지 않는지 확인한다.
 3. Raspberry Pi 5 계열은 `pi5_class` profile의 UART/GPS/SPI 경로를 타는지 확인한다.
 4. 문제가 생기면 로그를 남기고 같은 브랜치에 수정 커밋을 반영한다.
 
@@ -29,7 +33,7 @@ docs/mf_dev/mf_bookworm_install_ko.md
 권장 OS:
 
 ```text
-Raspberry Pi OS Bookworm 64-bit
+Raspberry Pi OS Trixie 64-bit
 ```
 
 Raspberry Pi Imager 설정:
@@ -76,7 +80,7 @@ groups
 기록 디렉터리를 만든다.
 
 ```bash
-mkdir -p ~/mf-pifinder-test-logs
+mkdir -p ~/mfnavis-test-logs
 ```
 
 초기 상태를 저장한다.
@@ -92,7 +96,7 @@ mkdir -p ~/mf-pifinder-test-logs
   groups
   nmcli device status 2>/dev/null || true
   ip addr
-} | tee ~/mf-pifinder-test-logs/00_initial_state.txt
+} | tee ~/mfnavis-test-logs/00_initial_state.txt
 ```
 
 ## 2. 소스 받기
@@ -102,8 +106,8 @@ sudo apt update
 sudo apt install -y git
 
 cd ~
-git clone --recursive --branch mf_pifinder https://github.com/hjoungjoo/MF_PiFinder.git PiFinder
-cd ~/PiFinder
+git clone --recursive --branch main https://github.com/hjoungjoo/MFNavis.git MFNavis
+cd ~/MFNavis
 ```
 
 브랜치와 커밋을 확인한다.
@@ -117,14 +121,14 @@ git submodule status
 기대 상태:
 
 ```text
-branch: mf_pifinder
-remote: hjoungjoo/MF_PiFinder
+branch: main
+remote: hjoungjoo/MFNavis
 ```
 
 ## 3. 호환성/변경 이력 문서 읽기
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 sed -n '1,220p' docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_ko.md
 sed -n '1,180p' docs/mf_dev/mf_change_history_ko.md
 ```
@@ -132,8 +136,8 @@ sed -n '1,180p' docs/mf_dev/mf_change_history_ko.md
 새 대화에서 Codex와 이어서 작업할 때는 아래 문장을 먼저 전달한다.
 
 ```text
-PiFinder CM5/Bookworm 작업을 새 Raspberry Pi 디바이스에서 테스트하려고 해.
-작업 브랜치는 hjoungjoo/MF_PiFinder의 mf_pifinder야.
+PiFinder CM5/Trixie 작업을 새 Raspberry Pi 디바이스에서 테스트하려고 해.
+저장소는 hjoungjoo/MFNavis이며 설치 브랜치는 main이야.
 docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_ko.md,
 docs/mf_dev/mf_pifinder_new_device_tasks_ko.md,
 docs/mf_dev/mf_change_history_ko.md를 읽고 이어서 진행해줘.
@@ -143,7 +147,7 @@ docs/mf_dev/mf_change_history_ko.md를 읽고 이어서 진행해줘.
 ## 4. 설치 전 상태 저장
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 
 {
   date
@@ -152,7 +156,7 @@ cd ~/PiFinder
   git remote -v
   ls -l /boot/config.txt /boot/firmware/config.txt 2>/dev/null || true
   grep -n "dtparam\|dtoverlay\|camera_auto_detect" /boot/config.txt /boot/firmware/config.txt 2>/dev/null || true
-} | tee ~/mf-pifinder-test-logs/01_before_install.txt
+} | tee ~/mfnavis-test-logs/01_before_install.txt
 ```
 
 ## 5. 설치 스크립트 실행
@@ -160,14 +164,14 @@ cd ~/PiFinder
 중요:
 
 ```text
-sudo ./pifinder_setup.sh 실행 금지
+sudo ./mfnavis_setup.sh 실행 금지
 ```
 
 설치 스크립트는 일반 사용자로 실행한다.
 
 ```bash
-cd ~/PiFinder
-./pifinder_setup.sh 2>&1 | tee ~/mf-pifinder-test-logs/02_pifinder_setup.log
+cd ~/MFNavis
+MFNAVIS_INSTALL_BRANCH=main bash ./mfnavis_setup.sh 2>&1 | tee ~/mfnavis-test-logs/02_mfnavis_setup.log
 ```
 
 설치 중 확인할 것:
@@ -175,7 +179,9 @@ cd ~/PiFinder
 - `apt-get install` 실패 여부
 - `dhcpcd` 패키지 설치 성공 여부
 - `gpsd` 설정 단계가 입력을 요구하거나 멈추는지
-- `pip install --break-system-packages` 실패 여부
+- `.venv-trixie` Python 3.13 / `requirements-trixie.txt` 설치 성공 여부
+- Trixie INDI 아카이브 checksum·OS·Python ABI 검증
+- MFDS 바이너리 설치와 앱·INDI 서비스 Python 선택
 - `hip_main.dat` 다운로드 성공 여부
 - service/Samba 템플릿 렌더링 성공 여부
 - 사용자 그룹 추가 성공 여부
@@ -185,10 +191,10 @@ cd ~/PiFinder
 ```bash
 {
   date
-  git -C ~/PiFinder status --short --branch
-  tail -n 120 ~/mf-pifinder-test-logs/02_pifinder_setup.log
-  systemctl status pifinder cedar_detect pifinder_splash --no-pager 2>/dev/null || true
-} | tee ~/mf-pifinder-test-logs/02_install_failed_summary.txt
+  git -C ~/MFNavis status --short --branch
+  tail -n 120 ~/mfnavis-test-logs/02_mfnavis_setup.log
+  systemctl status mfnavis mfnavis_splash indiwebmanager --no-pager 2>/dev/null || true
+} | tee ~/mfnavis-test-logs/02_install_failed_summary.txt
 ```
 
 ## 6. 재부팅 전 확인
@@ -198,13 +204,13 @@ cd ~/PiFinder
 ```bash
 {
   date
-  git -C ~/PiFinder status --short --branch
+  git -C ~/MFNavis status --short --branch
   groups
   ls -l /boot/config.txt /boot/firmware/config.txt 2>/dev/null || true
   grep -n "dtparam\|dtoverlay\|camera_auto_detect" /boot/config.txt /boot/firmware/config.txt 2>/dev/null || true
-  systemctl is-enabled pifinder cedar_detect pifinder_splash 2>/dev/null || true
-  systemctl status pifinder cedar_detect pifinder_splash --no-pager 2>/dev/null || true
-} | tee ~/mf-pifinder-test-logs/03_before_reboot.txt
+  systemctl is-enabled mfnavis mfnavis_splash indiwebmanager 2>/dev/null || true
+  systemctl status mfnavis mfnavis_splash indiwebmanager --no-pager 2>/dev/null || true
+} | tee ~/mfnavis-test-logs/03_before_reboot.txt
 ```
 
 원격 접속이 Wi-Fi뿐이면 재접속 방법을 먼저 확인한다.
@@ -222,17 +228,17 @@ sudo reboot
 재접속 후:
 
 ```bash
-mkdir -p ~/mf-pifinder-test-logs
+mkdir -p ~/mfnavis-test-logs
 
 {
   date
   hostname -I
   groups
-  systemctl status pifinder cedar_detect pifinder_splash --no-pager
-} | tee ~/mf-pifinder-test-logs/04_after_reboot_services.txt
+  systemctl status mfnavis mfnavis_splash indiwebmanager --no-pager
+} | tee ~/mfnavis-test-logs/04_after_reboot_services.txt
 
-journalctl -u pifinder -b --no-pager > ~/mf-pifinder-test-logs/04_pifinder_after_reboot.log
-journalctl -u cedar_detect -b --no-pager > ~/mf-pifinder-test-logs/04_cedar_detect_after_reboot.log
+journalctl -u mfnavis -b --no-pager > ~/mfnavis-test-logs/04_mfnavis_after_reboot.log
+journalctl -u indiwebmanager -b --no-pager > ~/mfnavis-test-logs/04_indiwebmanager_after_reboot.log
 ```
 
 ## 8. 하드웨어 연결 순서
@@ -250,7 +256,7 @@ journalctl -u cedar_detect -b --no-pager > ~/mf-pifinder-test-logs/04_cedar_dete
 각 단계마다 연결 후 로그를 확인한다.
 
 ```bash
-journalctl -u pifinder -b -n 200 --no-pager
+journalctl -u mfnavis -b -n 200 --no-pager
 ```
 
 ## 9. LCD / 키패드 / IMU 확인
@@ -277,7 +283,7 @@ i2cdetect -y 1
   date
   ls -l /dev/i2c-* /dev/spidev* 2>/dev/null || true
   i2cdetect -y 1 || true
-} | tee ~/mf-pifinder-test-logs/05_lcd_keypad_imu.txt
+} | tee ~/mfnavis-test-logs/05_lcd_keypad_imu.txt
 ```
 
 ## 10. 카메라 확인
@@ -293,7 +299,7 @@ rpicam-hello --list-cameras
 카메라 타입 전환이 필요하면:
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 sudo python3 python/PiFinder/switch_camera.py imx477
 # 또는 imx296 / imx462
 sudo reboot
@@ -303,8 +309,8 @@ sudo reboot
 
 ```bash
 rpicam-hello --list-cameras
-rpicam-still -o ~/mf-pifinder-test-logs/camera-test.jpg --timeout 2000
-journalctl -u pifinder -b -n 300 --no-pager | tee ~/mf-pifinder-test-logs/06_camera_journal.txt
+rpicam-still -o ~/mfnavis-test-logs/camera-test.jpg --timeout 2000
+journalctl -u mfnavis -b -n 300 --no-pager | tee ~/mfnavis-test-logs/06_camera_journal.txt
 ```
 
 확인할 것:
@@ -354,7 +360,7 @@ Pi4 + `uart3` overlay 기준:
   date
   ls -l /dev/serial* /dev/ttyAMA* /dev/ttyUSB* /dev/ttyACM* 2>/dev/null || true
   systemctl status gpsd gpsd.socket --no-pager || true
-} | tee ~/mf-pifinder-test-logs/07_gps.txt
+} | tee ~/mfnavis-test-logs/07_gps.txt
 ```
 
 ## 12. USB/Bluetooth 키보드 확인
@@ -397,10 +403,10 @@ Settings > Advanced > Bluetooth
 - `/dev/input`에 키보드 event 장치가 없고 `bluetoothd`에 HID Information 또는
   Report Reference read 실패가 보이면 PiFinder 입력 매핑 이전의 BlueZ/HID
   연결 문제로 분류한다.
-- Pi4 Bookworm에서 `K06 BLE Keyboard`는 `/etc/bluetooth/input.conf`의
+- 과거 Pi4 Bookworm 실측에서 `K06 BLE Keyboard`는 `/etc/bluetooth/input.conf`의
   `UserspaceHID=true`, `LEAutoSecurity=true` 적용 후 event 장치가 생성됐다.
   기존 설치에서는 설정 변경 뒤 `sudo systemctl restart bluetooth`와
-  `sudo systemctl restart pifinder`를 실행한다.
+  `sudo systemctl restart mfnavis`를 실행한다.
 - `libinput debug-events --device /dev/input/eventX`로 실제 키 이벤트가 들어오는지
   확인한다.
 
@@ -424,7 +430,7 @@ Settings > User Pref... > Language > Korean
 문제가 생기면 아래 명령을 실행하고 출력 또는 파일을 전달한다.
 
 ```bash
-mkdir -p ~/mf-pifinder-test-logs
+mkdir -p ~/mfnavis-test-logs
 
 {
   date
@@ -434,24 +440,24 @@ mkdir -p ~/mf-pifinder-test-logs
   python3 --version
   id
   groups
-  git -C ~/PiFinder status --short --branch
-  git -C ~/PiFinder log --oneline --decorate -n 5
-  git -C ~/PiFinder rev-parse HEAD
+  git -C ~/MFNavis status --short --branch
+  git -C ~/MFNavis log --oneline --decorate -n 5
+  git -C ~/MFNavis rev-parse HEAD
   ls -l /boot/config.txt /boot/firmware/config.txt 2>/dev/null || true
   grep -n "dtparam\|dtoverlay\|camera_auto_detect" /boot/config.txt /boot/firmware/config.txt 2>/dev/null || true
   ls -l /dev/i2c-* /dev/spidev* /dev/serial* /dev/ttyAMA* /dev/ttyUSB* /dev/ttyACM* /dev/video* /dev/media* /dev/input/event* 2>/dev/null || true
-  systemctl status pifinder cedar_detect pifinder_splash gpsd gpsd.socket --no-pager || true
-} | tee ~/mf-pifinder-test-logs/problem-summary.txt
+  systemctl status mfnavis mfnavis_splash indiwebmanager gpsd gpsd.socket --no-pager || true
+} | tee ~/mfnavis-test-logs/problem-summary.txt
 
-journalctl -u pifinder -b --no-pager > ~/mf-pifinder-test-logs/problem-pifinder.log
-journalctl -u cedar_detect -b --no-pager > ~/mf-pifinder-test-logs/problem-cedar-detect.log
-dmesg > ~/mf-pifinder-test-logs/problem-dmesg.log
+journalctl -u mfnavis -b --no-pager > ~/mfnavis-test-logs/problem-mfnavis.log
+journalctl -u indiwebmanager -b --no-pager > ~/mfnavis-test-logs/problem-indiwebmanager.log
+dmesg > ~/mfnavis-test-logs/problem-dmesg.log
 ```
 
 Codex에게 전달할 때는 아래처럼 시작한다.
 
 ```text
-새 Pi4 디바이스에서 mf_pifinder 브랜치 테스트 중 문제가 생겼어.
+새 Pi4 디바이스에서 MFNavis Trixie 변경을 테스트하던 중 문제가 생겼어.
 docs/mf_dev/mf_pifinder_new_device_tasks_ko.md 기준으로 진행했고,
 문제는 <간단한 설명>이야.
 아래 로그를 확인해서 수정해줘.
@@ -462,7 +468,7 @@ docs/mf_dev/mf_pifinder_new_device_tasks_ko.md 기준으로 진행했고,
 문제를 수정한 뒤:
 
 ```bash
-cd ~/PiFinder
+cd ~/MFNavis
 git status --short
 git add -A
 git commit -m "Fix Pi4 <problem summary>"
@@ -473,21 +479,21 @@ git push
 
 ```bash
 git commit -m "Fix Pi4 SPI display detection"
-git commit -m "Fix setup package install on Bookworm"
+git commit -m "Fix setup package install on Trixie"
 git commit -m "Update Pi4 install checklist"
 ```
 
-`mf_pifinder` 브랜치에 Draft PR이 열려 있으면 push 후 PR 내용은 자동으로 갱신된다.
+장비 수정 사항의 PR 대상 브랜치는 `main`이다.
 
 ## 16. PR 준비
 
 GitHub에서 Pull Request를 만들 때:
 
 ```text
-base repository: brickbots/PiFinder
+base repository: hjoungjoo/MFNavis
 base branch: main
-head repository: hjoungjoo/MF_PiFinder
-compare branch: mf_pifinder
+head repository: hjoungjoo/MFNavis
+compare branch: <your-fix-branch>
 ```
 
 처음에는 Draft PR로 만든다.
@@ -496,12 +502,12 @@ Pi4 테스트가 끝난 뒤:
 
 - 남은 문제 목록을 정리한다.
 - 큰 변경을 기능별 PR로 나눌지 관리자와 상의한다.
-- 리뷰 요청 전 `mf_pifinder` 브랜치의 최신 로그와 테스트 결과를 PR 본문에 정리한다.
+- 리뷰 요청 전 `main` 브랜치의 최신 로그와 테스트 결과를 PR 본문에 정리한다.
 
 ## 17. 금지 또는 주의 작업
 
 - 원격 접속만 가능한 상태에서 네트워크 전환 메뉴를 무작정 테스트하지 않는다.
-- `sudo ./pifinder_setup.sh`로 설치 스크립트를 실행하지 않는다.
+- `sudo ./mfnavis_setup.sh`로 설치 스크립트를 실행하지 않는다.
 - `/usr/bin/python3`를 다른 버전으로 바꾸지 않는다.
 - 원본 `brickbots/PiFinder`의 `release`나 `main`에 직접 push하지 않는다.
 - 인증 토큰이나 GitHub token을 채팅에 붙여넣지 않는다.

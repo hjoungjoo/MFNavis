@@ -1,5 +1,10 @@
 # MF_PiFinder 기능 검토 및 테스트 체크리스트
 
+플랫폼 항목은 2026-09-27 Trixie/Python 3.13 기준으로 갱신했다.
+나머지 upstream 비교는 당시 검토 기준을 보존한다. 현재 설치·실테스트 범위는
+[Trixie 안내](mf_trixie_install_ko.md)를 참고하며, 아래 미체크 항목은
+검증 완료를 의미하지 않는다.
+
 작성일: 2026-07-03 / 전면 갱신: 2026-08-05
 
 이 문서는 `brickbots/PiFinder` `main` 브랜치와 현재 `main` 브랜치를 비교해,
@@ -24,7 +29,7 @@ MF_PiFinder에 추가되었거나 원본과 다르게 수정된 기능을 검토
   - Rev-4 battery/sound/power hardware enablement 전체 패치
   - bring-up 벤치 도구, keypad matrix 분리, NixOS 릴리즈 CI
 - MF에 추가/수정된 주요 영역 (§1–§15 = 7/3 기준, §17–§25 = 이후 추가):
-  - Bookworm/RPi4/RPi5/CM5 설치 및 보드 profile
+  - Trixie/RPi4/RPi5/CM5 설치 및 보드 profile
   - AP+STA Wi-Fi / Bluetooth·USB HID keyboard / 조이스틱
   - Red Night/PWA Web UI / 웹 카탈로그·통합검색 / Locations catalog
   - chronyd 중심 시간 관리
@@ -44,7 +49,7 @@ MF_PiFinder에 추가되었거나 원본과 다르게 수정된 기능을 검토
 
 - `docs/mf_dev/mf_upstream_patch_reference_ko.md`: upstream 재동기화와 패치 재적용 기준
 - `docs/mf_dev/mf_change_history_ko.md`: 전체 변경 히스토리
-- `docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_ko.md`: Pi4/Pi5/CM5 Bookworm 호환성 요약
+- `docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_ko.md`: Pi4/Pi5/CM5 Trixie 호환성 요약
 - `docs/mf_dev/mf_indi_mount_install_ko.md`: INDI 설치/운영
 - `docs/mf_dev/mf_wifi_apsta_ko.md`: AP+STA Wi-Fi
 - `docs/mf_dev/mf_time_sync_ko.md`: 시간 동기화
@@ -58,15 +63,15 @@ MF_PiFinder에 추가되었거나 원본과 다르게 수정된 기능을 검토
 | P1 | 주요 기능. 실제 장비나 네트워크 환경에서 테스트 권장 |
 | P2 | 보조 기능 또는 문서/개발 편의. 회귀 확인 위주 |
 
-## 1. Platform / Bookworm / Raspberry Pi 4, 5, CM5 호환성
+## 1. Platform / Trixie / Raspberry Pi 4, 5, CM5 호환성
 
 우선순위: P0
 
 주요 변경:
 
-- Bookworm 64-bit 기본 설치 경로 지원
+- Trixie 64-bit 기본 설치 경로 지원
 - `/boot/firmware/config.txt` 우선, legacy `/boot/config.txt` fallback
-- 현재 OS 사용자 기준으로 `PiFinder_data`, systemd, Samba 경로 처리
+- 현재 OS 사용자 기준으로 `MFNavis_data`, systemd, Samba 경로 처리
 - Pi4/Pi5/CM5 보드별 GPS UART profile
 - Pi5/CM5에서 OLED CS 충돌을 피하기 위한 `uart2-pi5` 사용
 - `/dev/spidev0.0`, `/dev/spidev10.0` 양쪽 SPI 지원
@@ -74,22 +79,22 @@ MF_PiFinder에 추가되었거나 원본과 다르게 수정된 기능을 검토
 
 주요 파일:
 
-- `pifinder_paths.sh`
-- `pifinder_setup.sh`
-- `pifinder_update.sh`
-- `pifinder_post_update.sh`
-- `python/PiFinder/board_config.py`
-- `python/PiFinder/boot_config.py`
-- `python/PiFinder/hardware_detect.py`
-- `python/PiFinder/displays.py`
-- `python/PiFinder/main.py`
-- `python/PiFinder/splash.py`
-- `python/PiFinder/sys_utils.py`
+- `mfnavis_paths.sh`
+- `mfnavis_setup.sh`
+- `mfnavis_update.sh`
+- `mfnavis_post_update.sh`
+- `python/MFNavis/board_config.py`
+- `python/MFNavis/boot_config.py`
+- `python/MFNavis/hardware_detect.py`
+- `python/MFNavis/displays.py`
+- `python/MFNavis/main.py`
+- `python/MFNavis/splash.py`
+- `python/MFNavis/sys_utils.py`
 - `pi_config_files/*.service`
 
 검토 포인트:
 
-- [ ] 새 OS 설치 후 `pifinder_setup.sh`가 일반 사용자로 끝까지 실행되는가
+- [ ] 새 OS 설치 후 `mfnavis_setup.sh`가 일반 사용자로 끝까지 실행되는가
 - [ ] Pi4에서 `gps_port=auto`가 `/dev/ttyAMA3`로 해석되는가
 - [ ] Pi5/CM5에서 `gps_port=auto`가 `/dev/ttyAMA2`로 해석되는가
 - [ ] boot config가 실제 사용 중인 경로에 적용되는가
@@ -100,9 +105,9 @@ MF_PiFinder에 추가되었거나 원본과 다르게 수정된 기능을 검토
 
 테스트 항목:
 
-- [ ] Pi4 Bookworm 64-bit fresh install
-- [ ] Pi5 또는 CM5 Bookworm 64-bit fresh install
-- [ ] `systemctl status pifinder cedar_detect pifinder_splash`
+- [ ] Pi4 Trixie 64-bit fresh install
+- [ ] Pi5 또는 CM5 Trixie 64-bit fresh install
+- [ ] `systemctl status mfnavis mfnavis_splash indiwebmanager`
 - [ ] `ls /dev/spidev* /dev/ttyAMA*`
 - [ ] Web UI 접속
 - [ ] LCD/OLED splash 표시

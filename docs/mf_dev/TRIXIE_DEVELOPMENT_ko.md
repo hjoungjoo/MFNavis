@@ -87,6 +87,14 @@ python -m debugpy --listen 127.0.0.1:5678 --wait-for-client \
 동일 장치의 카메라·GPIO·웹 포트를 사용하는 운영 서비스와 실행 시간을 조정한다.
 Selenium 브라우저 검증에는 저장소 테스트 안내의 별도 Selenium Grid가 필요하다.
 
+## CI 검사 범위
+
+`main` push와 PR에서 Python 3.13의 lint·format·Sphinx 문서 빌드 및
+INDI 아카이브 플랫폼·검증·설치 선택 테스트를 실행한다. 이 검사는 arm64
+wheel이나 Pi 장비 없이 실행할 수 있는 범위다. 전체 앱 회귀는 설치된
+Trixie 개발 환경에서 실행하며, 기존 Python 3.11 CI는 Bookworm 호환성을
+확인한다. 수동 실행하는 Selenium workflow도 기존 Python 3.11 환경이다.
+
 ## Graft와 셸 검사
 
 ```bash
@@ -132,4 +140,4 @@ MFDS는 고정된 바이너리 릴리즈를 사용한다. 다운로드된 `pytho
 `pip-check.log`와 `production-pip-check.log`다.
 
 개발 설치 requirements, 설치·활성화 스크립트, Nox 설정과 문서는
-Trixie 브랜치에서 함께 관리한다.
+MFNavis 저장소에서 함께 관리한다.

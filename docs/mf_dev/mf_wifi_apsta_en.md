@@ -52,7 +52,7 @@ A system restart is required after changing the mode.
 
 ## STA Network Import
 
-On a fresh Raspberry Pi OS Bookworm install, the Wi-Fi configured by Raspberry Pi Imager may be stored as a NetworkManager profile instead of `/etc/wpa_supplicant/wpa_supplicant.conf`.
+On a fresh Raspberry Pi OS Trixie install, the Wi-Fi configured by Raspberry Pi Imager may be stored as a NetworkManager profile instead of `/etc/wpa_supplicant/wpa_supplicant.conf`.
 
 PiFinder imports these OS-provisioned profiles during setup and post-update migration so they appear in the saved STA network list. The web UI also reads NetworkManager profiles directly when possible, so the initial OS Wi-Fi can be shown even before it is rewritten into `wpa_supplicant`.
 

@@ -1,5 +1,7 @@
 # MF PiFinder
 
+> Historical archive. Current MFNavis installation uses [Trixie 64-bit](README.md).
+
 [English](./README.md) | [한국어](./README_ko.md)
 
 MF PiFinder is based on the original [PiFinder™](https://github.com/brickbots/PiFinder)

@@ -18,7 +18,7 @@ linked document for design details, limitations, and validation status.
 
 | Feature | Description | Documentation |
 | --- | --- | --- |
-| Bookworm 64-bit setup | Pi 4, Pi 5, and CM5 installation, services, and boot configuration | [Release/main installation](../../README.md#2-install-mf-pifinder-release-or-main) |
+| Trixie 64-bit setup | Pi 4, Pi 5, and CM5 installation, services, and boot configuration | [Release/main installation](../../README.md#2-install-mfnavis-release-or-main) |
 | Board compatibility | Pi 4/Pi 5/CM5 SPI, UART, and camera differences | [Korean platform guide](mf_pifinder_rpi4_pi5_compatibility_ko.md) |
 | AP+STA networking | Use an access point alongside an existing Wi-Fi connection | [Korean AP+STA guide](mf_wifi_apsta_ko.md) |
 | Time synchronization | chronyd and GPS-based time management | [Korean time-sync guide](mf_time_sync_ko.md) |

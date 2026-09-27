@@ -67,13 +67,17 @@ pytest -m integration # End-to-end integration tests
 
 **Development setup:**
 ```bash
-cd python/
-python3.9 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install -r requirements_dev.txt
+cd ~/MFNavis
+bash scripts/setup_dev_trixie.sh
+source scripts/activate_dev_trixie.sh
 ```
-If the .venv dir already exists, you can directly source it and run the app.
+The installation baseline is Raspberry Pi OS Trixie 64-bit / Python 3.13.
+Setup uses `.venv-trixie` for runtime and `.venv-dev-trixie` for development.
+Activation selects Python 3.13 for Nox and changes into `python/`; dependencies
+come from `requirements_dev-trixie.txt` and `requirements_docs-trixie.txt`.
+See [Trixie installation](docs/mf_dev/mf_trixie_install_en.md) and
+[Trixie development](docs/mf_dev/TRIXIE_DEVELOPMENT_ko.md).
+For existing development environments, source `scripts/activate_dev_trixie.sh`.
 
 
 Watch out for .venv directories containing virtual environments, that you need to activate first. 
@@ -85,15 +89,14 @@ This main branch starts persistent native MF child workers automatically, with
 private memfd image memory. It needs no Cedar server or additional systemd unit.
 `MF_DETECT_TRANSPORT=ctypes` is an explicit comparison mode; process is default.
 
-Development setup has to have run and you should be in .venv virtual environment
+Development setup must be complete; activate `.venv-dev-trixie` first.
 ```bash
-cd python/
-python -m PiFinder.main [options]
+python -m MFNavis.main [options]
 ```
 Usual startup:
 
 ```bash
-python3.9 -m PiFinder.main -fh --camera debug --keyboard local -x
+python -m MFNavis.main -fh --camera debug --keyboard local -x
 ```
 
 ## Reference Documentation

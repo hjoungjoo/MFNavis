@@ -2,6 +2,12 @@
 Software Setup
 ==============
 
+.. note::
+
+   This page preserves the original PiFinder image and Bullseye installation
+   procedure. Current MFNavis installations use Trixie 64-bit / Python 3.13;
+   follow :doc:`the MFNavis product guide <mfnavis>` for installation.
+
 Once you've built or otherwise obtained a PiFinder, set up a fresh SD card to run it.  The recommended way is to download the current prebuilt release image, then use the Raspberry Pi imager to write it to the card and set up your WiFi.  If you prefer, build an image from scratch by following the instructions below.
 
 Prebuilt Release Image

@@ -1,5 +1,9 @@
 # MF_PiFinder Bookworm 64-bit 설치 매뉴얼
 
+> 과거 Bookworm 설치 기록입니다. 현재 설치는
+> [MFNavis Trixie 64-bit 안내](mf_trixie_install_ko.md)를 따릅니다.
+> 아래 절차와 장비 상태는 당시 PiFinder 설치 환경을 기록한 것입니다.
+
 이 문서는 Raspberry Pi Compute Module 5(CM5), Raspberry Pi OS Bookworm
 64-bit 환경에 brickbots/PiFinder `release` 브랜치를 설치한 절차를 정리한
 것입니다. CM5 실기 설치를 기준으로 작성했으며, `mf_pifinder` 브랜치의 Pi4/Pi5/CM5

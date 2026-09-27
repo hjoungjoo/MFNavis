@@ -1,5 +1,8 @@
 # MF_PiFinder upstream 패치 기준 문서
 
+> 아래 OS 언급은 당시 설계·전환 기준이다. 현재 MFNavis 설치는
+> [Trixie 64-bit / Python 3.13 안내](mf_trixie_install_ko.md)를 따른다.
+
 작성일: 2026-07-03
 
 이 문서는 `brickbots/PiFinder` 원본 소스가 변경되었을 때 `mf_pifinder`

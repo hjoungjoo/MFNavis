@@ -1,5 +1,8 @@
 # MF_PiFinder Upstream Patch Reference
 
+> OS references below describe the dated design/migration baseline. Current
+> MFNavis installation uses [Trixie 64-bit / Python 3.13](mf_trixie_install_en.md).
+
 Created: 2026-07-03
 
 This document is a practical reference for future sync work from

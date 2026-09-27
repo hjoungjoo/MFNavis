@@ -9,7 +9,7 @@ See [third-party notices](THIRD_PARTY_NOTICES.md) and [release policy](docs/MFNA
 [English](./README.md) | [한국어](./README_ko.md)
 
 MFNavis is based on the original [PiFinder™](https://github.com/brickbots/PiFinder)
-and supports Raspberry Pi OS Bookworm 64-bit on Pi 4, Pi 5, and CM5. It adds
+and supports Raspberry Pi OS Trixie 64-bit on Pi 4, Pi 5, and CM5. It adds
 practical features including web catalogs, optional INDI mount control, and
 operational documentation. The original creator's project description and
 basic references remain in [the upstream archive](README.upstream.md).
@@ -21,10 +21,16 @@ The default developer MFDS lock is not a commercial package.
 
 ### 1. Prepare Raspberry Pi OS
 
-Install **Raspberry Pi OS Bookworm 64-bit** on the Pi 4, Pi 5, or CM5 boot
+Install **Raspberry Pi OS Trixie 64-bit** on the Pi 4, Pi 5, or CM5 boot
 media with Raspberry Pi Imager. Configure a username, hostname, SSH, and Wi-Fi
 before first boot, then log in as that user and confirm internet access.
-Choose Bookworm explicitly for this installation.
+Choose Trixie explicitly for this installation. The runtime uses Python 3.13
+in `.venv-trixie`; the detailed [Trixie installation guide](docs/mf_dev/mf_trixie_install_en.md)
+explains the runtime, INDI archive, and development setup.
+
+The `main` installation below uses Trixie. For a published tag, follow its
+stated OS requirements; older Bookworm releases require their matching OS
+and archive.
 
 See the [Raspberry Pi OS installation instructions](https://www.raspberrypi.com/documentation/computers/getting-started.html#install-an-operating-system)
 for imaging and first boot, and the [board compatibility guide](./docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_ko.md)
@@ -121,9 +127,11 @@ configuration changes. Use the full setup commands above to update `main` or
 a release.
 
 See the [MFDS binary installation guide](./docs/MFDS_BINARY_DISTRIBUTION_ko.md)
-for package details. INDI mount support is optional: setup installs it only
-when an INDI archive is available/configured; otherwise follow the
-[INDI installation guide](./docs/mf_dev/mf_indi_mount_install_en.md).
+for package details. Setup requires and verifies the INDI archive matching the
+OS by default; it stops if the archive is missing or incompatible. Mount control
+remains disabled until enabled in the app. See the
+[INDI installation guide](./docs/mf_dev/mf_indi_mount_install_en.md), including
+`MFNAVIS_INSTALL_INDI_ARCHIVE=false` for an installation without INDI.
 
 ### 3. Download offline caches
 

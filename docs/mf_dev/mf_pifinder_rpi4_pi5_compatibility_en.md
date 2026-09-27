@@ -1,15 +1,18 @@
-# MF_PiFinder Raspberry Pi 4/5 Bookworm Compatibility Summary
+# MFNavis Raspberry Pi 4/5 Trixie Compatibility Summary
 
-Date: 2026-06-26
+Date: 2026-06-26 / updated: 2026-09-27
 
-This note summarizes how the `mf_pifinder` branch handles Raspberry Pi 4 and
+This note summarizes how the `main` branch handles Raspberry Pi 4 and
 Raspberry Pi 5-class boards (Pi 5 and CM5) through the same install/runtime flow
-on Raspberry Pi OS Bookworm 64-bit.
+on Raspberry Pi OS Trixie 64-bit.
+
+For the runtime venv and `main` installation commands, follow the
+[Trixie installation guide](mf_trixie_install_en.md).
 
 ## Summary
 
-- New installs still run `pifinder_setup.sh` as the normal OS user.
-- On Bookworm, the active boot config is `/boot/firmware/config.txt`; legacy OS
+- New installs still run `mfnavis_setup.sh` as the normal OS user.
+- On Trixie, the active boot config is `/boot/firmware/config.txt`; legacy OS
   images fall back to `/boot/config.txt`.
 - The default GPS port setting is `gps_port: auto`; the board profile resolves
   the real port.
@@ -17,7 +20,7 @@ on Raspberry Pi OS Bookworm 64-bit.
   conflict.
 - Pi4 keeps the existing PiFinder SPI/OLED path and uses `/dev/ttyAMA3` for GPS
   UART.
-- Bluetooth HID keyboards on Bookworm BlueZ need userspace HID enabled so a
+- Bluetooth HID keyboards on Trixie BlueZ need userspace HID enabled so a
   stable `/dev/input/event*` device is created.
 
 ## Board Profiles
@@ -32,28 +35,28 @@ on Raspberry Pi OS Bookworm 64-bit.
 
 Shell install path:
 
-- `pifinder_paths.sh`
-- `pifinder_board_model()`: reads `/proc/device-tree/model`.
-- `pifinder_board_profile()`: returns `pi5_class`, `pi4`, or `legacy`.
-- `pifinder_uart_overlay()`: returns the UART overlay to add to boot config.
-- `pifinder_gps_device()`: returns the initial `/etc/default/gpsd` `DEVICES`
+- `mfnavis_paths.sh`
+- `mfnavis_board_model()`: reads `/proc/device-tree/model`.
+- `mfnavis_board_profile()`: returns `pi5_class`, `pi4`, or `legacy`.
+- `mfnavis_uart_overlay()`: returns the UART overlay to add to boot config.
+- `mfnavis_gps_device()`: returns the initial `/etc/default/gpsd` `DEVICES`
   value.
 
 Python runtime path:
 
-- `python/PiFinder/board_config.py`
+- `python/MFNavis/board_config.py`
 - `BoardProfile`: groups each board's `gps_device` and `uart_overlay`.
 - `get_board_profile()`: returns the runtime board profile.
 - `get_default_gpsd_device()`: resolves `gps_port: auto` to the real gpsd device.
 
 Other hardware abstraction:
 
-- `python/PiFinder/boot_config.py`: returns the active boot config path.
-- `python/PiFinder/displays.py`: selects the first available SPI device from
+- `python/MFNavis/boot_config.py`: returns the active boot config path.
+- `python/MFNavis/displays.py`: selects the first available SPI device from
   `/dev/spidev0.0` and `/dev/spidev10.0`.
-- `python/PiFinder/sys_utils.py`: synchronizes GPS port/baud settings to
+- `python/MFNavis/sys_utils.py`: synchronizes GPS port/baud settings to
   `/etc/default/gpsd`.
-- `python/PiFinder/ui/menu_structure.py`: exposes `Auto`, `ttyAMA1`, `ttyAMA2`,
+- `python/MFNavis/ui/menu_structure.py`: exposes `Auto`, `ttyAMA1`, `ttyAMA2`,
   `ttyAMA3`, and USB serial candidates in the `GPS Port` menu.
 
 The shell and Python profile detection are intentionally separate because the
@@ -63,11 +66,11 @@ covered by unit tests.
 
 ## Install-Time Behavior
 
-`pifinder_setup.sh` applies these board/OS-aware settings:
+`mfnavis_setup.sh` applies these board/OS-aware settings:
 
-- Installs the required Bookworm packages.
+- Installs the required Trixie packages.
 - Sets the initial gpsd device in `/etc/default/gpsd`.
-- Creates `PiFinder_data` directories owned by the current OS user.
+- Creates `MFNavis_data` directories owned by the current OS user.
 - Creates `/etc/wpa_supplicant/wpa_supplicant.conf` if it is missing.
 - Adds SPI/I2C/PWM/UART settings to `/boot/firmware/config.txt` or
   `/boot/config.txt`.
@@ -105,18 +108,18 @@ Bluetooth keyboard:
 ## Verification Commands
 
 ```bash
-cd ~/PiFinder
-bash -n pifinder_paths.sh pifinder_setup.sh
+cd ~/MFNavis
+bash -n mfnavis_paths.sh mfnavis_setup.sh
 
-source ./pifinder_paths.sh
-pifinder_board_profile
-pifinder_uart_overlay
-pifinder_gps_device
+source ./mfnavis_paths.sh
+mfnavis_board_profile
+mfnavis_uart_overlay
+mfnavis_gps_device
 
-cd python
-python3 -m ruff check PiFinder tests
-python3 -m pytest tests/test_sys_utils.py -q
-python3 -m pytest -m smoke
+source scripts/activate_dev_trixie.sh
+python -m ruff check MFNavis tests
+python -m pytest tests/test_sys_utils.py -q
+python -m pytest -m smoke
 ```
 
 Hardware status checks:
@@ -125,7 +128,7 @@ Hardware status checks:
 ls -l /boot/config.txt /boot/firmware/config.txt 2>/dev/null || true
 grep -n "dtparam\|dtoverlay\|camera_auto_detect" /boot/config.txt /boot/firmware/config.txt 2>/dev/null || true
 ls -l /dev/i2c-* /dev/spidev* /dev/ttyAMA* /dev/ttyUSB* /dev/ttyACM* /dev/input/event* 2>/dev/null || true
-systemctl status pifinder cedar_detect pifinder_splash gpsd gpsd.socket bluetooth --no-pager
+systemctl status mfnavis mfnavis_splash indiwebmanager gpsd gpsd.socket bluetooth --no-pager
 ```
 
 ## Current Hardware Status
@@ -133,6 +136,8 @@ systemctl status pifinder cedar_detect pifinder_splash gpsd gpsd.socket bluetoot
 - CM5 Bookworm 64-bit: used as the baseline for Pi 5-class support.
 - Raspberry Pi 4 Bookworm 64-bit: install, services, camera, GPS UART detection,
   and Bluetooth HID keyboard event creation have been verified.
-- A separate Raspberry Pi 5 Model B hardware test is still pending. Pi 5 and CM5
-  use the same `pi5_class` profile, so install/runtime defaults already follow
-  the same path.
+- Raspberry Pi 5 Trixie/Python 3.13: installation, runtime services, and
+  OnStepX checks were performed on 2026-09-26/27. The user reported no major
+  problems in the 2026-09-27 GoTo field test.
+- Pi 4 and CM5 Trixie hardware validation remains separate from the earlier
+  Bookworm results. Shared profiles do not establish hardware test coverage.

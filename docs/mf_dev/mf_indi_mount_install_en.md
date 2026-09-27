@@ -1,16 +1,20 @@
 # MFNavis INDI Mount Control
 
-This document covers the optional INDI mount-control work for Raspberry Pi 4 and Raspberry Pi 5 Bookworm 64-bit builds.
+This document covers the optional INDI mount-control work for Raspberry Pi 4, Pi 5, and CM5 Trixie 64-bit installations.
 
 The feature is disabled by default. Normal MFNavis installs do not import PyIndi or start the INDI mount-control process unless `mount_control` is enabled in the MFNavis config.
 
-The installer has been validated on a Raspberry Pi 4 Model B running Bookworm 64-bit. Raspberry Pi 5 and CM5 use the same Bookworm 64-bit packages and aarch64 build path, and the script does not contain Pi 4-only paths or model-specific branches.
+Trixie/Python 3.13 installation and OnStepX operation have been checked on
+Raspberry Pi 5. The user reported no major problems in the 2026-09-27 GoTo
+field test. Earlier Pi 4 validation used Bookworm; it does not establish
+Trixie hardware validation for Pi 4 or CM5. See the
+[Trixie installation guide](mf_trixie_install_en.md) for the current baseline.
 
 ## Status
 
 INDI mount control is experimental. Test with the INDI Telescope Simulator first, then test with the real mount in a safe indoor setup before using it under the sky.
 
-The first integrated scope includes:
+Current support includes:
 
 - INDI server connection through PyIndi
 - telescope/mount device detection
@@ -20,24 +24,50 @@ The first integrated scope includes:
 - stop command
 - small manual RA/Dec offset moves
 
-Automatic target refinement, drift compensation, and alignment-subsystem management from the older reference branch are not enabled in this first modular port.
+GoTo refinement and tracking-guide behavior are described in the
+[GoTo/Guide flow](mf_indi_goto_guide_plan_en.md) and
+[multi-point alignment guide](mf_multipoint_align_flow_en.md). On a plate-solve
+outage, the current GoTo flow can use IMU alignment or an already aligned mount
+and continue native GoTo/tracking; fresh solves allow refinement to resume.
+Sync rejection is reported rather than treated as successful alignment.
+
+For a connected OnStepX profile, `INDI > Settings` displays and edits horizon,
+overhead altitude, and East/West meridian limits. On an Alt/Az mount, the
+meridian values are INDI driver values, not independently verified controller
+readback. See the [limit-setting validation record](../mf_report/mfnavis_trixie_indi_limits_20260927_ko.md)
+for the tested scope.
 
 ## Install INDI Support
 
-The default installation path is the **shared Pi 4/Pi 5 binary archive**. The
-Bookworm 64-bit/aarch64 archive shipped with MFNavis installs the validated
-INDI core, third-party drivers, PyIndi, and MFNavis OnStepX patch set together.
-Use the full source install and build below only when modifying the source or
-changing/testing driver patches.
+The default installation path is the **OS-specific aarch64 binary archive**.
+The Trixie archive installs INDI core, third-party drivers, PyIndi, and the
+MFNavis OnStepX patches. Use a source build only when changing drivers or
+patches.
+
+Archives are separate: **Bookworm/aarch64/Python 3.11** uses the existing v1
+format; **Trixie/aarch64/Python 3.13** uses v2. The installer checks the OS and
+Python ABI. Renaming a Bookworm archive cannot make it compatible with Trixie.
+Trixie archives include native binaries, apt runtime package lists derived
+from ELF dependencies, pinned Python wheels, and standalone installer tools.
+Python wheels install offline into a virtual environment; native runtime
+packages use Trixie apt.
 
 ```bash
 cd ~/MFNavis
 bash scripts/install_indi_mount_archive.sh \
-  dist/mfnavis-indi-bookworm-arm64-v2.2.3.1-current.tar.gz
+  dist/mfnavis-indi-trixie-arm64-v2.2.3.1-current.tar.gz --verify-only
+MFNAVIS_PYTHON="$PWD/.venv-trixie/bin/python" \
+  bash scripts/install_indi_mount_archive.sh \
+  dist/mfnavis-indi-trixie-arm64-v2.2.3.1-current.tar.gz
 ```
 
-During a full `mfnavis_setup.sh` install, this archive path is selected
-automatically when an archive is in `dist/` or `MFNAVIS_INDI_ARCHIVE` is set.
+Use the app's virtual-environment Python for `MFNAVIS_PYTHON`. If omitted,
+the installer uses `.venv-trixie` when available, otherwise creates
+`.venv-indi`. The latter does not change the app service's interpreter;
+explicitly select the app environment for PyIndi integration.
+Standalone tools for older checkouts are in `metadata/installer/`.
+
+Full `mfnavis_setup.sh` selects the archive for the current OS automatically.
 
 ### For changes: full source install and build
 
@@ -45,8 +75,14 @@ Run the dedicated installer from the MFNavis checkout:
 
 ```bash
 cd ~/MFNavis
+export MFNAVIS_PYTHON="$PWD/.venv-trixie/bin/python"
+export INDI_WEB_EXEC="$PWD/.venv-trixie/bin/indi-web"
 bash scripts/install_indi_mount_OnstepX.sh
 ```
+
+The app virtual environment must already exist. These overrides keep the
+source build and Web Manager service on the same Python 3.13 environment as
+MFNavis; keep them set for the build variants below.
 
 The script installs INDI, INDI third-party drivers, PyIndi, INDI Web Manager, and Chrony GPS time support. During binary installation it stops the running `mfnavis` and INDI Web Manager services, then restores their prior running state even if installation fails.
 
@@ -73,15 +109,15 @@ INDI_PATCH_DIR=none bash scripts/install_indi_mount_OnstepX.sh
 `BUILD_ROOT` to test unpatched upstream code. The installer checks the source
 checkout and job count before changing system packages.
 
-### Default installation: Pi 4/Pi 5 shared binary archive
+### Default installation: Trixie aarch64 binary archive
 
-For normal installs, use the prebuilt Bookworm 64-bit/aarch64 archive. Switch to
+For normal installs, use the prebuilt Trixie 64-bit/aarch64 archive. Switch to
 the full source build in the preceding section only when source modifications or
 new patch validation are required:
 
 ```bash
 cd ~/MFNavis
-bash scripts/install_indi_mount_archive.sh dist/mfnavis-indi-bookworm-arm64-v2.2.3.1-current.tar.gz
+bash scripts/install_indi_mount_archive.sh dist/mfnavis-indi-trixie-arm64-v2.2.3.1-current.tar.gz
 ```
 
 The Git repository may store large archives as split files named
@@ -89,15 +125,43 @@ The Git repository may store large archives as split files named
 command above; `install_indi_mount_archive.sh` rebuilds the archive from the
 parts and verifies the `.sha256` checksum before installation.
 
-The main MFNavis setup script can use the same archive installer:
+`mfnavis_setup.sh` selects the latest matching
+`dist/mfnavis-indi-<OS>-arm64-*.tar.gz` or `.tar.gz.part-00`. Keep all parts
+and `.sha256` together. Bookworm/Python 3.11 and Trixie/Python 3.13 are
+supported; setup does not fall back to source compilation.
+
+Install the Trixie-based `main` branch with:
+
+```bash
+wget -O /tmp/mfnavis-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavis/main/mfnavis_setup.sh &&
+MFNAVIS_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh
+```
+
+Setup refuses tracked local changes and requires
+a fast-forward to the selected branch or tag. See the
+[Trixie deployment record](TRIXIE_20260926_ko.md) for the earlier checks.
+
+Select a custom archive with an absolute path:
 
 ```bash
 cd ~
-MFNAVIS_INDI_ARCHIVE="$HOME/MFNavis/dist/mfnavis-indi-bookworm-arm64-v2.2.3.1-current.tar.gz" \
+MFNAVIS_INDI_ARCHIVE="$HOME/MFNavis/dist/mfnavis-indi-trixie-arm64-v2.2.3.1-current.tar.gz" \
   bash "$HOME/MFNavis/mfnavis_setup.sh"
 ```
 
-`MFNAVIS_INSTALL_INDI_ARCHIVE` defaults to `auto`. If a `dist/mfnavis-indi-bookworm-arm64-*.tar.gz` file exists or `MFNAVIS_INDI_ARCHIVE` is set, the setup script installs INDI support. If no archive is found, setup continues with the normal MFNavis install only. To force-disable the archive installer:
+`MFNAVIS_INSTALL_INDI_ARCHIVE` defaults to `true`; the former `auto` value
+also requires an archive now. Missing archives or checksum/OS/Python ABI
+mismatches stop setup before app Python installation and GPS/network changes.
+Supply the matching Trixie archive; setup does not download it or substitute
+a Bookworm archive.
+
+On Trixie, setup uses `requirements-trixie.txt` and `.venv-trixie`. PyIndi,
+INDI Web Manager, MFNavis, and splash use the same environment. A custom
+`MFNAVIS_PYTHON` must be a Python 3.13 venv created with
+`--system-site-packages` for OS Picamera2/GPIO access. Bookworm retains its
+system Python installation path.
+
+For an installation without INDI, explicitly disable archive installation:
 
 ```bash
 MFNAVIS_INSTALL_INDI_ARCHIVE=false bash "$HOME/MFNavis/mfnavis_setup.sh"
@@ -110,12 +174,18 @@ cd ~/MFNavis
 bash scripts/package_indi_mount_archive.sh
 ```
 
+On Trixie, packaging defaults to `.venv-trixie/bin/python` and the native
+install manifests under `~/indi-latest`. Use `MFNAVIS_PYTHON` for another
+venv. Packaging requires `wheel` and `packaging`; PyIndi and the custom Web
+Manager are repackaged from installed files, wheel metadata, and licenses,
+while dependency wheels use their exact installed versions.
+
 `package_indi_mount_archive.sh` creates the full `.tar.gz` and `.sha256` files.
 When the archive is larger than the GitHub-friendly threshold, it also creates
 `.tar.gz.part-*` split files automatically so the archive can be committed with
 the source tree.
 
-A binary archive created after the latest source build includes the patched `LX200 OnStepX` driver and can be reused on Raspberry Pi 4 and Raspberry Pi 5 Bookworm 64-bit systems. Archive metadata records the OnStepX patch name and checksum so the installed binary can be traced back to the patch file.
+A binary archive created after the latest source build includes the patched `LX200 OnStepX` driver and can be reused on aarch64 systems running the same OS and Python ABI as the archive. Archive metadata records the OnStepX patch name and checksum so the installed binary can be traced back to the patch file.
 
 ## Configure The Mount Driver
 

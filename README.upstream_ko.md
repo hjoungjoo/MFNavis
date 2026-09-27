@@ -1,5 +1,7 @@
 # MF PiFinder
 
+> 과거 문서 보관본입니다. 현재 MFNavis 설치는 [Trixie 64-bit 안내](README_ko.md)를 따릅니다.
+
 [English](./README.md) | **한국어**
 
 MF PiFinder는 원본 [PiFinder™](https://github.com/brickbots/PiFinder)를 기반으로

@@ -1,16 +1,19 @@
 # MFNavis INDI 마운트 제어
 
-이 문서는 Raspberry Pi 4와 Raspberry Pi 5 Bookworm 64-bit 빌드에서 사용할 수 있는 선택형 INDI 마운트 제어 작업을 설명합니다.
+이 문서는 Raspberry Pi 4/Pi 5/CM5 Trixie 64-bit 설치 환경에서 사용할 수 있는 선택형 INDI 마운트 제어 작업을 설명합니다.
 
 이 기능은 기본값이 꺼짐입니다. `mount_control` 설정을 켜기 전까지 일반 MFNavis 설치에서는 PyIndi를 import하지 않고 INDI 마운트 제어 프로세스도 시작하지 않습니다.
 
-설치 스크립트는 Raspberry Pi 4 Model B Bookworm 64-bit에서 검증했습니다. Pi 5와 CM5도 같은 Bookworm 64-bit 패키지와 aarch64 빌드 경로를 사용하며, 스크립트에는 Pi 4 전용 경로나 모델별 분기가 없습니다.
+Raspberry Pi 5에서 Trixie/Python 3.13 설치와 OnStepX 동작을 점검했고,
+사용자는 2026-09-27 GoTo 실테스트에서 큰 문제를 발견하지 못했다고 보고했습니다.
+이전 Pi 4 검증은 Bookworm 환경이므로 Pi 4·CM5의 Trixie 실기 검증과 구분합니다.
+현재 기본 구성은 [Trixie 설치 안내](mf_trixie_install_ko.md)를 참고하세요.
 
 ## 현재 범위
 
 INDI 마운트 제어는 실험 기능입니다. 먼저 INDI Telescope Simulator로 테스트하고, 실제 마운트는 실내의 안전한 상태에서 충분히 확인한 뒤 야외에서 사용하세요.
 
-이번 1차 통합 범위는 다음과 같습니다.
+현재 지원 범위는 다음과 같습니다.
 
 - PyIndi를 통한 INDI 서버 연결
 - telescope/mount 장치 자동 감지
@@ -20,12 +23,21 @@ INDI 마운트 제어는 실험 기능입니다. 먼저 INDI Telescope Simulator
 - Stop 명령
 - 작은 RA/Dec 오프셋 기반 수동 이동
 
-구버전 참고 브랜치에 있던 자동 target refinement, drift compensation, INDI alignment subsystem 관리 기능은 이번 1차 모듈화 포트에는 포함하지 않았습니다.
+GoTo 미세보정·추적 가이드는 [GoTo/Guide 흐름](mf_indi_goto_guide_plan_ko.md)과
+[다중 정렬 안내](mf_multipoint_align_flow_ko.md)를 참고하세요. 현재 GoTo 흐름은
+솔빙 실패 시 IMU 정렬 또는 이미 정렬된 마운트로 전환해 native GoTo·추적을
+이어가고, fresh solve가 복구되면 미세보정을 재개할 수 있습니다.
+Sync 거절은 정렬 성공으로 처리하지 않고 실패 사유를 표시합니다.
+
+OnStepX 프로필이 연결된 상태에서 `INDI > Settings`로 지평선·천정 고도와
+East/West 메리디안 제한을 조회·변경할 수 있습니다. 경위대의 메리디안 표시는
+INDI 드라이버 값이며 컨트롤러 독립 재조회 값과 구분합니다. 검증 범위는
+[제한값 설정 기록](../mf_report/mfnavis_trixie_indi_limits_20260927_ko.md)을 참고하세요.
 
 ## INDI 지원 설치
 
-기본 설치 방식은 **Pi 4/Pi 5 공용 바이너리 아카이브**입니다. MFNavis 배포본에
-포함된 Bookworm 64-bit/aarch64 아카이브를 설치하면 검증된 INDI core, third-party
+기본 설치 방식은 **OS별 aarch64 바이너리 아카이브**입니다. MFNavis 배포본에
+포함된 Trixie 64-bit/aarch64 아카이브를 설치하면 검증된 INDI core, third-party
 드라이버, PyIndi와 MFNavis의 OnStepX 패치 구성이 그대로 설치됩니다. 소스 수정이나
 드라이버 패치 변경이 필요할 때만 아래의 전체 소스 설치·빌드 방식을 사용하세요.
 
@@ -54,14 +66,7 @@ MFNAVIS_PYTHON="$PWD/.venv-trixie/bin/python" \
 MFNavis에서도 PyIndi를 사용하려면 앱의 가상환경을 명시해야 합니다.
 구버전 체크아웃용 설치 도구는 아카이브의 `metadata/installer/`에 있습니다.
 
-```bash
-cd ~/MFNavis
-bash scripts/install_indi_mount_archive.sh \
-  dist/mfnavis-indi-bookworm-arm64-v2.2.3.1-current.tar.gz
-```
-
-전체 `mfnavis_setup.sh` 설치에서는 아카이브가 `dist/`에 있거나
-`MFNAVIS_INDI_ARCHIVE`로 지정되면 이 방식을 자동으로 사용합니다.
+전체 `mfnavis_setup.sh` 설치에서는 현재 OS에 맞는 아카이브를 자동 선택합니다.
 
 ### 수정용: 전체 소스 설치·빌드
 
@@ -69,8 +74,14 @@ MFNavis 체크아웃에서 전용 설치 스크립트를 실행합니다.
 
 ```bash
 cd ~/MFNavis
+export MFNAVIS_PYTHON="$PWD/.venv-trixie/bin/python"
+export INDI_WEB_EXEC="$PWD/.venv-trixie/bin/indi-web"
 bash scripts/install_indi_mount_OnstepX.sh
 ```
+
+앱 가상환경이 먼저 설치되어 있어야 합니다. 이 환경 변수는 소스 빌드와
+Web Manager 서비스가 MFNavis와 같은 Python 3.13 환경을 사용하게 합니다.
+아래 빌드 옵션 예제에도 같은 환경 변수를 유지합니다.
 
 이 스크립트는 INDI, INDI third-party 드라이버, PyIndi, INDI Web Manager, Chrony GPS 시간 동기화 지원을 설치합니다. 바이너리 설치 단계에서는 실행 중인 `mfnavis`와 INDI Web Manager 서비스를 멈추고, 성공·실패와 관계없이 원래 실행 중이던 서비스를 다시 시작합니다.
 
@@ -97,14 +108,14 @@ INDI_PATCH_DIR=none bash scripts/install_indi_mount_OnstepX.sh
 `BUILD_ROOT`를 지정해 새 소스를 받아 시험한다. 설치 대상과 빌드 작업 수는
 시스템 패키지를 변경하기 전에 검사한다.
 
-### 기본 설치: Pi 4/Pi 5 공용 바이너리 아카이브
+### 기본 설치: Trixie aarch64 바이너리 아카이브
 
-일반 설치에는 미리 만든 Bookworm 64-bit/aarch64 아카이브를 사용합니다. 소스
+일반 설치에는 미리 만든 Trixie 64-bit/aarch64 아카이브를 사용합니다. 소스
 수정이나 새 패치 검증이 필요한 경우에만 앞 절의 전체 소스 빌드로 전환합니다.
 
 ```bash
 cd ~/MFNavis
-bash scripts/install_indi_mount_archive.sh dist/mfnavis-indi-bookworm-arm64-v2.2.3.1-current.tar.gz
+bash scripts/install_indi_mount_archive.sh dist/mfnavis-indi-trixie-arm64-v2.2.3.1-current.tar.gz
 ```
 
 Git 저장소에는 큰 아카이브가 `.tar.gz.part-00`, `.part-01` 같은 조각 파일로
@@ -118,12 +129,11 @@ Git 저장소에는 큰 아카이브가 `.tar.gz.part-00`, `.part-01` 같은 조
 같은 디렉터리에 두어야 합니다. Bookworm/Python 3.11과 Trixie/Python 3.13을
 지원하며, 소스 빌드를 자동으로 호출하지 않습니다.
 
-이 변경과 Trixie 아카이브를 포함한 `Trixie` 브랜치를 설치하려면 다음처럼
-다운로드 경로와 체크아웃 브랜치를 모두 지정합니다.
+Trixie 기반 `main` 브랜치를 다음과 같이 설치합니다.
 
 ```bash
-wget -O /tmp/mfnavis-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavis/Trixie/mfnavis_setup.sh
-MFNAVIS_INSTALL_BRANCH=Trixie bash /tmp/mfnavis-setup.sh
+wget -O /tmp/mfnavis-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavis/main/mfnavis_setup.sh &&
+MFNAVIS_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh
 ```
 
 기존 체크아웃에 수정된 tracked 파일이 있으면 설치 스크립트는 해당 변경을
@@ -177,7 +187,7 @@ Python 의존성은 현재 설치된 정확한 버전으로 wheel을 수집합�
 조각 파일도 자동으로 생성합니다. 소스와 함께 배포할 때는 이 조각 파일들을
 커밋하면 됩니다.
 
-최신 소스 빌드 스크립트로 만든 뒤 아카이브를 생성하면 패치된 `LX200 OnStepX`가 포함된 설치 결과를 Pi 4/Pi 5 공용 아카이브로 배포할 수 있습니다. 아카이브 metadata에는 OnStepX patch 이름과 checksum이 기록되어 설치된 바이너리가 어떤 patch에서 만들어졌는지 추적할 수 있습니다.
+최신 소스 빌드 스크립트로 만든 뒤 아카이브를 생성하면 패치된 `LX200 OnStepX`가 포함된 설치 결과를 아카이브와 같은 OS·Python ABI를 사용하는 aarch64 장비에 배포할 수 있습니다. 아카이브 metadata에는 OnStepX patch 이름과 checksum이 기록되어 설치된 바이너리가 어떤 patch에서 만들어졌는지 추적할 수 있습니다.
 
 ## 마운트 드라이버 설정
 
