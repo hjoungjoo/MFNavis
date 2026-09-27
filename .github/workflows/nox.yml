@@ -16,8 +16,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Raspberry Pi OS Bookworm deployment devices use Python 3.11.
-        # Older Python compatibility targets are not supported.
+        # Retain the full Bookworm compatibility suite. Trixie checks run below;
+        # its hardware runtime requires the arm64 INDI archive and OS packages.
         python-version: ["3.11"]
     defaults:
       run:
@@ -54,3 +54,35 @@ jobs:
           python -m nox --error-on-missing-interpreters
           --envdir .nox-${{ matrix.python-version }}
           -s lint format type_hints smoke_tests unit_tests ui_tests
+
+  trixie-checks:
+    name: Trixie Python 3.13 quality and installer checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ./python
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: python/requirements_docs-trixie.txt
+      - name: Install pinned check tools
+        run: python -m pip install --disable-pip-version-check nox==2024.4.15 pytest==8.4.2
+      - name: Check code and build Trixie documentation
+        env:
+          NOX_PYTHON: "3.13"
+        run: >-
+          python -m nox --error-on-missing-interpreters
+          --envdir .nox-3.13 -s lint format docs
+      - name: Check archive compatibility and runtime setup
+        # These tests mock installation and need no Pi hardware or local wheels.
+        run: >-
+          python -m pytest -q
+          tests/test_indi_archive_platform.py
+          tests/test_indi_archive_verification.py
+          tests/test_setup_indi_archive.py

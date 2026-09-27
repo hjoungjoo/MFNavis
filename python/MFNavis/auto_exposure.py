@@ -17,7 +17,7 @@ which walks a fixed exposure ladder until matches return (see ADR 0010).
 
 import logging
 import time
-from typing import List, Optional
+from typing import List, Optional, cast
 
 import numpy as np
 from PIL import Image
@@ -50,7 +50,7 @@ def generate_exposure_sweep(
         .tolist()
     )
 
-    return exposures
+    return cast(List[int], exposures)
 
 
 # Recovery ladder (microseconds). The ordering encodes the night-time prior:

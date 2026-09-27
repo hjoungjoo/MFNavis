@@ -1691,6 +1691,7 @@ class BacklashCalibrationMixin:
                 and leg.get("pifinder_solved_valid")
                 and not leg.get("motion_difference_threshold_rejected")
                 and normal_min is not None
+                and normal_max is not None
                 and normal_min <= int(leg["raw_estimated_arcsec"]) <= normal_max
             ]
             direction_stats[direction] = {

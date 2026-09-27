@@ -1,7 +1,8 @@
 #!/usr/bin/python
 import sys
+from typing import TYPE_CHECKING
 
-if __package__:
+if TYPE_CHECKING or __package__:
     from PiFinder.boot_config import get_boot_config_path
 else:
     # Installed alongside this script for privileged execution, independent

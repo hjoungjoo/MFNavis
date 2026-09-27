@@ -63,7 +63,7 @@ def rotate_centroids(
         return cents.copy(), (h, w)
 
     if angle % 90 == 0:
-        out = cents.copy()
+        out: np.ndarray = cents.copy()
         hh, ww = h, w
         for _ in range(int(angle // 90) % 4):
             y, x = out[:, 0], out[:, 1]

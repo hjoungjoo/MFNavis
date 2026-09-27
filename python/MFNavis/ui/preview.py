@@ -553,7 +553,7 @@ class UIPreview(GuideKeyMixin, UIModule):
             # A saturated or nearly flat bright raw frame has no percentile
             # span; stretching it from low to low+1 would map the whole image
             # to black. Keep it bright instead.
-            scaled = np.full(arr.shape, 255, dtype=np.float32)
+            scaled: np.ndarray = np.full(arr.shape, 255, dtype=np.float32)
         else:
             scaled = (arr - low) * (255.0 / (high - low))
         np.clip(scaled, 0, 255, out=scaled)

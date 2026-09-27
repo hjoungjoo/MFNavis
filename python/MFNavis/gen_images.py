@@ -21,7 +21,7 @@ import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
-from typing import Dict, List, Tuple, cast
+from typing import Dict, Iterable, List, Tuple, cast
 
 import requests
 from PIL import Image, ImageOps
@@ -119,7 +119,7 @@ def check_sdss_image(image: Image.Image) -> bool:
         return False
 
     black_pixel_count = 0
-    for pixel in image.getdata():
+    for pixel in cast(Iterable[int], image.getdata()):
         if pixel == 0:
             black_pixel_count += 1
             if black_pixel_count > 120000:
