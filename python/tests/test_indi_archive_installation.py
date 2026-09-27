@@ -110,6 +110,9 @@ if args[0] == '/usr/bin/python3':
     if 'snapshot' in args: sys.argv += ['--target', str(root)]
     sys.exit(module.main())
 if args[0] in ('apt', 'apt-get', 'ldconfig', 'chown'): sys.exit(0)
+if args[0] == 'rm':
+    if os.environ['TEST_FAILURE'] == 'cleanup': sys.exit(47)
+    sys.exit(subprocess.run(args).returncode)
 if args[0] == 'systemctl':
     action = args[1]
     if action == 'is-active': sys.exit(0)
@@ -249,6 +252,22 @@ def test_success_preserves_directory_modes_and_keeps_new_installation(installati
         for p in (system, system / "usr", system / "usr/bin")
     )
     assert " rollback " not in (repo / "calls.log").read_text()
+    assert "rm -rf -- " in (repo / "calls.log").read_text()
+    assert not list(repo.parent.glob("tmp*/rollback"))
+
+
+def test_cleanup_failure_is_reported_without_rolling_back_committed_install(
+    installation,
+):
+    result = run_install(installation, "cleanup")
+    repo, system, venv, _, _ = installation
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert (system / "usr/bin/indiserver").read_text() == "NEW_NATIVE"
+    assert (venv / "new.py").read_text() == "NEW_PYTHON"
+    calls = (repo / "calls.log").read_text()
+    assert "rm -rf -- " in calls
+    assert " rollback " not in calls
+    assert len(list(repo.parent.glob("tmp*/rollback/state.json"))) == 1
 
 
 def test_preflight_failure_leaves_services_and_files_untouched(installation):
@@ -266,6 +285,7 @@ def test_rollback_failure_retains_snapshot_and_leaves_services_stopped(installat
     assert result.returncode != 0
     assert "Rollback failed" in result.stdout
     assert "systemctl start" not in (repo / "calls.log").read_text()
+    assert "rm -rf -- " not in (repo / "calls.log").read_text()
     states = list(repo.parent.glob("tmp*/rollback/state.json"))
     assert len(states) == 1
     assert (states[0].parent / "previous.tar").is_file()

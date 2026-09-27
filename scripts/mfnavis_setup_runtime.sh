@@ -72,6 +72,11 @@ mfnavis_install_setup_python() {
             python3 -m venv --system-site-packages "${MFNAVIS_REPO_DIR}/.venv-trixie" || return
         fi
         "${MFNAVIS_PYTHON}" -c 'import sys; assert sys.prefix != sys.base_prefix, "Trixie setup requires a virtual environment"' || return
+        # PyPI only has an old sdist using imp, removed in Python 3.12.
+        # Install the pinned piwheels wheel before resolving app requirements.
+        PIP_CONFIG_FILE=/dev/null "${MFNAVIS_PYTHON}" -m pip install \
+            --index-url https://www.piwheels.org/simple --only-binary=:all: --no-deps \
+            "python-libinput==0.3.0a0" || return
         PIP_CONFIG_FILE=/dev/null "${MFNAVIS_PYTHON}" -m pip install \
             -r "${MFNAVIS_REPO_DIR}/python/requirements-trixie.txt" || return
         if [[ "$(mfnavis_board_profile)" == pi5_class ]]; then

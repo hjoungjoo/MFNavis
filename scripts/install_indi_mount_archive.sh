@@ -91,7 +91,12 @@ cleanup() {
     if [ "${APP_WAS_ACTIVE}" -eq 1 ]; then
         sudo systemctl start mfnavis.service || status=1
     fi
-    rm -rf "${INDI_TMPDIR}"
+    # snapshot runs as root; its rollback directory cannot be removed by the user.
+    if [[ -d "${INDI_TMPDIR}/rollback" ]]; then
+        sudo rm -rf -- "${INDI_TMPDIR}" || status=1
+    else
+        rm -rf -- "${INDI_TMPDIR}" || status=1
+    fi
     exit "${status}"
 }
 trap cleanup EXIT

@@ -50,7 +50,9 @@ The setup script:
 
 - Installs OS packages and the MFDS binary package pinned in `deployment/mfds.lock.json`.
 - Creates `.venv-trixie` with `--system-site-packages` and installs
-  `python/requirements-trixie.txt`. Picamera2 and GPIO come from the OS; Pi 5
+  the pinned `python-libinput` wheel from piwheels before
+  `python/requirements-trixie.txt`, avoiding its source package's Python 3.13
+  build failure. Picamera2 and GPIO come from the OS; Pi 5
   uses `python3-rpi-lgpio` instead of the pip RPi.GPIO package.
 - Selects and verifies the Trixie/aarch64/Python 3.13 INDI archive, then installs
   PyIndi and INDI Web Manager wheels into the same app environment. The archive

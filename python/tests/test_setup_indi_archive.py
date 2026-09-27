@@ -209,6 +209,9 @@ mfnavis_install_setup_python
     assert result.returncode == 0, result.stderr
     calls = (installation / "calls.log").read_text()
     if codename == "trixie":
+        wheel_install = calls.index("--index-url https://www.piwheels.org/simple")
+        assert wheel_install < calls.index("requirements-trixie.txt")
+        assert "--only-binary=:all: --no-deps python-libinput==0.3.0a0" in calls
         assert "requirements-trixie.txt" in calls
         assert "-m pip uninstall -y RPi.GPIO" in calls
         assert "sudo apt-get install -y python3-rpi-lgpio" in calls
@@ -217,3 +220,25 @@ mfnavis_install_setup_python
         assert "--break-system-packages" in calls
         assert "requirements.txt" in calls
         assert "pip uninstall" not in calls
+        assert "piwheels" not in calls
+
+
+def test_libinput_wheel_failure_stops_before_app_dependencies(installation):
+    interpreter = installation / "app-venv/bin/python"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.write_text(
+        '#!/bin/bash\nprintf "python %s\\n" "$*" >> "$CALLS"\n'
+        'if [[ "$*" == *"--only-binary=:all:"* ]]; then exit 29; fi\n'
+    )
+    interpreter.chmod(0o755)
+    result = run_helper(
+        installation,
+        "mfnavis_install_setup_python; echo unexpected",
+        MFNAVIS_PYTHON=str(interpreter),
+    )
+    assert result.returncode == 29, result.stderr
+    assert "unexpected" not in result.stdout
+    calls = (installation / "calls.log").read_text()
+    assert "python-libinput==0.3.0a0" in calls
+    assert "requirements-trixie.txt" not in calls
+    assert "pip uninstall" not in calls

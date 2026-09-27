@@ -50,7 +50,9 @@ Trixie로 바뀌지는 않습니다. 새 Trixie OS를 준비하기 전에 `~/MFN
 
 - OS 패키지와 `deployment/mfds.lock.json`에 고정된 MFDS 바이너리를 설치합니다.
 - `--system-site-packages`로 `.venv-trixie`를 만들고
-  `python/requirements-trixie.txt`를 설치합니다. Picamera2/GPIO는 OS 패키지를
+  Python 3.13에서 빌드할 수 없는 `python-libinput` 소스 패키지 대신
+  piwheels의 고정 버전 wheel을 먼저 설치한 뒤 `python/requirements-trixie.txt`를
+  설치합니다. Picamera2/GPIO는 OS 패키지를
   공유하며 Pi 5에서는 pip RPi.GPIO 대신 `python3-rpi-lgpio`를 사용합니다.
 - Trixie/aarch64/Python 3.13 INDI 아카이브를 선택·검증하고 PyIndi와
   INDI Web Manager wheel을 앱과 같은 환경에 설치합니다. 아카이브와 `.sha256`이
