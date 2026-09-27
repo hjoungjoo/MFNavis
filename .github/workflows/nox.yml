@@ -4,6 +4,7 @@ name: nox
 # triggers the `pull_request` run (not also a `push` run), so a PR gets a single
 # run per push instead of two.
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
