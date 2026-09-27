@@ -24,6 +24,24 @@ if [[ -z "${MFNAVIS_HOME}" || ! -d "${MFNAVIS_HOME}" ]]; then
     exit 1
 fi
 
+# Record failures from the first apt operation onward, including after reboot.
+MFNAVIS_SETUP_LOG_DIR="${MFNAVIS_DATA_DIR:-${MFNAVIS_HOME}/MFNavis_data}/logs"
+mkdir -p "${MFNAVIS_SETUP_LOG_DIR}"
+MFNAVIS_SETUP_LOG="${MFNAVIS_INSTALL_LOG:-${MFNAVIS_SETUP_LOG_DIR}/setup-$(date +%Y%m%d-%H%M%S)-$$.log}"
+(umask 077; touch "${MFNAVIS_SETUP_LOG}")
+exec > >(tee -a "${MFNAVIS_SETUP_LOG}") 2>&1
+echo "MFNavis setup log: ${MFNAVIS_SETUP_LOG}"
+sudo mkdir -p /etc/systemd/journald.conf.d /var/log/journal
+sudo tee /etc/systemd/journald.conf.d/90-mfnavis-diagnostics.conf >/dev/null <<'JOURNALD_EOF'
+[Journal]
+Storage=persistent
+SystemMaxUse=64M
+RuntimeMaxUse=32M
+SyncIntervalSec=30s
+JOURNALD_EOF
+sudo systemctl restart systemd-journald
+sudo journalctl --flush
+
 cd "${MFNAVIS_HOME}"
 
 sudo bash -c '
@@ -195,7 +213,7 @@ fi
 echo uhid | sudo tee /etc/modules-load.d/uhid.conf >/dev/null
 sudo modprobe uhid || true
 
-# SD-card wear reduction: keep steady log writers off the card.
+# Keep high-volume INDI output in RAM; bounded system diagnostics persist on disk.
 # 1) /tmp on tmpfs -- indiserver's stdout log (redirected there by indi-web)
 #    and INDI FIFOs/sockets then live in RAM.
 if ! grep -qE '^\s*tmpfs\s+/tmp\s+tmpfs' /etc/fstab; then
@@ -215,7 +233,7 @@ sudo tee /etc/logrotate.d/indiserver >/dev/null <<LOGROTATE_EOF
     compress
 }
 LOGROTATE_EOF
-# 3) journald is volatile (RAM); cap it below the default 15%-of-/run.
+# 3) Cap journald's runtime buffer as well as its persistent diagnostic storage.
 sudo mkdir -p /etc/systemd/journald.conf.d
 sudo tee /etc/systemd/journald.conf.d/mfnavis-ram-cap.conf >/dev/null <<'JOURNALD_EOF'
 [Journal]

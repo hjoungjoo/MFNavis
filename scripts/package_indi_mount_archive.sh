@@ -10,6 +10,7 @@ if [[ "${MFNAVIS_CODENAME}" == trixie && -z "${MFNAVIS_PYTHON:-}" && \
 fi
 MFNAVIS_PYTHON="${MFNAVIS_PYTHON:-python3}"
 require_indi_archive_platform
+umask 022
 BUILD_ROOT="${BUILD_ROOT:-$HOME/indi-latest}"
 OUT_DIR="${OUT_DIR:-${REPO_ROOT}/dist}"
 INDI_BUILD_DIR="${INDI_BUILD_DIR:-${BUILD_ROOT}/indi/build}"
@@ -63,7 +64,22 @@ copy_path_to_rootfs() {
         return 1
     fi
 
-    dest="${rootfs}$(normalize_usrmerge_path "${path}")"
+    local normalized parent
+    normalized="$(normalize_usrmerge_path "${path}")"
+    if [[ "${normalized}" != /usr/* || "${normalized}" =~ (^|/)\.\.?(/|$) || \
+          "${normalized}" == *//* || "${normalized}" == *\\* ]]; then
+        echo "ERROR: unsafe installed manifest path: ${path}" >&2
+        return 1
+    fi
+    dest="${rootfs}${normalized}"
+    parent="$(dirname "${dest}")"
+    while [[ "${parent}" != "${rootfs}" ]]; do
+        if [[ -L "${parent}" ]]; then
+            echo "ERROR: staging parent is a symlink: ${parent}" >&2
+            return 1
+        fi
+        parent="$(dirname "${parent}")"
+    done
     mkdir -p "$(dirname "${dest}")"
     cp -a "${path}" "${dest}"
 }
@@ -235,7 +251,7 @@ if [[ "${MFNAVIS_CODENAME}" == trixie ]]; then
     # the checkout on the destination still has a Bookworm-only installer.
     mkdir -p "${METADATA}/installer/scripts"
     cp "${REPO_ROOT}/mfnavis_paths.sh" "${METADATA}/installer/"
-    for tool in install_indi_mount_archive.sh indi_archive_platform.sh verify_indi_archive.py; do
+    for tool in install_indi_mount_archive.sh indi_archive_platform.sh verify_indi_archive.py indi_archive_transaction.py; do
         cp "${REPO_ROOT}/scripts/${tool}" "${METADATA}/installer/scripts/"
     done
     mkdir -p "${METADATA}/licenses"
@@ -277,8 +293,12 @@ fi
 ARCHIVE_NAME="${ARCHIVE_NAME:-mfnavis-indi-${MFNAVIS_CODENAME}-arm64-$(date +%Y%m%d-%H%M%S).tar.gz}"
 ARCHIVE_PATH="${OUT_DIR}/${ARCHIVE_NAME}"
 
+# Do not inherit the build user's group-write permissions on system directories.
+find "${ROOTFS}" -type d -exec chmod 755 {} +
 tar --owner=0 --group=0 --numeric-owner -C "${STAGING}" -czf "${ARCHIVE_PATH}" .
 (cd "$(dirname "${ARCHIVE_PATH}")"; sha256sum "$(basename "${ARCHIVE_PATH}")") > "${ARCHIVE_PATH}.sha256"
+"${MFNAVIS_PYTHON}" "${REPO_ROOT}/scripts/verify_indi_archive.py" \
+    "${ARCHIVE_PATH}" "${ARCHIVE_PATH}.sha256" --check-host
 split_archive_if_needed "${ARCHIVE_PATH}"
 
 echo "Created archive: ${ARCHIVE_PATH}"

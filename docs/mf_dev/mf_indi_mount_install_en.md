@@ -69,6 +69,25 @@ Standalone tools for older checkouts are in `metadata/installer/`.
 
 Full `mfnavis_setup.sh` selects the archive for the current OS automatically.
 
+Only INDI and its supported library paths may be overlaid. Existing system
+directory permissions and ownership, and the `/lib`, `/bin`, `/sbin` links,
+are preserved. Damaged usrmerge links are rejected rather than repaired by
+deleting system directories. Free space for reconstruction, extraction and
+backups is checked before services are stopped.
+
+Before replacing files, the installer snapshots native INDI files, the app's
+virtual environment, and Web Manager/chrony configuration. Ordinary failures
+and SIGINT/SIGTERM restore them before restarting previously active services.
+If restoration fails, services remain stopped and the snapshot and recovery
+command are retained. OS dependencies installed by apt are outside this rollback.
+Power loss or SIGKILL requires manual recovery using the
+`/var/tmp/mfnavis-indi.*/rollback` snapshot path recorded in the installation log.
+
+Installation logs persist at `~/MFNavis_data/logs/indi-install-*.log`;
+`MFNAVIS_INSTALL_LOG` overrides the log file path. Full setup also writes
+`setup-*.log` and enables persistent journal storage capped at 64 MiB.
+The high-volume `/tmp/indiserver.log` remains in RAM and disappears on reboot.
+
 ### For changes: full source install and build
 
 Run the dedicated installer from the MFNavis checkout:

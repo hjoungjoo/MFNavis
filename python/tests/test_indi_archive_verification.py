@@ -8,6 +8,8 @@ import subprocess
 import sys
 import tarfile
 
+import pytest
+
 
 VERIFY = Path(__file__).resolve().parents[2] / "scripts/verify_indi_archive.py"
 
@@ -170,3 +172,46 @@ def test_renaming_bookworm_archive_cannot_bypass_host_check():
         verification_module().verify_platform(
             info, "trixie", "aarch64", "3.13", "cpython-313-aarch64-linux-gnu"
         )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "usr/bin/bash",
+        "usr/bin/sudo",
+        "usr/bin/rm",
+        "usr/bin/python3",
+        "usr/bin/systemctl",
+        "usr/lib/aarch64-linux-gnu/libc.so.6",
+        "usr/lib/ld-linux-aarch64.so.1",
+        "usr/lib/systemd/system/example.service",
+        "usr/share/unrelated/data",
+        "usr/local/lib/python3.13/dist-packages/PyIndi.py",
+    ],
+)
+def test_non_indi_system_files_are_rejected(tmp_path, path):
+    result = run_verifier(
+        tmp_path, (*V2_PAYLOAD, ("rootfs/" + path, "file", "bad")), build_info=V2_TEXT
+    )
+    assert result.returncode == 1
+    assert "non-INDI system path" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "usr/bin/indi_lx200_OnStepX",
+        "usr/bin/shelyak_usis",
+        "usr/bin/ticcmd",
+        "usr/lib/aarch64-linux-gnu/libindiclient.so.2.2.3",
+        "usr/lib/libpololu-tic-1.so.1.8.3",
+        "usr/lib/libusbp-1.a",
+        "usr/lib/udev/rules.d/99-indi_auxiliary.rules",
+        "usr/share/indi/test.xml",
+    ],
+)
+def test_supported_native_payload_is_accepted(tmp_path, path):
+    result = run_verifier(
+        tmp_path, (*V2_PAYLOAD, ("rootfs/" + path, "file", "valid")), build_info=V2_TEXT
+    )
+    assert result.returncode == 0, result.stderr

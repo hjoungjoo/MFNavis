@@ -59,6 +59,8 @@ Trixie로 바뀌지는 않습니다. 새 Trixie OS를 준비하기 전에 `~/MFN
   보드별 부트 설정과 장비 관리 권한을 구성합니다.
 - 초기 NetworkManager/Netplan Wi-Fi 프로파일을 MFNavis 네트워크 설정으로
   가져오고, 재설치 때 기존 Wi-Fi 설정을 보존합니다.
+- 설치 시작부터 `~/MFNavis_data/logs/setup-*.log`에 기록하고, 시스템 journal을
+  최대 64 MiB의 영구 저장으로 설정해 재부팅 후 진단에 사용할 수 있게 합니다.
 
 INDI 아카이브 설치는 기본적으로 필수입니다. 파일이 없거나 ABI·checksum이
 맞지 않으면 앱 Python 설치와 GPS·네트워크 변경 전에 중단합니다. 앱의 마운트

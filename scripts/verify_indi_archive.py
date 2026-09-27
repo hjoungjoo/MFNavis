@@ -12,6 +12,70 @@ import sysconfig
 import tarfile
 
 
+MAX_EXPANDED_BYTES = 4 * 1024**3
+MAX_MEMBERS = 10000
+
+
+def verify_payload_path(name, is_directory, archive_format):
+    """Keep the overlay limited to INDI, including its bundled support libraries."""
+    directories = {
+        "rootfs",
+        "rootfs/usr",
+        "rootfs/usr/bin",
+        "rootfs/usr/lib",
+        "rootfs/usr/include",
+        "rootfs/usr/share",
+        "rootfs/usr/lib/udev",
+        "rootfs/usr/lib/udev/rules.d",
+        "rootfs/usr/lib/pkgconfig",
+        "rootfs/usr/lib/aarch64-linux-gnu",
+        "rootfs/usr/lib/aarch64-linux-gnu/pkgconfig",
+        "rootfs/usr/lib/aarch64-linux-gnu/indi",
+        "rootfs/usr/lib/aarch64-linux-gnu/indi/MathPlugins",
+    }
+    trees = (
+        "rootfs/usr/share/indi",
+        "rootfs/usr/include/libindi",
+        "rootfs/usr/include/libpololu-tic-1",
+        "rootfs/usr/include/libusbp-1",
+    )
+    if is_directory and name in directories:
+        return
+    if any(
+        name == tree and is_directory or name.startswith(tree + "/") for tree in trees
+    ):
+        return
+    patterns = (
+        r"rootfs/usr/bin/(indi_[A-Za-z0-9_.+-]+|indiserver|ticcmd|shelyak_usis|aagcloudwatcher_test_ng)",
+        r"rootfs/usr/lib/(aarch64-linux-gnu/)?lib(indi[A-Za-z0-9_]*|pololu-tic-1|usbp-1)\.(a|so(\.[0-9.]+)?)",
+        r"rootfs/usr/lib/(aarch64-linux-gnu/)?pkgconfig/lib(indi|pololu-tic-1|usbp-1)\.pc",
+        r"rootfs/usr/lib/aarch64-linux-gnu/indi/MathPlugins/libindi_[A-Za-z0-9_]+\.so",
+        r"rootfs/usr/lib/udev/rules.d/(99-indi_auxiliary|80-dbk21-camera|99-armadilloplatypus)\.rules",
+    )
+    if not is_directory and any(re.fullmatch(pattern, name) for pattern in patterns):
+        return
+    if archive_format in {"mfnavis-indi-binary-v1", "mf-pifinder-indi-binary-v1"}:
+        site = "rootfs/usr/local/lib/python3.11/dist-packages"
+        if is_directory and name in {
+            "rootfs/usr/local",
+            "rootfs/usr/local/bin",
+            "rootfs/usr/local/lib",
+            "rootfs/usr/local/lib/python3.11",
+            site,
+        }:
+            return
+        if name == "rootfs/usr/local/bin/indi-web" and not is_directory:
+            return
+        if re.fullmatch(
+            re.escape(site)
+            + r"/(PyIndi\.py|_PyIndi\.cpython-311-aarch64-linux-gnu\.so|"
+            r"pyindi_client-[0-9.]+\.dist-info(/.*)?|indiweb(-[0-9.]+\.dist-info)?(/.*)?)",
+            name,
+        ):
+            return
+    raise ValueError(f"non-INDI system path in archive: {name}")
+
+
 def verify_checksum(archive: Path, checksum_file: Path) -> None:
     if not checksum_file.is_file():
         raise ValueError(f"missing archive checksum: {checksum_file}")
@@ -33,6 +97,7 @@ def verify_members(archive: Path) -> dict:
     required = {"metadata/build_info.txt", "rootfs/usr"}
     info = {}
     metadata_text = {}
+    expanded_bytes = 0
     with tarfile.open(archive, "r:gz") as contents:
         for member in contents:
             name = member.name.removeprefix("./")
@@ -54,6 +119,9 @@ def verify_members(archive: Path) -> dict:
                 raise ValueError(f"duplicate archive path: {member.name}")
             seen.add(name)
             types[name] = member
+            expanded_bytes += member.size
+            if len(seen) > MAX_MEMBERS or expanded_bytes > MAX_EXPANDED_BYTES:
+                raise ValueError("archive exceeds expansion limits")
             if name.startswith("wheels/") and not member.isfile():
                 raise ValueError(f"invalid wheel member: {member.name}")
             if not (member.isfile() or member.isdir() or member.issym()):
@@ -113,6 +181,11 @@ def verify_members(archive: Path) -> dict:
     for link, target in symlinks.items():
         if posixpath.join(posixpath.dirname(link), target) not in seen:
             raise ValueError(f"archive symlink target is missing: {link}")
+    for name, member in types.items():
+        if name == "rootfs" or name.startswith("rootfs/"):
+            if member.mode & 0o6000:
+                raise ValueError(f"privileged file mode in archive: {name}")
+            verify_payload_path(name, member.isdir(), info.get("archive_format"))
     return info
 
 
