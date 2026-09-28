@@ -41,6 +41,15 @@ def installation(tmp_path):
         safety.read_text().replace("RESERVE = 256 * 1024**2", "RESERVE = 1024 * 1024")
     )
     system = tmp_path / "system"
+    # Match the fake ARM/Python 3.13 host below without reading the runner's
+    # real OS (e.g. Ubuntu in CI). Keep the platform guard itself active.
+    os_release = system / "etc/os-release"
+    os_release.parent.mkdir(parents=True)
+    os_release.write_text("VERSION_CODENAME=trixie\n")
+    platform = repo / "scripts/indi_archive_platform.sh"
+    platform.write_text(
+        platform.read_text().replace("/etc/os-release", str(os_release))
+    )
     (system / "usr/bin").mkdir(parents=True)
     (system / "usr/bin/indiserver").write_text("OLD_NATIVE")
     (system / "usr/bin/bash").write_text("SYSTEM_SENTINEL")
