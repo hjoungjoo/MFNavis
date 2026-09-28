@@ -18,7 +18,7 @@ Status labels: **living** = kept in sync with source / **install** = install &
 ops guide / **plan** = pre- or partial implementation / **one-time** = completed
 analysis/verification record (not maintained).
 
-Last updated: 2026-09-27 (Trixie installation entries). The KO version (`mf_docs_index_ko.md`) is authoritative.
+Last updated: 2026-09-28 (user alignment and visual tracking continuity design). The KO version (`mf_docs_index_ko.md`) is authoritative.
 
 ## INDI mount — coordinates & pointing (core)
 
@@ -31,6 +31,8 @@ Last updated: 2026-09-27 (Trixie installation entries). The KO version (`mf_docs
 | [multipoint_align_flow](mf_dev/mf_multipoint_align_flow_en.md) | both | living | Multi-Point Align detailed flow (**canonical owner**; others summarize + cite). |
 | [backlash_measurement_flow](mf_dev/mf_backlash_measurement_flow_en.md) | both | living | Auto-backlash `compass_goto_loop` (**canonical owner**; others summarize + cite). |
 | [mount_mode_compatibility](mf_dev/mf_mount_mode_compatibility_en.md) | both | plan (mostly built) | Alt/Az vs EQ SkySafari compatibility audit/checklist. |
+| [visual_tracking_continuity_design](mf_dev/mf_visual_tracking_continuity_design_ko.md) | ko | **experimental implementation** | Target alignment and visual/solve continuity; existing planet calculations, Alt/Az first with shared EQ design. Default off; production control integration and hardware validation pending. |
+| [visual_tracking_trial](mf_dev/mf_visual_tracking_trial_ko.md) | ko | **trial guide** | Confirmed environment manifests, command-free shadow/replay, implementation boundaries and validation status. |
 | [indi_mount_install](mf_dev/mf_indi_mount_install_en.md) | both | install | INDI mount install/usage guide. |
 | [indi_serial_reconnect_design](mf_dev/mf_indi_serial_reconnect_design_ko.md) | ko | **config reconciliation / USB reinsertion implemented** (2026-08-12) | INDI/PiFinder reconciliation and stable-by-id one-shot reconnect; continuous communication health remains follow-up work. |
 | [indi_serial_auto_discovery_design](mf_dev/mf_indi_serial_auto_discovery_design_ko.md) | ko | **implemented / live-device verified** (2026-08-13) | When Auto is selected in the Web serial-port field, probe attached devices across supported baud rates with `:GVP#`/`:GVN#` and persist the unique verified stable port and speed. |

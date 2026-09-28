@@ -1403,6 +1403,12 @@ def solver(
         "Live detection: MFDS only; final SEP emergency=%s", sep_emergency_enabled
     )
     field_capture = CaptureRecorder("solver", _sep_cfg, shared_state=shared_state)
+    # No experiment import, file access or extra extraction in the default path.
+    visual_shadow = None
+    if os.environ.get("MFNAVIS_VISUAL_TRACKING_EXPERIMENT"):
+        from PiFinder.visual_tracking_runtime import create_shadow
+
+        visual_shadow = create_shadow(shared_state)
     sep_shadow = None
     sep_shadow_wanted = True
     # Optical-train FOV gating is deliberately opt-in for the first field
@@ -1809,6 +1815,7 @@ def solver(
                                 force_create=solver_preprocess_enabled,
                             )
                         sep_run = None
+                        visual_raw_run = None
                         sep_fallback_used = False
                         exposure_quality = None
                         distortion_calibration_input = None
@@ -1822,6 +1829,8 @@ def solver(
                                 raw_entry=solver_raw_entry,
                             )
                             if sep_run is not None:
+                                if visual_shadow is not None:
+                                    visual_raw_run = sep_run
                                 sep_count = len(sep_run.detection.centroids)
                                 if capture_token is not None:
                                     # Snapshot before a synchronous preprocessed
@@ -2586,6 +2595,30 @@ def solver(
                     published_solution = bool(
                         solution and solution.get("RA") is not None
                     )
+                    if visual_shadow is not None:
+                        try:
+                            visual_shadow.observe(
+                                raw_entry=solver_raw_entry,
+                                run=visual_raw_run,
+                                metadata=last_image_metadata,
+                                geometry=fullframe_geometry,
+                                # Preprocessed frames may have a different effective
+                                # epoch. Until that contract is explicit, shadow
+                                # re-anchoring uses accepted RAW solutions only.
+                                solution=(
+                                    solution
+                                    if not solve_path.startswith("preprocessed_")
+                                    else None
+                                ),
+                                moving=frame_moving,
+                                calibration_id=_active_calibration_id(
+                                    _sep_cfg, shared_state
+                                ),
+                                cfg=_sep_cfg,
+                            )
+                        except Exception:
+                            logger.exception("Visual shadow disabled after I/O failure")
+                            visual_shadow = None
                     if (
                         solver_preprocess_enabled
                         and not frame_moving

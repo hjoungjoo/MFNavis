@@ -7,6 +7,8 @@ This module contains all the UI Module classes
 """
 
 import queue
+import os
+import logging
 import time
 import numpy as np
 from PIL import ImageChops
@@ -39,6 +41,14 @@ def align_on_radec(ra, dec, command_queues, config_object, shared_state) -> bool
     * Set the config item and the shared state
     * return True on success, False on timeout / failure
     """
+
+    if os.environ.get("MFNAVIS_VISUAL_TRACKING_EXPERIMENT"):
+        try:
+            from PiFinder.visual_tracking_runtime import mirror_alignment
+
+            mirror_alignment(ra, dec, frame="catalog")
+        except Exception:
+            logging.getLogger(__name__).exception("Visual shadow alignment unavailable")
 
     # Clear out any pending responses
     while True:

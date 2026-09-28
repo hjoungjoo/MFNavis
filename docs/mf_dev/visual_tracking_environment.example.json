@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "mode": "shadow",
+  "environment_confirmed": false,
+  "mount_type": "Alt/Az",
+  "camera_type": "REPLACE_FROM_TEST_CAMERA",
+  "lens": "REPLACE_FROM_TEST_LENS",
+  "calibration_id": "REPLACE_FROM_ACTIVE_CALIBRATION",
+  "raw_shape": [512, 512],
+  "alignment_roll_deg": 0.0,
+  "roll_confirmed": false,
+  "identify_planets": false,
+  "moon_radius_px": null,
+  "expires_at": 0,
+  "max_frames": 500,
+  "output_dir": "/tmp/mfnavis-visual-trial"
+}

@@ -1397,6 +1397,17 @@ def handle_sync_command(shared_state, _input_str: str):
                 # rejected local alignment. No delayed solver command exists.
                 return "Alignment unavailable."
     else:
+        if os.environ.get("MFNAVIS_VISUAL_TRACKING_EXPERIMENT"):
+            try:
+                from PiFinder.visual_tracking_runtime import mirror_alignment
+
+                mirror_alignment(
+                    ra_deg,
+                    dec_deg,
+                    frame="catalog" if is_stellarium else "of_date",
+                )
+            except Exception:
+                logger.exception("Visual shadow alignment unavailable")
         imu_aligned = _set_imu_alignment_from_target_if_no_solve(
             shared_state, ra_deg, dec_deg
         )

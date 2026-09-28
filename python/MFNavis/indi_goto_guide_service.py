@@ -256,6 +256,13 @@ class IndiGotoGuideService:
             return True
 
         command_type = str(command.get("type", "")).strip()
+        if os.environ.get("MFNAVIS_VISUAL_TRACKING_EXPERIMENT"):
+            try:
+                from PiFinder.visual_tracking_runtime import mirror_control
+
+                mirror_control(command_type)
+            except Exception:
+                logger.exception("Visual shadow lifecycle event unavailable")
         if command_type in {
             "goto_target",
             "set_tracking_target",
