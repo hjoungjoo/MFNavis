@@ -374,30 +374,42 @@ def test_lcd_status_uses_current_error_not_historical_complete(
         assert UIObjectDetails._tracking_status_label(view, guide) == "Other target"
 
 
-def test_manual_target_updates_lcd_and_chart_without_mutating_catalog():
+def test_manual_target_keeps_push_chart_and_alignment_reference(tmp_path, monkeypatch):
+    import json
+    from unittest.mock import Mock
+
     from PiFinder.ui.object_details import UIObjectDetails
 
+    state, _ = make_state()
     catalog = SimpleNamespace(ra=12.49, dec=2.44)
     published = []
-    view = SimpleNamespace(
-        object=catalog, ui_state=SimpleNamespace(set_target=published.append)
-    )
+    view = UIObjectDetails.__new__(UIObjectDetails)
+    view.object = catalog
+    view.ui_state = SimpleNamespace(set_target=published.append)
+    view.shared_state = state
+    view.config_object = SimpleNamespace(set_option=Mock())
+    view.command_queues = {"align_command": Commands(), "goto_guide": Commands()}
+    monkeypatch.setattr("PiFinder.ui.object_details.utils.runtime_dir", tmp_path)
+    monkeypatch.setattr("PiFinder.ui.object_details.time.time", lambda: DT.timestamp())
     guide = {
+        "updated": DT.timestamp(),
         "manual_target_origin": [12.49, 2.44],
         "tracking_target_ra": 12.7,
         "tracking_target_dec": 2.6,
     }
-    UIObjectDetails._adopt_manual_tracking_target(view, guide)
-    assert (view.object.ra, view.object.dec) == (12.7, 2.6)
-    assert published[-1] is view.object
-    assert (catalog.ra, catalog.dec) == (12.49, 2.44)
-    guide["tracking_target_ra"] = 12.8
-    UIObjectDetails._adopt_manual_tracking_target(view, guide)
-    assert view.object.ra == 12.8
-    # Browsing another object must not apply the running target's offset.
-    view.object = SimpleNamespace(ra=50.0, dec=10.0)
-    UIObjectDetails._adopt_manual_tracking_target(view, guide)
-    assert view.object.ra == 50.0
+    for ra in (12.7, 12.8):
+        guide["tracking_target_ra"] = ra
+        (tmp_path / "indi_goto_guide_status.json").write_text(json.dumps(guide))
+        view._push_status_next_read = 0
+        view._refresh_push_status()
+        assert view._push_guide_status["tracking_target_ra"] == ra
+        assert view.object is catalog
+        assert (view.object.ra, view.object.dec) == (12.49, 2.44)
+        assert not published
+        assert state.target_pixel() == (256.0, 256.0)
+        view.config_object.set_option.assert_not_called()
+        assert not view.command_queues["align_command"].commands
+        assert not view.command_queues["goto_guide"].commands
 
 
 def test_lcd_does_not_label_disabled_mount_tracking_as_tracking(monkeypatch):

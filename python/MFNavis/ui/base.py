@@ -51,6 +51,8 @@ INDI_PROBLEM_STATES = {
     "slew_rate_failed",
     "stop_failed",
     "sync_failed",
+    "usb_absent",
+    "invalid_connection_config",
 }
 
 

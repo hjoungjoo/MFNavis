@@ -3,6 +3,7 @@ import os
 from typing import Union
 from PIL import Image
 from PiFinder import utils
+from PiFinder.operation_errors import requires_error_dialog
 from PiFinder.ui.base import UIModule
 from PiFinder.ui import menu_structure
 from PiFinder.ui.object_details import UIObjectDetails
@@ -291,6 +292,8 @@ class MenuManager:
         self.stack[-1].message(message, timeout)
 
     def show_error(self, error) -> None:
+        if not requires_error_dialog(error):
+            return
         if self.error_dialog is None:
             self.stack[-1]._guide_stop_motion_if_active()
             self.error_dialog = UIOperationError(

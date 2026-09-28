@@ -3,6 +3,15 @@
 import time
 
 
+def requires_error_dialog(error):
+    """Only loss of control or an unrecovered stop failure interrupts the UI.
+
+    Other failures remain visible through the live INDI/Push status and console.
+    Classify by code rather than translated or driver-specific message text.
+    """
+    return error.get("code") in {"stop_failed", "process_exited"}
+
+
 class ErrorNotifier:
     def __init__(self, queue, source):
         self.queue = queue

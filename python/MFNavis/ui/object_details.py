@@ -34,7 +34,6 @@ from PiFinder.ui.ui_utils import (
 )
 from PiFinder import calc_utils, utils
 import functools
-import copy
 import json
 import logging
 import math
@@ -471,36 +470,9 @@ class UIObjectDetails(UIModule):
             )
         return _("Adjusting") if tracking_state == "enabled" else _("Off target")
 
-    def _adopt_manual_tracking_target(self, guide):
-        """Keep the displayed aim and chart target with a user-adjusted target.
-
-        Match the original displayed target so browsing another catalog entry
-        never silently changes that entry or steals its coordinates.
-        """
-        origin = guide.get("manual_target_origin")
-        ra, dec = guide.get("tracking_target_ra"), guide.get("tracking_target_dec")
-        if not origin or ra is None or dec is None:
-            return
-        previous = (
-            getattr(self, "_manual_display_target", None)
-            if getattr(self, "_manual_display_origin", None) == tuple(origin)
-            else None
-        )
-        if not any(
-            pair is not None
-            and abs((self.object.ra - pair[0] + 180) % 360 - 180) < 1e-4
-            and abs(self.object.dec - pair[1]) < 1e-4
-            for pair in (origin, previous)
-        ):
-            return
-        # Catalog objects are shared; update a display copy only.
-        self.object = copy.copy(self.object)
-        self.object.ra, self.object.dec = ra, dec
-        self._manual_display_target = (ra, dec)
-        self._manual_display_origin = tuple(origin)
-        self.ui_state.set_target(self.object)
-
     def _refresh_push_status(self):
+        # Manual retargeting changes the mount's tracking destination only.
+        # Preserve the selected Push/chart object and explicit alignment point.
         now = time.time()
         if time.monotonic() >= self._push_status_next_read:
             self._push_status_next_read = time.monotonic() + 0.5
@@ -516,7 +488,6 @@ class UIObjectDetails(UIModule):
                 except (OSError, ValueError, TypeError, AttributeError):
                     status = {}
                 setattr(self, attr, status)
-            self._adopt_manual_tracking_target(self._push_guide_status)
 
     def _render_push_status(self):
         self._refresh_push_status()
@@ -526,17 +497,19 @@ class UIObjectDetails(UIModule):
         imu = self.shared_state.imu()
         moving = bool(imu and imu.is_usable() and imu.moving)
         if (
+            phase == "error"
+            or guide.get("service_state") == "error"
+            or guide.get("tracking_guide_state") == "failed"
+            or mount.get("state") in INDI_PROBLEM_STATES
+            or str(mount.get("state", "")).endswith("_failed")
+        ):
+            movement = _("Error")
+        elif (
             mount.get("mount_motion_active")
             or mount.get("state") in {"moving", "slewing"}
             or moving
         ):
             movement = _("Moving")
-        elif (
-            phase == "error"
-            or mount.get("state") in INDI_PROBLEM_STATES
-            or str(mount.get("state", "")).endswith("_failed")
-        ):
-            movement = _("Error")
         elif phase == "pifinder_pulse_align":
             movement = _("Adjusting")
         elif (guide.get("tracking_guide_settle_remaining") or 0) > 0:

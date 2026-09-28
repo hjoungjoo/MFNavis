@@ -51,6 +51,36 @@ def camera_ui(resolution, target):
     return ui
 
 
+@pytest.mark.parametrize("resolution", [(128, 128), (176, 176)])
+@pytest.mark.parametrize(
+    "mount,guide",
+    [
+        ({"state": "sync_failed"}, {}),
+        ({"state": "usb_absent"}, {}),
+        ({"state": "invalid_connection_config"}, {}),
+        ({"state": "moving"}, {"service_state": "error"}),
+        ({"state": "moving"}, {"tracking_guide_state": "failed"}),
+    ],
+)
+def test_push_status_shows_errors_even_while_moving_and_clears_on_recovery(
+    resolution, mount, guide
+):
+    ui = camera_ui(resolution, (256, 256))
+    ui._refresh_push_status = Mock()
+    ui._push_mount_status = mount
+    ui._push_guide_status = guide
+    ui._push_last_attempt = None
+    ui.shared_state.imu = lambda: SimpleNamespace(is_usable=lambda: True, moving=True)
+    ui.shared_state.solution = lambda: SimpleNamespace(last_solve_attempt=None)
+    ui.draw = Mock(wraps=ui.draw)
+    UIObjectDetails._render_push_status(ui)
+    assert ui.draw.text.call_args.args[1].startswith("Error")
+    ui._push_mount_status = {"state": "moving"}
+    ui._push_guide_status = {}
+    UIObjectDetails._render_push_status(ui)
+    assert ui.draw.text.call_args.args[1].startswith("Moving")
+
+
 @pytest.mark.parametrize("resolution", [(128, 128), (320, 240)])
 @pytest.mark.parametrize("zoom_level", [0, 1, 2])
 def test_alignment_ring_matches_live_star_and_leaves_center_open(

@@ -81,8 +81,8 @@ def test_lcd_error_persists_scrolls_and_returns_to_exact_previous_screen(
     previous = manager.stack[-1]
     error = {
         "source": "GoTo / Guide",
-        "code": "sync_failed",
-        "message": "Driver rejected SYNC. " * 30,
+        "code": "stop_failed",
+        "message": "Driver rejected STOP. " * 30,
     }
     manager.show_error(error)
     manager.show_error(error)
@@ -101,6 +101,44 @@ def test_lcd_error_persists_scrolls_and_returns_to_exact_previous_screen(
     assert manager.error_dialog is None
     assert manager.stack == [previous]
     previous.update.assert_called_once()
+    previous._guide_stop_motion_if_active.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "sync_failed",
+        "goto_failed",
+        "tracking_failed",
+        "disconnected",
+        "server_unavailable",
+        "manual_failed",
+        "axis_stop_failed",
+        "usb_absent",
+    ],
+)
+def test_routine_errors_do_not_interrupt_screen_or_motion(code):
+    manager = _manager(DisplayHeadless())
+    manager.show_error({"source": "INDI Mount", "code": code, "message": code})
+    manager.update()
+    assert manager.error_dialog is None
+    assert not manager.consume_error_key(Keys.number_press_key(5))
+    manager.stack[-1].update.assert_called_once()
+    manager.stack[-1]._guide_stop_motion_if_active.assert_not_called()
+
+
+def test_process_exit_requires_acknowledgement():
+    manager = _manager(DisplayHeadless())
+    manager.show_error({"source": "INDI Mount", "code": "process_exited"})
+    assert manager.error_dialog is not None
+    manager.stack[-1]._guide_stop_motion_if_active.assert_called_once()
+
+
+def test_routine_error_does_not_replace_critical_dialog():
+    manager = _manager(DisplayHeadless())
+    manager.show_error({"source": "INDI Mount", "code": "stop_failed"})
+    manager.show_error({"source": "INDI Mount", "code": "disconnected"})
+    assert [item["code"] for item in manager.error_dialog.errors] == ["stop_failed"]
 
 
 def test_error_keys_bypass_custom_mount_mapping_and_swallow_release():

@@ -4631,7 +4631,8 @@ class MountControlIndi(BacklashCalibrationMixin):
             properties,
             "stopped",
             "Mount stop command sent",
-            "stop_failed",
+            # A rejected axis stop can still recover via the abort below.
+            "axis_stop_failed" if manual_stop else "stop_failed",
         )
         if not stopped and manual_stop:
             used_abort = True

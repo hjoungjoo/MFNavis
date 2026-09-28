@@ -466,6 +466,37 @@ def test_failed_axis_stop_falls_back_to_abort_and_restores_tracking(monkeypatch)
     assert mount._manual_motion_direction is None
 
 
+@pytest.mark.parametrize("abort_ok", [True, False])
+def test_only_unrecovered_stop_failure_requires_error_dialog(monkeypatch, abort_ok):
+    from PiFinder.operation_errors import requires_error_dialog
+
+    mount = DummyMountControl()
+    assert mount.manual_move("north")
+    monkeypatch.setattr(mount, "_cached_tracking_enabled", lambda: False)
+    monkeypatch.setattr(
+        mount,
+        "_apply_indi_properties",
+        MountControlIndi._apply_indi_properties.__get__(mount),
+    )
+    monkeypatch.setattr(
+        "PiFinder.mountcontrol_indi.sys_utils.apply_indi_onstep_properties",
+        lambda properties, **kwargs: {
+            "ok": abort_ok and "ABORT" in properties[0],
+            "stderr": "Driver rejected stop",
+        },
+    )
+    alerts = Queue()
+    mount.error_notifier.queue = alerts
+    assert mount.stop_mount() is abort_ok
+    first = alerts.get_nowait()
+    assert first["code"] == "axis_stop_failed"
+    assert not requires_error_dialog(first)
+    if abort_ok:
+        assert alerts.empty()
+    else:
+        assert requires_error_dialog(alerts.get_nowait())
+
+
 def test_manual_motion_keepalive_ignores_other_direction():
     mount = DummyMountControl()
 
