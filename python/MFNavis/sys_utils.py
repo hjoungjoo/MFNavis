@@ -4007,6 +4007,13 @@ def change_password(username, current_password, new_password):
         return False
 
 
+def switch_cam_imx678() -> None:
+    logger.info("SYS: Switching cam to imx678")
+    sh.sudo(
+        "-n", "/usr/bin/python3", "/usr/local/lib/mfnavis/switch_camera.py", "imx678"
+    )
+
+
 def switch_cam_imx477() -> None:
     logger.info("SYS: Switching cam to imx477")
     sh.sudo(

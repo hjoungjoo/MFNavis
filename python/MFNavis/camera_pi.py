@@ -82,6 +82,26 @@ def estimate_sensor_drops(
     return max(0, intervals - 1)
 
 
+def imx678_variant(sensor_modes) -> str:
+    """Identify the upstream RAW12 mode without guessing from old settings."""
+    for mode in sensor_modes:
+        if tuple(mode.get("size", ())) != (3856, 2180):
+            continue
+        # PiSP may advertise its 16-bit container here; initialize pins the
+        # sensor itself to RAW12 independently of this memory representation.
+        if mode.get("bit_depth") not in (12, 16):
+            continue
+        raw_format = str(mode.get("unpacked", mode.get("format", "")))
+        if raw_format in ("R12", "R16"):
+            return "mono"
+        if raw_format in ("SRGGB12", "SRGGB16"):
+            return "color"
+    raise RuntimeError(
+        "IMX678 requires the upstream 3856x2180 RAW12 mode; "
+        "check scripts/install_imx678.sh --check and rpicam-hello --list-cameras"
+    )
+
+
 class CameraPI(CameraInterface):
     """The camera class for PI cameras.  Implements the CameraInterface interface."""
 
@@ -97,6 +117,10 @@ class CameraPI(CameraInterface):
         # name here, so camType carries it to every consumer process.
         detected_type = detect_camera_type(self.camera.camera.id)
         variant = cfg.get_option("camera_variant", "mono") if cfg else "mono"
+        if detected_type == "imx678":
+            # The upstream IMX678 driver identifies mono/colour over I2C.
+            # Do not inherit the previous camera's configured variant.
+            variant = imx678_variant(self.camera.sensor_modes)
         self.camera_type = apply_variant(detected_type, variant)
         self.profile = get_camera_profile(self.camera_type)
         logger.info(
@@ -131,6 +155,11 @@ class CameraPI(CameraInterface):
             raw={"size": self.profile.raw_size, "format": self.profile.format},
             buffer_count=CONTINUOUS_BUFFER_COUNT,
             queue=False,
+            **(
+                {"sensor": {"output_size": self.profile.raw_size, "bit_depth": 12}}
+                if getattr(self, "camera_type", "").startswith("imx678")
+                else {}
+            ),
         )
         self.camera.configure(cam_config)
 
@@ -138,7 +167,15 @@ class CameraPI(CameraInterface):
         # _raw_array() so every consumer keeps working in the profile's
         # bit-depth units (bias offsets, the 8-bit stretch, saturation
         # checks, SQM calibration).
-        delivered_format = str(self.camera.camera_configuration()["raw"]["format"])
+        raw_config = self.camera.camera_configuration()["raw"]
+        delivered_format = str(raw_config["format"])
+        self._raw_size = tuple(raw_config.get("size", self.profile.raw_size))
+        if getattr(self, "camera_type", "").startswith("imx678"):
+            if self._raw_size != self.profile.raw_size or delivered_format not in (
+                self.profile.format,
+                "R16" if self.profile.mono else "SRGGB16",
+            ):
+                raise RuntimeError(f"Unexpected IMX678 RAW configuration: {raw_config}")
         self._raw_shift = raw_downshift(delivered_format, self.profile.bit_depth)
         if self._raw_shift:
             logger.info(
@@ -278,6 +315,10 @@ class CameraPI(CameraInterface):
     def _raw_array(self, request) -> np.ndarray:
         """A request's raw frame in the profile's bit-depth units (uint16)."""
         raw = request.make_array("raw").copy().view(np.uint16)
+        # DMA stride can exceed 3856 pixels on PiSP. Padding is not sensor data.
+        if hasattr(self, "_raw_size"):
+            width, height = self._raw_size
+            raw = raw[:height, :width]
         if self._raw_shift:
             raw >>= self._raw_shift
         return raw

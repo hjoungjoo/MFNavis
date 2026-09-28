@@ -164,6 +164,8 @@ python3 scripts/warm_mfnavis_caches.py --images poss
 2. **하드웨어 선택:** `Settings > Advanced`에서 장착 방향에 맞는 `MFNavis Type`,
    실제 `Camera Type`, `GPS Settings`의 GPS 종류·포트·통신 속도를 설정합니다.
    재시작 안내가 나오면 따르세요.
+   IMX678은 먼저 [공식 드라이버 기반 준비 절차](docs/mf_dev/mf_imx678_ko.md)를
+   완료한 뒤 `IMX678 (Auto)`를 선택합니다.
 3. **네트워크와 웹 UI 확인:** 같은 네트워크에서 `http://<호스트명>.local`을 엽니다.
    호스트명이 `pifinder`이면 `http://pifinder.local`입니다. AP 모드에서 이름으로
    접속되지 않으면 `http://10.10.10.1`을 사용합니다. 현장용 Wi-Fi는

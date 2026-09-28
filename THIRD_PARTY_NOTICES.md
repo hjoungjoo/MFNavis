@@ -23,6 +23,11 @@ these rights. The warranty disclaimers in the original licenses apply.
 | MFNavis Korean web font | Korean subset of the existing Sarasa bundle, renamed; Renzhi Li and original authors | [SIL Open Font License 1.1 and copyright notices](python/views/css/mfnavis-korean.LICENSE.txt); regenerate with `scripts/build_web_korean_font.py` |
 | Web JS/CSS and fonts, astronomical catalogs, photographs, hardware designs | Original sources of the respective files | Check the original notices and terms separately from software licensing |
 
+The optional IMX678 kernel module uses the unmodified Linux upstream driver
+(GPL-2.0-only). Its pinned source, original attribution, and license are in
+[deployment/imx678](deployment/imx678/README.md). MFNavis supplies the Pi overlay
+and DKMS packaging; these are not Raspberry Pi upstream distribution packages.
+
 Naming a parent package does not replace the notices for bundled components,
 such as the BLAS libraries in NumPy/SciPy. Use
 `scripts/collect_product_licenses.py` to collect the original notices for the

@@ -245,6 +245,20 @@ class CameraProfile:
 # Dark current values assume ~20-25°C ambient temperature
 # Note: Conversion from electrons to ADU varies by bit depth and gain settings
 CAMERA_PROFILES: Dict[str, CameraProfile] = {
+    "imx678": CameraProfile(
+        # Linux upstream bf40cc53b1e0: full-resolution RAW12, no binning.
+        format="R12",
+        raw_size=(3856, 2180),
+        analog_gain=30.0,  # Upstream analogue-only ceiling is ~31.62x.
+        bit_depth=12,
+        pixel_pitch_um=2.0,
+        default_lens_key="16mm",  # Fallback geometry; measure the fitted lens.
+        shipped_lens_keys=("16mm",),
+        mono=True,
+        crop_x=(838, 838),  # 2180-square, even Bayer phase for colour variant.
+        # No borrowed SQM calibration or noise estimates. Measure dark frames
+        # and the passband on the actual module before using quantitative SQM.
+    ),
     "imx296": CameraProfile(
         # Hardware configuration
         format="R10",  # 10-bit raw format
@@ -454,6 +468,9 @@ CAMERA_PROFILES: Dict[str, CameraProfile] = {
 # and applied with apply_variant() -- it is never detected at runtime. SQM
 # calibration constants are inherited from the mono units and are unverified
 # on colour hardware.
+CAMERA_PROFILES["imx678_color"] = replace(
+    CAMERA_PROFILES["imx678"], mono=False, format="SRGGB12"
+)
 CAMERA_PROFILES["imx462_color"] = replace(
     # SRGGB12 label kept: on a real CFA the colour-linked zero point (#560)
     # works as upstream intended -- mono=False opens the colour gate.
@@ -509,6 +526,7 @@ def detect_camera_type(hardware_id: str) -> str:
     """
     # Mapping of hardware ID substrings to profile names
     hardware_mappings = {
+        "imx678": "imx678",
         "imx296": "imx296",
         "imx462": "imx462",  # Sensor self-reports as imx462
         "imx290": "imx462",  # IMX290 uses IMX462 profile (driver compatibility)

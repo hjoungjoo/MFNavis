@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/torvalds/linux",
+  "commit": "bf40cc53b1e00c312046f6dd88e9054bc91865af",
+  "path": "drivers/media/i2c/imx678.c",
+  "sha256": "2c8a9a19594ef8c0adcf2de5a85ea321f39c98bb987e35c8f4e3ddb80091c435",
+  "license": "GPL-2.0-only"
+}

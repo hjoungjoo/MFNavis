@@ -316,6 +316,12 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3-evdev \
 sudo env PYTHONPATH="${MFNAVIS_REPO_DIR}/python" python3 \
     -m MFNavis.switch_camera --default imx462
 
+# Optional IMX678 preparation keeps the currently selected camera active.
+if [[ "${MFNAVIS_INSTALL_IMX678:-false}" == true ]]; then
+    sudo env MFNAVIS_USER="${MFNAVIS_USER}" bash \
+        "${MFNAVIS_REPO_DIR}/scripts/install_imx678.sh" --install
+fi
+
 # Keep POSIX shared memory alive across SSH logouts: logind's default
 # RemoveIPC=yes deletes all IPC owned by the MFNavis user (including the
 # solver's /dev/shm segment) the moment that user's last login

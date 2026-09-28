@@ -645,3 +645,7 @@ def switch_cam_imx296() -> None:
 def switch_cam_imx462() -> None:
     logger.info("SYS: Switching cam to imx462")
     logger.info('sh.sudo("python", "-m", "PiFinder.switch_camera", "imx462")')
+
+
+def switch_cam_imx678() -> None:
+    logger.info("SYS: Switching cam to imx678")

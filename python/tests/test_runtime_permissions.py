@@ -49,6 +49,7 @@ def test_installed_policy_covers_device_commands(tmp_path, user):
         "/usr/bin/nmcli -w 25 con up *",
         "/usr/sbin/modprobe uhid",
         "/usr/bin/python3 /usr/local/lib/mfnavis/switch_camera.py imx462",
+        "/usr/bin/python3 /usr/local/lib/mfnavis/switch_camera.py imx678",
     ):
         assert command in policy
     assert "NOPASSWD: ALL" not in policy
@@ -147,6 +148,7 @@ def test_menu_permission_failure_keeps_menu_alive(monkeypatch, action):
         "switch_cam_imx477",
         "switch_cam_imx296",
         "switch_cam_imx462",
+        "switch_cam_imx678",
     ],
 )
 def test_privileged_requests_never_prompt(monkeypatch, action):

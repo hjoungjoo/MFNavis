@@ -187,6 +187,7 @@ def test_camera_type_menu_values_match_the_composed_camera_type():
     """
     values = {item["value"] for item in _camera_type_menu()["items"]}
     assert values == {
+        "imx678",
         "imx477",
         "imx296_mono",
         "imx296_color",

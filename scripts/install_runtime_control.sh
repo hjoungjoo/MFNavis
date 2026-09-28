@@ -66,7 +66,7 @@ print_policy() {
         printf '%s ALL=(root) NOPASSWD: %s\n' "${MFNAVIS_USER}" "${command}"
     done
     printf '%s ALL=(root) NOPASSWD: /usr/bin/bash %s/scripts/mf_wifi_recover.sh\n' "${MFNAVIS_USER}" "${REPO_DIR}"
-    for camera in imx477 imx296 imx462; do
+    for camera in imx477 imx296 imx462 imx678; do
         printf '%s ALL=(root) NOPASSWD: /usr/bin/python3 /usr/local/lib/mfnavis/switch_camera.py %s\n' "${MFNAVIS_USER}" "${camera}"
     done
 }

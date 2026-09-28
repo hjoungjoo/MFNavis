@@ -497,11 +497,16 @@ def _switch_camera(ui_module: UIModule, cam_type: str, variant: Optional[str]) -
             "imx477": sys_utils.switch_cam_imx477,
             "imx296": sys_utils.switch_cam_imx296,
             "imx462": sys_utils.switch_cam_imx462,
+            "imx678": sys_utils.switch_cam_imx678,
         }[cam_type]
         switch_cam()
         restart_system(ui_module)
     elif variant_changed:
         restart_pifinder(ui_module)
+
+
+def switch_cam_imx678(ui_module: UIModule) -> None:
+    _switch_camera(ui_module, "imx678", None)
 
 
 def switch_cam_imx477(ui_module: UIModule) -> None:

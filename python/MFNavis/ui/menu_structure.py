@@ -1343,6 +1343,11 @@ pifinder_menu = {
                             "value_callback": callbacks.get_camera_type,
                             "items": [
                                 {
+                                    "name": _("IMX678 (Auto)"),
+                                    "callback": callbacks.switch_cam_imx678,
+                                    "value": "imx678",
+                                },
+                                {
                                     "name": _("v2 - imx477"),
                                     "callback": callbacks.switch_cam_imx477,
                                     "value": "imx477",
