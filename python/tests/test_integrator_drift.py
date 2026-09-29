@@ -11,7 +11,10 @@ Catches regressions in:
 """
 
 from dataclasses import dataclass
+from queue import Queue
+from types import SimpleNamespace
 from typing import List, Union
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -27,6 +30,73 @@ from PiFinder.types.positioning import (
     PointingEstimate,
     SuccessfulSolve,
 )
+
+
+def test_stationary_imu_observations_are_published_and_enable_fallback(monkeypatch):
+    from PiFinder import integrator as mod
+    from PiFinder.indi_goto_guide_service import IndiGotoGuideService
+    from PiFinder.pointing_coordinate_service import PointingCoordinateService
+
+    anchor = quaternion.quaternion(1, 0, 0, 0)
+    messages = iter(
+        [
+            SuccessfulSolve(
+                camera=Pointing(100.0, 20.0, 0.0),
+                aligned=Pointing(100.0, 20.0, 0.0),
+                imu_anchor=anchor,
+                last_solve_attempt=100.0,
+                last_solve_success=100.0,
+            ),
+            FailedSolve(last_solve_attempt=101.0, last_solve_success=100.0),
+            ImuSample(quat=anchor, timestamp=102.0, status=3, moving=False),
+            ImuSample(quat=anchor, timestamp=102.1, status=3, moving=False),
+            ImuSample(quat=anchor, timestamp=103.0, status=3, moving=False),
+            ImuSample(quat=anchor, timestamp=104.0, status=3, sensor_healthy=False),
+        ]
+    )
+
+    def next_message():
+        try:
+            return next(messages)
+        except StopIteration:
+            raise EOFError
+
+    telemetry = Mock(replaying=True)
+    telemetry.next_replay_message.side_effect = next_message
+    monkeypatch.setattr(mod, "TelemetryManager", Mock(return_value=telemetry))
+    monkeypatch.setattr(mod, "CaptureRecorder", Mock())
+    monkeypatch.setattr(mod.MultiprocLogging, "configurer", Mock())
+    monkeypatch.setattr(
+        mod.config, "Config", lambda: SimpleNamespace(get_option=lambda _: "flat")
+    )
+    monkeypatch.setattr(mod.state_utils, "sleep_for_framerate", Mock())
+    monkeypatch.setattr(mod, "_get_constellation", lambda *args: "")
+    monkeypatch.setattr(mod, "_get_alt_az", lambda *args: (45.0, 90.0))
+    state = Mock()
+    state.target_pixel.return_value = (256, 256)
+    mod.integrator(state, Queue(), Queue(), Queue())
+
+    published = [call.args[0] for call in state.set_solution.call_args_list]
+    assert [p.imu_observed_time for p in published] == [None, None, 102.0, 103.0]
+    assert all(p.estimate_time == 100.0 for p in published)
+    assert all(p.last_solve_success == 100.0 for p in published)
+    state.solution.return_value = published[-1]
+    coordinate = PointingCoordinateService().solved_sample(state, None)
+    sample = {
+        "valid": coordinate.valid,
+        "ra": coordinate.ra_deg,
+        "dec": coordinate.dec_deg,
+        "source": coordinate.source,
+        "timestamp": coordinate.timestamp,
+        "metadata": coordinate.metadata,
+    }
+    service = IndiGotoGuideService(Queue(), Queue(), None)
+    monkeypatch.setattr(mod.time, "time", lambda: 104.0)
+    anchor_sample = service._imu_goto_anchor({"fresh": True, "solved": sample})
+    assert anchor_sample["ra"] == 100.0
+    assert anchor_sample["source"] == "pifinder_imu_estimate"
+    monkeypatch.setattr(mod.time, "time", lambda: 110.0)
+    assert service._imu_goto_anchor({"fresh": True, "solved": sample}) is None
 
 
 # ── Synthetic telemetry generation ──────────────────────────────────
@@ -397,6 +467,25 @@ class TestIntegratorDrift:
 
         assert advanced is False
         assert estimate.pointing.aligned.estimate == solve.aligned
+        assert estimate.estimate_time == 100.0
+        assert estimate.imu_observed_time == 101.0
+        assert estimate.last_solve_success == 100.0
+
+        # Failed sensor reads must not keep an old estimate usable for GoTo.
+        _advance_with_imu(
+            estimate,
+            idr,
+            ImuSample(
+                quat=drifted_quat,
+                timestamp=102.0,
+                status=3,
+                moving=False,
+                sensor_healthy=False,
+            ),
+        )
+        assert estimate.imu_observed_time == 101.0
+        _apply_successful_solve(estimate, solve, idr)
+        assert estimate.imu_observed_time is None
 
     def test_failed_solve_then_real_motion_uses_last_successful_anchor(self):
         """No-solve motion remains relative to the last confirmed plate solve."""

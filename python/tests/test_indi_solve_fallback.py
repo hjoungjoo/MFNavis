@@ -173,6 +173,63 @@ def test_plate_anchored_imu_preferred_over_raw_heading(rig):
     assert command["pointing_source"] == "pifinder_imu_estimate"
 
 
+@pytest.mark.parametrize("source", ["solve", "pifinder_imu_estimate"])
+def test_stationary_anchored_imu_remains_usable_without_fresh_camera_solve(rig, source):
+    service, _, _, pointing = rig
+    service.config_values["indi_goto_allow_unaligned_imu"] = False
+    pointing["solved"] = {
+        **pointing["imu"],
+        "ra": 105.0,
+        "source": source,
+        "timestamp": 700.0,
+        "metadata": {"has_plate_anchor": True, "imu_observed_time": 1000.0},
+    }
+    command = start(rig)
+    assert command["sync_ra"] == 105.0
+    assert command["pointing_source"] == "pifinder_imu_estimate"
+    assert service.phase == "native_goto"
+    assert pointing["solved"]["timestamp"] == 700.0
+    assert not service._is_recent_solve(pointing["solved"])
+    acknowledge(rig)
+    assert service.phase == "native_tracking"
+    assert not commands(service)  # An IMU observation is not optical recovery.
+
+
+@pytest.mark.parametrize("observed", [None, 990.0, 1001.0, float("nan")])
+def test_stale_anchored_coordinate_requires_recent_integrator_observation(
+    rig, observed
+):
+    service, _, _, pointing = rig
+    service.config_values["indi_goto_allow_unaligned_imu"] = False
+    pointing["solved"] = {
+        **pointing["imu"],
+        "source": "pifinder_imu_estimate",
+        "timestamp": 700.0,
+        "metadata": {"has_plate_anchor": True, "imu_observed_time": observed},
+    }
+    service.handle_command({"type": "goto_target", "ra": 110.0, "dec": 30.0})
+    assert not commands(service)
+    assert service.phase == "pifinder_goto_blocked"
+    assert not service.solve_fallback_armed
+
+
+def test_initial_wait_retries_imu_when_observation_arrives(rig):
+    service, clock, _, pointing = rig
+    service.config_values["indi_goto_allow_unaligned_imu"] = False
+    solve(rig)
+    pointing["current"].update(source="pifinder_imu_estimate", timestamp=700.0)
+    pointing["current"]["metadata"]["has_plate_anchor"] = True
+    service.handle_command({"type": "goto_target", "ra": 110.0, "dec": 30.0})
+    assert not commands(service)
+    assert service.initial_goto_deadline is not None
+    clock[0] += 1
+    pointing["current"]["metadata"]["imu_observed_time"] = clock[0]
+    service._tick_state_machine()
+    assert commands(service)[-1]["origin"] == "imu_goto_fallback"
+    assert service.phase == "native_goto"
+    assert service.initial_goto_deadline is None
+
+
 @pytest.mark.parametrize(
     "change",
     [{"park_state": "Parked"}, {"mount_motion_active": True}, {"available": False}],

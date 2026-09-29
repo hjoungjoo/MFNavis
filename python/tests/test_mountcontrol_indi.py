@@ -468,6 +468,8 @@ def test_failed_axis_stop_falls_back_to_abort_and_restores_tracking(monkeypatch)
 
 @pytest.mark.parametrize("abort_ok", [True, False])
 def test_only_unrecovered_stop_failure_requires_error_dialog(monkeypatch, abort_ok):
+    from queue import Queue as LocalQueue
+
     from PiFinder.operation_errors import requires_error_dialog
 
     mount = DummyMountControl()
@@ -485,7 +487,9 @@ def test_only_unrecovered_stop_failure_requires_error_dialog(monkeypatch, abort_
             "stderr": "Driver rejected stop",
         },
     )
-    alerts = Queue()
+    # This test stays in one process; avoid racing multiprocessing's feeder
+    # thread when inspecting the alerts immediately after stop_mount().
+    alerts = LocalQueue()
     mount.error_notifier.queue = alerts
     assert mount.stop_mount() is abort_ok
     first = alerts.get_nowait()

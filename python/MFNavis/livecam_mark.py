@@ -14,7 +14,12 @@ from PiFinder.livecam_config import (
 )
 from PiFinder.mf_manual_lens import manual_focal_from_state
 from PiFinder.optics import OpticalTrainResolver
-from PiFinder.ui.camera_guidance import draw_pointer, draw_reticle, target_direction
+from PiFinder.ui.camera_guidance import (
+    camera_fov,
+    draw_pointer,
+    draw_reticle,
+    target_direction,
+)
 
 logger = logging.getLogger("LiveCam.Mark")
 _OPTICS = OpticalTrainResolver()
@@ -74,20 +79,26 @@ def draw_mark_overlay(image, info, shared_state, web_theme="grey"):
         )
         image = image.convert("RGB")
         color = (232, 75, 63) if web_theme == "red" else (80, 200, 255)
-        draw_reticle(ImageDraw.Draw(image), center, side / optics.fov_degrees, color)
+        solution = shared_state.solution()
+        fov = camera_fov(solution, optics.fov_degrees)
+        draw_reticle(ImageDraw.Draw(image), center, side / fov, color)
 
         ui_state = shared_state.ui_state()
         target = ui_state.target() if ui_state is not None else None
         if target is None or target.ra is None or target.dec is None:
             return image
-        solution = shared_state.solution()
         if solution is None or not solution.has_pointing():
             return image
         camera = solution.pointing.camera.estimate
         if camera is None:
             return image
         angle = target_direction(
-            camera, target.ra, target.dec, target_pixel, optics.fov_degrees
+            camera,
+            target.ra,
+            target.dec,
+            target_pixel,
+            fov,
+            projection=getattr(solution, "alignment_projection", None),
         )
         if angle is not None:
             draw_pointer(image, center, side * 0.5, angle + offset, color)

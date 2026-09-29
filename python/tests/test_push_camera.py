@@ -41,6 +41,7 @@ def camera_ui(resolution, target):
         camera_type=lambda: "imx296",
         camera_lens=lambda: "",
         camera_manual_focal_mm=lambda: None,
+        solution=lambda: None,
     )
     ui._camera_optics = SimpleNamespace(
         resolve=lambda *args: SimpleNamespace(fov_degrees=10.2)
@@ -101,7 +102,7 @@ def test_alignment_ring_matches_live_star_and_leaves_center_open(
     radius = side * (2**zoom_level) / 10.2  # middle (2 degree) segmented circle
     assert ui.screen.getpixel((round(x), round(y)))[0] > 100
     assert any(
-        ui.screen.getpixel((px, py))[0] == 192
+        ui.screen.getpixel((px, py))[0] == 255
         for px in range(round(x - radius * 0.7) - 2, round(x - radius * 0.7) + 3)
         for py in range(round(y + radius * 0.7) - 2, round(y + radius * 0.7) + 3)
     )
@@ -244,3 +245,44 @@ def test_pointer_suppressed_at_alignment_point():
     camera = SimpleNamespace(RA=0, Dec=0, Roll=0)
     assert target_direction(camera, 0, 0, (256, 256), 10.2) is None
     assert target_direction(camera, 0, 0, (256, 300), 10.2) == pytest.approx(180)
+
+
+@pytest.mark.parametrize(
+    "frame", [(512, 512, 512), (1920, 1080, 980), (1080, 1920, 980)]
+)
+def test_push_arrow_uses_same_projection_as_saved_alignment(monkeypatch, frame):
+    from PiFinder.alignment_projection import target_pixel_pointing
+    from PiFinder.ui import object_details
+    from PiFinder.ui.camera_guidance import camera_fov, target_direction
+
+    pixel = (206.36, 250.41)
+    camera = SimpleNamespace(RA=12.5, Dec=0.55, Roll=40.8)
+    plate = {**vars(camera), "FOV": 27.0, "frame": frame}
+    ra, dec = target_pixel_pointing(plate, pixel)
+    solution = SimpleNamespace(
+        alignment_projection=plate,
+        has_pointing=lambda: True,
+        pointing=SimpleNamespace(camera=SimpleNamespace(estimate=camera)),
+    )
+    ui = camera_ui((128, 128), pixel)
+    ui.shared_state.solution = lambda: solution
+    ui.object.ra, ui.object.dec = ra, dec
+    del ui._draw_camera_pointer
+    pointer = Mock()
+    reticle = Mock()
+    monkeypatch.setattr(object_details, "draw_pointer", pointer)
+    monkeypatch.setattr(object_details, "draw_reticle", reticle)
+
+    # Regression: the nominal lens scale pointed elsewhere immediately after
+    # a successful off-centre alignment with a different measured FOV.
+    assert target_direction(camera, ra, dec, pixel, 10.2) is not None
+    ui._render_camera_push()
+    pointer.assert_not_called()
+    assert reticle.call_args.args[2] == pytest.approx(112 / camera_fov(solution, 10.2))
+
+    # A real target displacement must still produce the correct image bearing.
+    ui.object.ra, ui.object.dec = target_pixel_pointing(
+        plate, (pixel[0], pixel[1] + 10)
+    )
+    ui._render_camera_push()
+    assert pointer.call_args.args[3] == pytest.approx(0.0, abs=1e-8)

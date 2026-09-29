@@ -13,7 +13,7 @@ from PiFinder.alignment_projection import (
     project_target,
 )
 from PiFinder.solver_frame_map import map_frame_pixel_to_target
-from PiFinder.types.positioning import ImuSample, PointingEstimate
+from PiFinder.types.positioning import ImuSample, Pointing, PointingEstimate
 
 pytestmark = pytest.mark.unit
 
@@ -78,6 +78,81 @@ def test_cached_projection_handles_ra_wrap_and_quaternion_sign():
         now=101.0,
         context=("optics",),
     ) == pytest.approx(pixel)
+
+
+@pytest.mark.parametrize("now", [103.0, 220.0])
+def test_manual_motion_projects_through_current_imu_camera_pose(now):
+    estimate, imu = _cached()
+    original_plate = dict(estimate.alignment_projection)
+    estimate.pointing.camera.estimate = Pointing(RA=1.0, Dec=44.0, Roll=279.0)
+    estimate.estimate_time = now - 1.0
+    estimate.imu_observed_time = now
+    imu.timestamp = now
+    imu.quat = quaternion.from_rotation_vector([0, 0, math.radians(1.0)])
+    expected = project_target(
+        {**original_plate, "RA": 1.0, "Dec": 44.0, "Roll": 279.0}, 0.1, 45.0
+    )
+    assert cached_target_pixel(
+        estimate, imu, 0.1, 45.0, now=now, context=("optics",)
+    ) == pytest.approx(expected)
+    assert expected != pytest.approx(project_target(original_plate, 0.1, 45.0))
+    assert estimate.alignment_projection == original_plate
+    assert estimate.last_solve_success == 100.0
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "no_observation",
+        "old_observation",
+        "future_observation",
+        "nan_observation",
+        "old_estimate",
+        "future_estimate",
+        "no_camera",
+        "bad_camera",
+        "moving",
+        "stale_imu",
+        "bad_imu",
+        "optics",
+        "epoch",
+    ],
+)
+def test_imu_projection_still_requires_current_valid_state(change):
+    estimate, imu = _cached()
+    now, context = 220.0, ("optics",)
+    estimate.pointing.camera.estimate = Pointing(RA=1.0, Dec=44.0, Roll=279.0)
+    estimate.estimate_time = 219.0
+    estimate.imu_observed_time = now
+    imu.timestamp = now
+    if change == "no_observation":
+        estimate.imu_observed_time = None
+    if change == "old_observation":
+        estimate.imu_observed_time = 210.0
+    if change == "future_observation":
+        estimate.imu_observed_time = 221.0
+    if change == "nan_observation":
+        estimate.imu_observed_time = float("nan")
+    if change == "old_estimate":
+        estimate.estimate_time = 99.0
+    if change == "future_estimate":
+        estimate.estimate_time = 221.0
+    if change == "no_camera":
+        estimate.pointing.camera.estimate = None
+    if change == "bad_camera":
+        estimate.pointing.camera.estimate.RA = float("nan")
+    if change == "moving":
+        imu.moving = True
+    if change == "stale_imu":
+        imu.timestamp = 100.0
+    if change == "bad_imu":
+        imu.sensor_healthy = False
+    if change == "optics":
+        context = ("changed",)
+    if change == "epoch":
+        estimate.last_solve_success = 101.0
+    with pytest.raises(ValueError):
+        cached_target_pixel(estimate, imu, 0.1, 45.0, now=now, context=context)
 
 
 @pytest.mark.parametrize(

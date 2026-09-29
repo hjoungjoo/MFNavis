@@ -1107,7 +1107,9 @@ def _align_pifinder_if_enabled(shared_state, ra_deg: float, dec_deg: float) -> b
         )
     except (ValueError, TypeError, KeyError, AttributeError) as exc:
         if console_queue is not None:
-            console_queue.put("SkySafari Align: fresh stationary solve needed")
+            console_queue.put(
+                "SkySafari Align: stationary solve or anchored IMU needed"
+            )
         logger.warning("SkySafari cached align unavailable: %s", exc)
         return False
 
@@ -1120,9 +1122,11 @@ def _align_pifinder_if_enabled(shared_state, ra_deg: float, dec_deg: float) -> b
         console_queue.put("SkySafari Alignment Set")
     ui_queue.put("reload_config")
     logger.info(
-        "SkySafari MFNavis align set target pixel: %s (cached solve age %.3fs, %.1fms)",
+        "SkySafari MFNavis align set target pixel: %s "
+        "(solve age %.3fs, pose source %s, %.1fms)",
         target_pixel,
         time.time() - estimate.last_solve_success,
+        getattr(estimate, "solve_source", None),
         (time.monotonic() - started) * 1000,
     )
     return True

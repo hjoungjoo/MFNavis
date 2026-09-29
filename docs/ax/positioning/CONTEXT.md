@@ -142,6 +142,14 @@ _Avoid_: last_ok.
 The measurement **epoch** of the data behind the *current* `estimate` — i.e. *when the reading this value is based on was captured*, not when the integrator computed or published it. For a camera estimate it is the frame's `exposure_end`; for an IMU-progressed estimate it is the IMU sample's `timestamp`. Both sit on the same `time.time()` wall clock, so `time.time() - estimate_time` is a true "age of the fix" regardless of source. Updated on **every** estimate — each plate-solve and each IMU advance. Right after a solve `estimate_time == last_solve_success`; between solves the IMU advances `estimate_time` to each sample's epoch while `last_solve_success` stays anchored.
 _Avoid_: solve_time (legacy name — "solve" is reserved for plate-solve; this value is an *estimate*, often IMU-derived), cam_solve_time (removed), publish time, integration time. Whether the current estimate is the raw plate-solve or IMU-progressed is told by `solve_source` (`is_camera_solve()`), **not** by comparing timestamps.
 
+**`imu_observed_time`**:
+The latest valid IMU sample checked by the integrator against an initialized
+plate-anchored estimate, including stationary samples. Stationary observations
+are published at most once per second without changing `estimate_time`, the
+pointing cells, or camera solve epochs. GoTo may use a recent observation to
+accept the retained coordinate as an IMU fallback; it does not authorize optical
+recovery. A raw IMU timestamp alone does not refresh a retained estimate.
+
 ### Civil time (date & clock)
 
 **Civil datetime** (the `shared_state.datetime()` family):

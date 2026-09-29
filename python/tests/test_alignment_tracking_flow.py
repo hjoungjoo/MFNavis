@@ -87,8 +87,22 @@ def make_state():
     return state, objects
 
 
-def test_skysafari_alignment_zeroes_lcd_and_reports_same_position(monkeypatch):
+@pytest.mark.parametrize("imu_fallback", [False, True])
+def test_skysafari_alignment_zeroes_lcd_and_reports_same_position(
+    monkeypatch, imu_fallback
+):
     state, objects = make_state()
+    now = DT.timestamp()
+    if imu_fallback:
+        now += 120.0
+        estimate = state.solution()
+        estimate.solve_source = SolveSource.CAMERA_FAILED
+        estimate.estimate_time = now - 10.0
+        estimate.imu_observed_time = now
+        camera_now = Pointing(RA=15.0, Dec=3.0, Roll=52.0)
+        estimate.pointing.camera.estimate = camera_now
+        estimate.pointing.aligned.estimate = camera_now
+        state.imu = lambda: ImuSample(quat=estimate.imu_anchor, timestamp=now, status=3)
     mount, guide, ui = Commands(), Commands(), queue.Queue()
     monkeypatch.setattr(pos_server, "pos_server_config", Config())
     monkeypatch.setattr(pos_server, "mountcontrol_queue", mount)
@@ -101,11 +115,12 @@ def test_skysafari_alignment_zeroes_lcd_and_reports_same_position(monkeypatch):
     monkeypatch.setattr(pos_server, "is_stellarium", False)
     monkeypatch.setattr(pos_server, "sr_result", (0, 51, 20))
     monkeypatch.setattr(pos_server, "sd_result", (1, 2, 34, 58))
-    monkeypatch.setattr(pos_server.time, "time", lambda: DT.timestamp())
+    monkeypatch.setattr(pos_server.time, "time", lambda: now)
     monkeypatch.setattr(pos_server, "_coordinate_service", PointingCoordinateService())
 
     assert pos_server.handle_sync_command(state, ":CM#") == "Coordinates matched."
     target = objects[-1]
+    assert state.target_pixel() != (256.0, 256.0)
     # Actual Saturn incident: the target must be near catalog 12.49/2.44,
     # rather than treating wire 12.833/2.583 as catalog coordinates.
     assert target.ra == pytest.approx(12.49, abs=0.01)
@@ -119,7 +134,7 @@ def test_skysafari_alignment_zeroes_lcd_and_reports_same_position(monkeypatch):
     idr = ImuDeadReckoning("flat3")
     assert _realign_estimate(estimate, state.target_pixel(), idr)
     assert estimate.estimate_time == old_time  # no fabricated fresh solve
-    assert estimate.last_solve_success == old_time
+    assert estimate.last_solve_success == DT.timestamp()
     assert calc_utils.aim_degrees(state, "Alt/Az", "flat3", target) == pytest.approx(
         (0, 0), abs=1e-9
     )

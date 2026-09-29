@@ -1,4 +1,4 @@
-"""Project an alignment target using a recent, accepted plate solution."""
+"""Project alignment targets using accepted optics and a validated camera pose."""
 
 import math
 
@@ -117,8 +117,8 @@ def cached_target_pixel(estimate, imu, ra_deg, dec_deg, *, now, context):
     if not plate:
         raise ValueError("no accepted alignment projection")
     age = now - float(plate["captured_at"])
-    if not 0 <= age <= MAX_AGE_SECONDS:
-        raise ValueError("last solve is too old")
+    if age < 0 or not math.isfinite(age):
+        raise ValueError("invalid solve epoch")
     if plate["captured_at"] != estimate.last_solve_success:
         raise ValueError("projection does not match last solve")
     if tuple(plate["context"]) != tuple(context):
@@ -137,6 +137,25 @@ def cached_target_pixel(estimate, imu, ra_deg, dec_deg, *, now, context):
         raise ValueError("invalid IMU orientation")
     dot = abs(float(np.dot(q0, q1) / (np.linalg.norm(q0) * np.linalg.norm(q1))))
     motion = math.degrees(2 * math.acos(min(1.0, dot)))
-    if motion > MAX_MOTION_DEGREES:
-        raise ValueError("camera moved since last solve")
-    return project_target(plate, ra_deg, dec_deg)
+    if age <= MAX_AGE_SECONDS and motion <= MAX_MOTION_DEGREES:
+        return project_target(plate, ra_deg, dec_deg)
+
+    # Manual centring normally moves the camera away from its last solved
+    # pose. Keep that accepted plate's scale/canvas, but project through the
+    # current plate-anchored camera estimate. Only the integrator can confirm
+    # its freshness; a raw IMU heartbeat alone cannot revive an old estimate.
+    observed = getattr(estimate, "imu_observed_time", None)
+    epoch = getattr(estimate, "estimate_time", None)
+    camera = estimate.pointing.camera.estimate
+    if (
+        observed is None
+        or epoch is None
+        or camera is None
+        or not math.isfinite(observed)
+        or not math.isfinite(epoch)
+        or not 0 <= now - observed <= MAX_AGE_SECONDS
+        or not plate["captured_at"] <= epoch <= observed
+    ):
+        raise ValueError("no recent plate-anchored IMU estimate")
+    current_plate = {**plate, "RA": camera.RA, "Dec": camera.Dec, "Roll": camera.Roll}
+    return project_target(current_plate, ra_deg, dec_deg)

@@ -688,6 +688,30 @@ class IndiGotoGuideService:
             if not isinstance(sample, dict) or not sample.get("valid"):
                 continue
             timestamp = self._finite_float(sample.get("timestamp"))
+            metadata = sample.get("metadata") or {}
+            source = sample.get("source")
+            # A stationary IMU leaves the coordinate epoch unchanged. Use
+            # the integrator's observation epoch only for IMU fallback, never
+            # as evidence of a new camera solve or from the raw IMU alone.
+            observed = self._finite_float(metadata.get("imu_observed_time"))
+            plate_anchored = source in {"solve", "pifinder_imu_estimate"} and bool(
+                metadata.get("has_plate_anchor")
+            )
+            if (
+                plate_anchored
+                and timestamp is not None
+                and observed is not None
+                and observed >= timestamp
+                and 0 <= time.time() - observed <= POINTING_STATUS_MAX_AGE_SECONDS
+            ):
+                sample = {
+                    **sample,
+                    "source": "pifinder_imu_estimate",
+                    "quality": "medium",
+                    "timestamp": observed,
+                }
+                timestamp = observed
+                source = sample["source"]
             ra = self._finite_float(sample.get("ra"))
             dec = self._finite_float(sample.get("dec"))
             if (
@@ -698,8 +722,6 @@ class IndiGotoGuideService:
                 or abs(dec) > 90
             ):
                 continue
-            metadata = sample.get("metadata") or {}
-            source = sample.get("source")
             if source == "pifinder_imu_estimate" and metadata.get("has_plate_anchor"):
                 return sample
             if source != "imu_fallback":
@@ -1070,6 +1092,14 @@ class IndiGotoGuideService:
             return
         reason = self._pifinder_goto_block_reason()
         if reason:
+            anchor = self._imu_goto_anchor(self.pointing_status)
+            if (
+                anchor is not None
+                and self.config_values.get("mount_control", True)
+                and self._mount_status_fresh(mount)
+            ):
+                self._start_native_goto(anchor)
+                return
             self.wait_reason = reason
             return
         self.initial_goto_deadline = None

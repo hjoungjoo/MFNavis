@@ -1358,8 +1358,10 @@ def test_failed_solve_metadata_retains_camera_epochs_separate_from_imu_epoch():
     )
     solution.last_solve_attempt = 999.0
     solution.last_solve_success = 990.0
+    solution.imu_observed_time = 1005.0
     sample = PointingCoordinateService().solved_sample(DummyState(solution), None)
     assert sample.timestamp == 1000.0
     assert sample.metadata["last_solve_attempt"] == 999.0
     assert sample.metadata["last_solve_success"] == 990.0
+    assert sample.metadata["imu_observed_time"] == 1005.0
     assert sample.source == SOURCE_PIFINDER_IMU_ESTIMATE

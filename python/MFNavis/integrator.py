@@ -100,6 +100,7 @@ def integrator(
         estimate = PointingEstimate()
         # Epoch of the last estimate we published; gate re-publishing on it.
         last_published_time = time.time()
+        last_published_imu_time = 0.0
         applied_target_pixel = None
 
         was_replaying = False
@@ -127,6 +128,7 @@ def integrator(
                     # Recorded epochs are in the past; rewind the publish
                     # gate so replayed estimates pass the newer-than check.
                     last_published_time = 0.0
+                    last_published_imu_time = 0.0
                 # The solver keeps running during replay; discard its output.
                 _drain_queue(solver_queue)
                 message = telemetry.next_replay_message()
@@ -141,6 +143,7 @@ def integrator(
                     estimate = PointingEstimate()
                     idr.reset()
                     last_published_time = time.time()
+                    last_published_imu_time = 0.0
                     logger.info("Replay ended, integrator state reset")
                 try:
                     solve_result = solver_queue.get(block=False)
@@ -209,11 +212,20 @@ def integrator(
                 if alignment_updated:
                     applied_target_pixel = target_pixel
 
+            # Publish stationary IMU observations at most once per second.
+            # Their epoch proves the anchored estimate is still monitored;
+            # it must not turn an old camera solve into a fresh one.
+            imu_observed_time = estimate.imu_observed_time or 0.0
+            imu_observation_updated = imu_observed_time - last_published_imu_time >= 1.0
             # 3. Publish if we updated something newer than what we last sent.
             if (
-                (pointing_updated or alignment_updated)
+                (pointing_updated or alignment_updated or imu_observation_updated)
                 and estimate.estimate_time is not None
-                and (estimate.estimate_time > last_published_time or alignment_updated)
+                and (
+                    estimate.estimate_time > last_published_time
+                    or alignment_updated
+                    or imu_observation_updated
+                )
                 and estimate.pointing.aligned.estimate is not None
             ):
                 aligned = estimate.pointing.aligned.estimate
@@ -228,6 +240,7 @@ def integrator(
                 shared_state.set_solution(copy.deepcopy(estimate))
                 capture_published_ns = time.monotonic_ns()
                 last_published_time = estimate.estimate_time
+                last_published_imu_time = imu_observed_time
 
             if solve_result is not None and not telemetry.replaying:
                 capture_token = field_capture.begin(
@@ -288,6 +301,7 @@ def _apply_successful_solve(
     estimate.imu_anchor = result.imu_anchor
     estimate.solve_source = SolveSource.CAMERA
     estimate.estimate_time = result.last_solve_success
+    estimate.imu_observed_time = None
     estimate.last_solve_attempt = result.last_solve_attempt
     estimate.last_solve_success = result.last_solve_success
     estimate.diagnostics = result.diagnostics
@@ -375,6 +389,17 @@ def _advance_with_imu(
     """
     if not imu.orientation_valid():
         return False
+
+    if (
+        idr.is_initialized()
+        and estimate.imu_anchor is not None
+        and estimate.has_pointing()
+        and estimate.estimate_time is not None
+        and np.isfinite(imu.timestamp)
+        and imu.timestamp >= estimate.estimate_time
+        and imu.timestamp > (estimate.imu_observed_time or 0.0)
+    ):
+        estimate.imu_observed_time = imu.timestamp
 
     # The BNO055's IMUPLUS heading slowly wanders even while the telescope is
     # stationary. Measuring only from the persistent plate-solve anchor makes

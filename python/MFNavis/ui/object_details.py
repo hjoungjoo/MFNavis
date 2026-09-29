@@ -10,7 +10,12 @@ from PIL import Image, ImageChops, ImageOps
 
 from pydeepskylog.exceptions import InvalidParameterError
 
-from PiFinder.ui.camera_guidance import draw_pointer, draw_reticle, target_direction
+from PiFinder.ui.camera_guidance import (
+    camera_fov,
+    draw_pointer,
+    draw_reticle,
+    target_direction,
+)
 from PiFinder.optics import OpticalTrainResolver
 from PiFinder.mf_manual_lens import manual_focal_from_state
 
@@ -810,8 +815,13 @@ class UIObjectDetails(UIModule):
                 self.shared_state.camera_lens(),
                 manual_focal_from_state(self.shared_state),
             ).fov_degrees
+            fov = camera_fov(self.shared_state.solution(), fov)
             draw_reticle(
-                self.draw, (cx, cy), side * zoom_factor / fov, self.colors.get(192)
+                self.draw,
+                (cx, cy),
+                side * zoom_factor / fov,
+                self.colors.get(255),
+                outline=self.colors.get(0),
             )
             # Direction uses the original target pixel and full camera FOV.
             self._draw_camera_pointer((cx, cy), side, target, fov)
@@ -824,11 +834,23 @@ class UIObjectDetails(UIModule):
         if camera is None or self.object.ra is None or self.object.dec is None:
             return
         angle = target_direction(
-            camera, self.object.ra, self.object.dec, target_pixel, fov
+            camera,
+            self.object.ra,
+            self.object.dec,
+            target_pixel,
+            fov,
+            projection=getattr(solution, "alignment_projection", None),
         )
         if angle is None:
             return
-        draw_pointer(self.screen, center, side, angle, self.colors.get(192))
+        draw_pointer(
+            self.screen,
+            center,
+            side,
+            angle,
+            self.colors.get(255),
+            outline=self.colors.get(0),
+        )
 
     def update(self, force=True):
         # Clear Screen

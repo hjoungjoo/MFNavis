@@ -380,6 +380,9 @@ class PointingEstimate:
     # ``exposure_end`` on a solve, IMU sample ``timestamp`` on an IMU
     # advance. See class docstring.
     estimate_time: Optional[float] = None
+    # Latest IMU sample checked against this anchored estimate, including
+    # stationary samples that do not change coordinates or estimate_time.
+    imu_observed_time: Optional[float] = None
     last_solve_attempt: float = 0.0
     last_solve_success: Optional[float] = None
 

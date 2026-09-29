@@ -489,6 +489,9 @@ class PointingCoordinateService:
                 "last_solve_success": _as_float(
                     getattr(solution, "last_solve_success", None)
                 ),
+                "imu_observed_time": _as_float(
+                    getattr(solution, "imu_observed_time", None)
+                ),
                 "has_plate_anchor": has_plate_anchor,
                 "source_ra": radec[0],
                 "source_dec": radec[1],
