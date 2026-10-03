@@ -144,9 +144,10 @@ class SmoothMountRuntime:
             return
         if self.canceled or measurement is None:
             return
-        self.recovery.observe_reference(
-            snapshot["reference"], measurement.context.target
-        )
+        if not request.get("target_integration"):
+            self.recovery.observe_reference(
+                snapshot["reference"], measurement.context.target
+            )
         if self.recovery.state in {"requested", "moving", "observing"}:
             state = self.recovery.progress(
                 m._sync_goto_status, m._goto_motion is not None, now

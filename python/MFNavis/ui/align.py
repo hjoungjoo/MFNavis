@@ -33,7 +33,16 @@ CAMERA_NATIVE_RES = 512
 ALIGN_TIMEOUT_SECONDS = 15.0
 
 
-def align_on_radec(ra, dec, command_queues, config_object, shared_state) -> bool:
+def align_on_radec(
+    ra,
+    dec,
+    command_queues,
+    config_object,
+    shared_state,
+    *,
+    body=None,
+    identify_planets=True,
+) -> bool:
     """
     Handles the intricacies of:
     * Telling the solver to figure out alignment pixel
@@ -41,6 +50,23 @@ def align_on_radec(ra, dec, command_queues, config_object, shared_state) -> bool
     * Set the config item and the shared state
     * return True on success, False on timeout / failure
     """
+
+    from PiFinder.tracking_alignment import INTEGRATION_OPTION, alignment_command
+
+    if getattr(config_object, "get_option", lambda key, default: default)(
+        INTEGRATION_OPTION, False
+    ):
+        guide = command_queues.get("goto_guide")
+        if guide is None:
+            command_queues["console"].put(_("Alignment service unavailable"))
+            return False
+        guide.put(
+            alignment_command(
+                ra, dec, origin="lcd", body=body, identify_planets=identify_planets
+            )
+        )
+        command_queues["console"].put(_("Alignment requested"))
+        return True
 
     if os.environ.get("MFNAVIS_VISUAL_TRACKING_EXPERIMENT"):
         try:
@@ -440,8 +466,16 @@ class UIAlign(UIModule):
                     self.command_queues,
                     self.config_object,
                     self.shared_state,
+                    identify_planets=False,
                 ):
-                    self.message(_("Aligned!"), 1)
+                    self.message(
+                        _("Alignment requested")
+                        if self.config_object.get_option(
+                            "smooth_tracking_target_integration_enabled", False
+                        )
+                        else _("Aligned!"),
+                        1,
+                    )
                 else:
                     self.message(_("Alignment failed"), 2)
         else:

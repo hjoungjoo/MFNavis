@@ -348,6 +348,12 @@ class SharedStateObj:
         from PiFinder.tracking_mailbox import TrackingMailbox
 
         self.__smooth_tracking = TrackingMailbox()
+        from PiFinder.tracking_alignment import AlignmentLedger
+
+        self.__tracking_alignment = AlignmentLedger()
+
+    def tracking_alignment(self, action="snapshot", value=None):
+        return self.__tracking_alignment.update(action, value)
 
     def smooth_tracking(self, action="snapshot", value=None):
         """Small bounded messages; all mutation ordering lives in the mailbox."""
@@ -384,13 +390,20 @@ class SharedStateObj:
             "frame_id"
         ) != raw.get("frame_id"):
             return None
-        if len(rois["centers"]) > 128 or not 2 <= rois["radius"] <= 32:
+        max_radius = 256 if rois.get("kind") == "body" else 32
+        max_centers = 1 if rois.get("kind") == "body" else 128
+        if len(rois["centers"]) > max_centers or not 2 <= rois["radius"] <= max_radius:
             raise ValueError("unbounded tracking ROI request")
         return {
             "metadata": metadata,
             "reference": rois["reference"],
             "raw_shape": tuple(raw["frame"].shape),
             "patches": extract_rois(raw["frame"], rois["centers"], rois["radius"]),
+            "body_patch": extract_rois(
+                raw["frame"], [rois["body_center"]], rois["body_radius"]
+            )[0]
+            if rois.get("body_center") is not None and 2 <= rois["body_radius"] <= 256
+            else None,
         }
 
     def serialize(self, output_file):

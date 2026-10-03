@@ -1373,6 +1373,9 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._manual_motion_origin = origin
         if origin == "user":
             self._last_user_motion_started_wall = time.time()
+            self._alignment_motion("motion_start", "observation", now)
+        else:
+            self._alignment_motion("motion_start", "correction", now)
         self._manual_motion_deadline = now + self._manual_motion_lease(lease_seconds)
         self._manual_motion_started_at = now
         self._manual_motion_refreshed_at = now
@@ -3428,7 +3431,9 @@ class MountControlIndi(BacklashCalibrationMixin):
                 "refine_failed", "Could not sync current solve"
             )
             return
-        self.goto_target(target_ra, target_dec, refine_after_goto=False)
+        self._goto_with_purpose(
+            target_ra, target_dec, "correction", refine_after_goto=False
+        )
         self._write_controller_status(
             "refine_sent",
             f"Refine GoTo sent; error {separation:.1f} arcmin",
@@ -3438,7 +3443,69 @@ class MountControlIndi(BacklashCalibrationMixin):
         )
         self._console("INDI refine\nGoTo sent")
 
-    def _arm_goto_motion(self, ra_deg: float, dec_deg: float) -> None:
+    def _alignment_motion(self, action, purpose, now=None):
+        if action == "motion_start":
+            self._alignment_stop_pending = None
+        if hasattr(self.shared_state, "tracking_alignment"):
+            self.shared_state.tracking_alignment(
+                action,
+                {
+                    "now": time.monotonic() if now is None else now,
+                    "purpose": purpose,
+                },
+            )
+
+    def _goto_with_purpose(self, ra, dec, purpose, **options):
+        # Keep the established GoTo API for callers, simulator overrides and
+        # the field-test baseline. Purpose is scoped to this dispatch only.
+        previous = getattr(self, "_alignment_goto_purpose", "observation")
+        self._alignment_goto_purpose = purpose
+        try:
+            return self.goto_target(ra, dec, **options)
+        finally:
+            self._alignment_goto_purpose = previous
+
+    def _check_alignment_motion_complete(self):
+        if not hasattr(self.shared_state, "tracking_alignment"):
+            return
+        motion = self._goto_motion
+        if motion and self.shared_state.tracking_alignment()["motion"]["moving"]:
+            now = time.monotonic()
+            if now - motion["started_at"] >= GOTO_COMPLETE_MIN_SECONDS and (
+                self._goto_completion_ready(
+                    motion,
+                    self._indi_mount_is_busy(),
+                    now,
+                    current_position=self._read_goto_progress_position(
+                        cached_only=True
+                    ),
+                )
+            ):
+                self._alignment_motion(
+                    "motion_complete", motion.get("motion_purpose", "observation"), now
+                )
+
+    def _check_alignment_stop_complete(self):
+        if getattr(self, "_alignment_stop_pending", None) and (
+            self._manual_motion_direction is None
+            and self._indi_mount_is_busy() is False
+            and all(
+                self._device_switch_on(prop, key) is False
+                for prop, key in (
+                    ("TELESCOPE_MOTION_NS", "MOTION_NORTH"),
+                    ("TELESCOPE_MOTION_NS", "MOTION_SOUTH"),
+                    ("TELESCOPE_MOTION_WE", "MOTION_EAST"),
+                    ("TELESCOPE_MOTION_WE", "MOTION_WEST"),
+                )
+            )
+        ):
+            self._alignment_motion("motion_complete", self._alignment_stop_pending)
+            self._alignment_stop_pending = None
+
+    def _arm_goto_motion(
+        self, ra_deg: float, dec_deg: float, motion_purpose="observation"
+    ) -> None:
+        self._alignment_motion("motion_start", motion_purpose)
         self._goto_motion = {
             "target_ra": ra_deg % 360.0,
             "target_dec": dec_deg,
@@ -3446,6 +3513,7 @@ class MountControlIndi(BacklashCalibrationMixin):
             "complete_ready_since": None,
             "indi_seen_busy": False,
             "onstep_seen_goto_active": False,
+            "motion_purpose": motion_purpose,
         }
         self._last_goto_progress_status_at = 0.0
 
@@ -3455,6 +3523,11 @@ class MountControlIndi(BacklashCalibrationMixin):
 
         target_ra = self._goto_motion.get("target_ra")
         target_dec = self._goto_motion.get("target_dec")
+        if "assuming complete" not in message:
+            self._alignment_motion(
+                "motion_complete",
+                self._goto_motion.get("motion_purpose", "observation"),
+            )
         self._goto_motion = None
         self._read_current_position()
         self._write_controller_status(
@@ -4616,7 +4689,16 @@ class MountControlIndi(BacklashCalibrationMixin):
         # cancel this verified transaction. A failed GoTo remains terminal.
         self._pending_sync_goto = None
         sent_at = time.monotonic()
-        accepted = self.goto_target(transaction["ra"], transaction["dec"])
+        accepted = self._goto_with_purpose(
+            transaction["ra"],
+            transaction["dec"],
+            transaction.get(
+                "motion_purpose",
+                "correction"
+                if "recovery" in transaction.get("origin", "")
+                else "observation",
+            ),
+        )
         self._sync_goto_status = {
             **(self._sync_goto_status or {}),
             "state": "goto_sent" if accepted else "failed",
@@ -4685,7 +4767,9 @@ class MountControlIndi(BacklashCalibrationMixin):
             return False
 
         self._last_goto_target = (target_ra, dec_deg)
-        self._arm_goto_motion(target_ra, dec_deg)
+        self._arm_goto_motion(
+            target_ra, dec_deg, getattr(self, "_alignment_goto_purpose", "observation")
+        )
         self._write_controller_status(
             "slewing",
             "GoTo target command sent",
@@ -4738,6 +4822,23 @@ class MountControlIndi(BacklashCalibrationMixin):
 
         if self._manual_motion_origin == "user":
             self._last_user_motion_stopped_wall = time.time()
+            # The command ACK is not physical completion. Recheck idle/axis
+            # state in the event loop before starting the solve deadline.
+            self._alignment_stop_pending = "observation"
+        elif self._manual_motion_origin == "guide_correction":
+            self._alignment_stop_pending = "correction"
+        elif self._goto_motion is not None:
+            self._alignment_stop_pending = self._goto_motion.get(
+                "motion_purpose", "observation"
+            )
+        elif hasattr(self.shared_state, "tracking_alignment"):
+            ledger = self.shared_state.tracking_alignment()
+            if ledger["motion"]["moving"]:
+                # A GoTo timeout may have cleared the legacy motion object
+                # without proving completion. A confirmed abort can settle it.
+                self._alignment_stop_pending = "observation"
+            elif ledger["correction_moving"]:
+                self._alignment_stop_pending = "correction"
         if self._manual_motion_origin == "guide_correction":
             self._guide_observation_after_wall = (
                 time.time() + GOTO_APPROACH_SETTLE_SECONDS
@@ -5852,6 +5953,16 @@ class MountControlIndi(BacklashCalibrationMixin):
 
         if stale_command(command, getattr(self, "mount_queue", None)):
             return True
+        if command_type in {
+            "goto_target",
+            "sync_and_goto",
+            "sync",
+            "toggle_guide_correction",
+        } and (
+            command.get("_control_epoch", control_epoch(self.mount_queue))
+            < getattr(self, "_alignment_hold_epoch", -1)
+        ):
+            return True
         runtime = self._smooth_runtime
         if (
             runtime is not None
@@ -5893,6 +6004,14 @@ class MountControlIndi(BacklashCalibrationMixin):
             self.error_notifier.reset()
         if command_type == "shutdown":
             return False
+        if command_type == "tracking_alignment_hold":
+            self._alignment_hold_epoch = control_epoch(self.mount_queue)
+            self._cancel_sync_goto("user alignment owns arrival")
+            self._pending_goto_refine = None
+            self._guide_correction_enabled = False
+            self._pending_guide_rate = None
+            self._approach_rate_request = None
+            return True
         if command_type == "init":
             self.connect()
         elif command_type == "connection_config_changed":
@@ -5916,12 +6035,30 @@ class MountControlIndi(BacklashCalibrationMixin):
                 float(command["dec"]),
                 sync_context=sync_context or None,
             )
+        elif command_type == "tracking_alignment_sync":
+            ok = False
+            try:
+                if time.monotonic() < command.get("expires_mono", float("inf")):
+                    ok = self.sync_mount(
+                        float(command["ra"]),
+                        float(command["dec"]),
+                        sync_context={
+                            "origin": command["origin"],
+                            "pointing_source": command["pointing_source"],
+                        },
+                    )
+            except Exception:
+                logger.exception("Solved user alignment mount sync failed")
+            self.shared_state.tracking_alignment(
+                "mount_sync", dict(request_id=command["request_id"], ok=bool(ok))
+            )
         elif command_type == "goto_target":
-            self.goto_target(
+            self._goto_with_purpose(
                 float(command["ra"]),
                 float(command["dec"]),
-                bool(command.get("refine_after_goto", False)),
-                command.get("refine_accuracy_arcmin"),
+                command.get("motion_purpose", "observation"),
+                refine_after_goto=bool(command.get("refine_after_goto", False)),
+                refine_accuracy_arcmin=command.get("refine_accuracy_arcmin"),
             )
         elif command_type == "sync_and_goto":
             self.begin_sync_and_goto(command)
@@ -6049,6 +6186,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         running = True
         next_auto_connect_at = time.monotonic() + AUTO_CONNECT_START_DELAY
         while running:
+            self._check_alignment_motion_complete()
+            self._check_alignment_stop_complete()
             try:
                 self._smooth_runtime.tick()
             except Exception:

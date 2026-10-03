@@ -1380,6 +1380,23 @@ def handle_sync_command(shared_state, _input_str: str):
         return "Coordinates matched."
 
     goto_method = str(_get_config_option("indi_goto_method", "pifinder"))
+    if (
+        goto_method == "pifinder"
+        and goto_guide_queue is not None
+        and _get_config_option("skysafari_pifinder_align", True)
+        and _get_config_option("smooth_tracking_target_integration_enabled", False)
+    ):
+        from PiFinder.tracking_alignment import alignment_command
+
+        goto_guide_queue.put(
+            alignment_command(
+                ra_deg,
+                dec_deg,
+                frame="catalog" if is_stellarium else "of_date",
+                origin="skysafari",
+            )
+        )
+        return "Alignment requested."
     has_solved_pointing = _has_solved_pointing(shared_state)
     pifinder_aligned = False
     imu_aligned = False

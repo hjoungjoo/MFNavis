@@ -2041,12 +2041,26 @@ class Server:
             from PiFinder.tracking_contracts import TrackingProfile
 
             if request.method == "GET":
+                local_candidate = None
+                if hasattr(self.shared_state, "tracking_alignment"):
+                    from PiFinder.tracking_targets import local_optical_candidate
+
+                    local_candidate = local_optical_candidate(
+                        self.shared_state, config.Config()
+                    )
                 return jsonify(
                     {
                         "ok": True,
                         "configured_mode": config.Config().get_option(
                             "smooth_tracking_mode", "active"
                         ),
+                        "target_integration_enabled": config.Config().get_option(
+                            "smooth_tracking_target_integration_enabled", False
+                        ),
+                        "local_optical_candidate": local_candidate,
+                        "alignment": self.shared_state.tracking_alignment()["status"]
+                        if hasattr(self.shared_state, "tracking_alignment")
+                        else None,
                         **public_status(self.shared_state.smooth_tracking()),
                     }
                 )
@@ -2059,6 +2073,19 @@ class Server:
                         raise ValueError("mode must be off, shadow or active")
                     cfg = config.Config()
                     options = {"smooth_tracking_mode": mode}
+                    if "target_integration_enabled" in payload:
+                        if type(payload["target_integration_enabled"]) is not bool:
+                            raise ValueError(
+                                "target_integration_enabled must be a boolean"
+                            )
+                        options["smooth_tracking_target_integration_enabled"] = payload[
+                            "target_integration_enabled"
+                        ]
+                    if "alignment_solve_wait_max_s" in payload:
+                        wait = float(payload["alignment_solve_wait_max_s"])
+                        if not math.isfinite(wait) or not 0 < wait <= 300:
+                            raise ValueError("invalid alignment solve wait")
+                        options["alignment_solve_wait_max_s"] = wait
                     if "profile" in payload:
                         profile = payload["profile"]
                         if isinstance(profile, str):
@@ -2081,22 +2108,52 @@ class Server:
                     self.shared_state.smooth_tracking("stop", "configuration_changed")
                     cfg.set_options(options)
                     return jsonify({"ok": True, "armed": False, "mode": mode})
-                if action not in {"start", "stop", "calibrate"}:
+                if action not in {"start", "stop", "calibrate", "align"}:
                     raise ValueError(
-                        "action must be configure, start, stop or calibrate"
+                        "action must be configure, start, stop, calibrate or align"
                     )
                 if self.goto_guide_queue is None:
                     raise ValueError("GoTo/Guide service unavailable")
                 command = {"type": f"smooth_tracking_{action}"}
-                if action in {"start", "calibrate"}:
+                if action in {"start", "calibrate", "align"}:
                     ra, dec = float(payload["ra"]), float(payload["dec"])
                     if not math.isfinite(ra) or not math.isfinite(dec) or abs(dec) > 90:
                         raise ValueError("invalid target coordinates")
                     if payload.get("frame") not in {"catalog", "of_date"}:
                         raise ValueError("explicit coordinate frame required")
                     command.update(ra=ra, dec=dec, frame=payload["frame"])
+                    if "body" in payload:
+                        if not isinstance(payload["body"], str):
+                            raise ValueError("body must be a string")
+                        command["body"] = payload["body"] or None
+                    if "identify_planets" in payload:
+                        if type(payload["identify_planets"]) is not bool:
+                            raise ValueError("identify_planets must be a boolean")
+                        command["identify_planets"] = payload["identify_planets"]
+                if action == "align":
+                    from PiFinder.tracking_alignment import (
+                        alignment_command,
+                        INTEGRATION_OPTION,
+                    )
+
+                    if not config.Config().get_option(INTEGRATION_OPTION, False):
+                        raise ValueError("target integration is disabled")
+                    command = alignment_command(
+                        ra,
+                        dec,
+                        frame=payload["frame"],
+                        body=command.get("body"),
+                        identify_planets=command.get("identify_planets", True),
+                        origin="web",
+                    )
                 self.goto_guide_queue.put(command)
-                return jsonify({"ok": True, "queued": True}), 202
+                return jsonify(
+                    {
+                        "ok": True,
+                        "queued": True,
+                        "request_id": command.get("request_id"),
+                    }
+                ), 202
             except (ValueError, TypeError, KeyError) as exc:
                 return jsonify({"ok": False, "error": str(exc)}), 400
 

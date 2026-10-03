@@ -90,7 +90,13 @@ def run_worker(shared_state, stop_event):
                 ):
                     shared_state.smooth_tracking("fault", "profile_changed")
                     continue
-                if snapshot["fault"] or not reference:
+                integrated = request.get("target_integration", False)
+                if integrated and not cfg.get_option(
+                    "smooth_tracking_target_integration_enabled", False
+                ):
+                    shared_state.smooth_tracking("fault", "integration_disabled")
+                    continue
+                if snapshot["fault"] or (not reference and not integrated):
                     continue
                 if optics_identity(cfg, shared_state) != request["optics"]:
                     shared_state.smooth_tracking(
@@ -98,18 +104,45 @@ def run_worker(shared_state, stop_event):
                     )
                     continue
                 if tuple(shared_state.target_pixel()) != tuple(
-                    reference["target_pixel"]
+                    request["target_pixel"] if integrated else reference["target_pixel"]
                 ):
                     shared_state.smooth_tracking("fault", "alignment_changed")
                     continue
-                if shared_state.camera_type() != reference["camera"]:
+                if shared_state.camera_type() != (
+                    request["camera"] if integrated else reference["camera"]
+                ):
                     shared_state.smooth_tracking("fault", "camera_changed")
                     continue
                 if tracker is None:
                     profile = TrackingProfile.from_dict(request["profile"])
-                    tracker = StarTracker(reference, request, profile)
-                    shared_state.smooth_tracking("active_reference", reference)
+                    if integrated:
+                        from PiFinder.tracking_targets import (
+                            initial_reference,
+                            TargetTracker,
+                        )
+                        from PiFinder.visual_tracking_target import TargetEphemeris
+
+                        seed = shared_state.tracking_alignment()["seed"]
+                        if not seed:
+                            continue
+                        ephemeris = TargetEphemeris(shared_state)
+                        try:
+                            anchor = initial_reference(
+                                seed, request, profile, ephemeris, reference
+                            )
+                        except LookupError as exc:
+                            shared_state.smooth_tracking(
+                                "status", {"state": "ACQUIRING", "reason": str(exc)}
+                            )
+                            continue
+                        tracker = TargetTracker(anchor, request, profile, ephemeris)
+                    else:
+                        tracker = StarTracker(reference, request, profile)
+                    shared_state.smooth_tracking("active_reference", tracker.reference)
                     shared_state.smooth_tracking("rois", tracker.roi_request())
+                elif integrated:
+                    tracker.adopt_solve(reference)
+                    tracker.offer_seed(shared_state.tracking_alignment()["seed"])
                 elif reference["id"] != tracker.reference["id"] and (
                     time.monotonic() - tracker.reference["timing"]["midpoint"]
                     > tracker.profile.reference_valid_s / 2
@@ -156,16 +189,25 @@ def start_session(service, command):
         raise ValueError("smooth tracking mode must be shadow or active")
     if cfg.get_option("indi_goto_method", "pifinder") != "pifinder":
         raise ValueError("MFNavis GoTo mode required")
-    if command.get("frame") not in {"catalog", "of_date"} or command.get("body"):
+    integrated = bool(
+        cfg.get_option("smooth_tracking_target_integration_enabled", False)
+    )
+    if command.get("frame") not in {"catalog", "of_date"} or (
+        command.get("body") and not integrated
+    ):
         raise ValueError("explicit fixed-star coordinate frame required")
     target = TargetEphemeris(service.shared_state).resolve(
         float(command["ra"]),
         float(command["dec"]),
         frame=command["frame"],
+        body=command.get("body") if integrated else None,
+        identify_planets=command.get("identify_planets", True) if integrated else False,
     )
     data = cfg.get_option("smooth_tracking_profile", {}) or {}
     profile = TrackingProfile.from_dict(data)
     calibration = command.get("type") == "smooth_tracking_calibrate"
+    if calibration and target.body:
+        raise ValueError("pulse calibration requires a fixed star field")
     if calibration and mode != "active":
         raise ValueError("select active mode for explicit pulse calibration")
     if calibration and not (profile.verified or profile.equipment_verified):
@@ -175,6 +217,16 @@ def start_session(service, command):
     mount = service._mount_status_summary()
     if not mount.get("available"):
         raise ValueError("mount status unavailable")
+    if (
+        integrated
+        and not calibration
+        and mode == "active"
+        and (
+            mount.get("tracking_enabled") is not True
+            or service._mount_summary_reports_parked(mount)
+        )
+    ):
+        raise ValueError("tracking is off or mount is parked")
     request = {
         "session": uuid.uuid4().hex,
         "mode": "active" if calibration else mode,
@@ -190,6 +242,60 @@ def start_session(service, command):
         "axis": bool(cfg.get_option("smooth_tracking_axis_recovery_enabled", False)),
         "goto": bool(cfg.get_option("smooth_tracking_goto_recovery_enabled", False)),
     }
+    if integrated and not calibration:
+        from PiFinder.tracking_targets import astronomical_time
+
+        request.update(
+            target_integration=True,
+            tracking_target=asdict(target),
+            target_identity=target.identity,
+            target_revision=command.get("alignment_request_id", uuid.uuid4().hex),
+            target_pixel=tuple(service.shared_state.target_pixel()),
+            camera=service.shared_state.camera_type(),
+            astronomical_time=service.shared_state.datetime().timestamp(),
+            wall_time=time.time(),
+            axis=False,
+            goto=False,
+        )
+        request["target"] = TargetEphemeris(service.shared_state).position(
+            target, astronomical_time(request, request["wall_time"])
+        )
+        import numpy as np
+        from PiFinder.visual_tracking import plate_basis
+
+        # The response was measured in model_target east/north. Transport it
+        # into this session's fixed target axes once; moving ephemerides do
+        # not keep rotating the controller or changing its context.
+        transport = (
+            plate_basis(*request["target"], 0)[1:]
+            @ plate_basis(*profile.model_target, 0)[1:].T
+        )
+        request["profile"]["response"] = (
+            transport @ np.asarray(profile.response)
+        ).tolist()
+        # Body and relative-star coast need independent validation. Preserve
+        # the existing star controller's prediction while the image is valid.
+        request["profile"]["coast_verified"] = False
+        if command.get("solved_alignment"):
+            reference = service.shared_state.smooth_tracking()["reference"]
+            plate = (
+                getattr(service.shared_state.solution(), "alignment_projection", None)
+                or {}
+            )
+            if reference and reference["timing"] == plate.get("tracking_timing"):
+                request["accepted_reference_id"] = reference["id"]
+                if reference["geometry_key"] == profile.geometry:
+                    # A normal solved Align changes the holding pixel. The
+                    # same measured optics/response can be used with the new
+                    # pixel; this rebind is session-local, never a config write.
+                    request["profile"]["geometry"] = fingerprint(
+                        dict(
+                            info=reference["info"],
+                            shape=reference["raw_shape"],
+                            target=request["target_pixel"],
+                            camera=reference["camera"],
+                        )
+                    )
     service.shared_state.smooth_tracking("arm", request)
     if mode == "active" or calibration:
         # Keep legacy recovery suspended even after a worker/configuration stop
@@ -272,8 +378,8 @@ def tick_policy(service):
             now + 2.5,
             snapshot["quality_revision"],
             request["prediction"],
-            request["axis"],
-            request["goto"],
+            request["axis"] and not request.get("target_integration"),
+            request["goto"] and not request.get("target_integration"),
             "coast" if coast else request.get("purpose", "tracking"),
         ),
     )
@@ -290,6 +396,8 @@ def public_status(snapshot):
         **snapshot["status"],
         "fault": snapshot["fault"],
         "mode": (snapshot.get("request") or {}).get("mode", "off"),
+        "target_identity": (snapshot.get("request") or {}).get("target_identity"),
+        "target_revision": (snapshot.get("request") or {}).get("target_revision"),
         "quality_revision": snapshot["quality_revision"],
         "reference": {
             key: ref.get(key)
@@ -308,6 +416,9 @@ def public_status(snapshot):
             "sequence": m.sequence,
             "quality": m.quality,
             "reason": m.reason,
+            "source": m.source,
+            "degrees_of_freedom": m.degrees_of_freedom,
+            "target_radec": m.target_radec,
             "stars": m.stars,
             "rmse_px": m.rmse_px,
             "error_arcsec": m.error,

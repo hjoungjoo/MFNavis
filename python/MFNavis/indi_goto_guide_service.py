@@ -222,10 +222,13 @@ class IndiGotoGuideService:
         logger.info("INDI GoTo/Guide service started")
         if hasattr(self.shared_state, "smooth_tracking"):
             self.shared_state.smooth_tracking("stop", "policy_service_started")
+        if hasattr(self.shared_state, "tracking_alignment"):
+            self.shared_state.tracking_alignment("reset")
         self.service_state = "idle"
         running = True
         while running:
             self._reload_config_if_needed()
+            self._tick_alignment()
             self._tick_state_machine()
             self._tick_tracking_guide()
             self._write_status()
@@ -254,6 +257,21 @@ class IndiGotoGuideService:
         # waits (both driven by the mount, not by keepalives from here).
         return HEARTBEAT_SECONDS
 
+    def _tick_alignment(self):
+        from PiFinder.tracking_alignment import AlignmentDispatcher, INTEGRATION_OPTION
+
+        cfg = config.Config()
+        if cfg.get_option(INTEGRATION_OPTION, False) or getattr(
+            self, "alignment_dispatcher", None
+        ):
+            if not getattr(self, "alignment_dispatcher", None):
+                self.alignment_dispatcher = AlignmentDispatcher(self)
+            try:
+                self.alignment_dispatcher.tick(cfg)
+            except Exception:
+                logger.exception("Alignment held")
+                self.alignment_dispatcher.cancel("alignment_error")
+
     def handle_command(self, command: Any) -> bool:
         if not isinstance(command, dict):
             logger.warning("Ignoring INDI GoTo/Guide command: %r", command)
@@ -264,6 +282,41 @@ class IndiGotoGuideService:
 
         if stale_command(command, self.mountcontrol_queue):
             return True
+        if command_type == "tracking_align":
+            from PiFinder.tracking_alignment import (
+                AlignmentDispatcher,
+                INTEGRATION_OPTION,
+            )
+
+            cfg = config.Config()
+            if not cfg.get_option(INTEGRATION_OPTION, False):
+                return True
+            if not getattr(self, "alignment_dispatcher", None):
+                self.alignment_dispatcher = AlignmentDispatcher(self)
+            try:
+                self.alignment_dispatcher.submit(command, cfg)
+            except (ValueError, TypeError, KeyError) as exc:
+                self.shared_state.tracking_alignment(
+                    "status",
+                    {
+                        "state": "error",
+                        "request_id": command.get("request_id"),
+                        "reason": str(exc),
+                    },
+                )
+            return True
+        if getattr(self, "alignment_dispatcher", None) and command_type in {
+            "shutdown",
+            "smooth_tracking_stop",
+            "smooth_tracking_start",
+            "goto_target",
+            "clear_tracking_target",
+            "set_tracking_target",
+            "stop_movement",
+            "suspend_tracking_guide",
+            "set_goto_method",
+        }:
+            self.alignment_dispatcher.cancel("user_command")
         if command_type in {
             "smooth_tracking_start",
             "smooth_tracking_stop",
@@ -1248,6 +1301,7 @@ class IndiGotoGuideService:
                 "sync_dec": self.current_dec,
                 "ra": self.active_target_ra,
                 "dec": self.active_target_dec,
+                "motion_purpose": "observation" if first else "correction",
                 **self._sync_context(
                     origin,
                     self.solve_fallback_source
@@ -2116,6 +2170,7 @@ class IndiGotoGuideService:
                 "ra": self.tracking_target_ra,
                 "dec": self.tracking_target_dec,
                 **self._sync_context("tracking_recovery"),
+                "motion_purpose": "correction",
             }
         )
         self.tracking_recovery_attempts += 1

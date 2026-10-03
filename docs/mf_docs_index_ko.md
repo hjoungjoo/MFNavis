@@ -16,7 +16,7 @@
 상태 라벨: **living** = 소스에 맞춰 계속 갱신 / **install** = 설치·운영 가이드 /
 **plan** = 구현 전/부분 구현 계획 / **1회성** = 완료된 분석·검증 기록(유지 대상 아님).
 
-최종 갱신: 2026-09-28 (사용자 정렬·영상 추적 연속성 설계).
+최종 갱신: 2026-10-04 (대상별 영상 추적 구현과 기존·통합 최종 시험 인계).
 
 ## INDI 마운트 — 좌표·포인팅 (핵심)
 
@@ -31,6 +31,10 @@
 | [mount_mode_compatibility](mf_dev/mf_mount_mode_compatibility_ko.md) | 둘 다 | plan(대부분 구현) | Alt/Az vs EQ SkySafari 호환성 감사·체크리스트. |
 | [visual_tracking_continuity_design](mf_dev/mf_visual_tracking_continuity_design_ko.md) | ko | **시험 구현 진행** | 사용자 천체 정렬·영상 추적·솔빙 연속성. 기존 행성 계산 재사용, 경위대 우선·EQ 공통 설계. 기본 Off; 운영 제어 통합·실장 검증 대기. |
 | [visual_tracking_trial](mf_dev/mf_visual_tracking_trial_ko.md) | ko | **시험 안내** | 환경 확인 파일, 명령 없는 shadow/replay 실행, 구현 범위·제약·검증 상태. |
+| [smooth_tracking_environment_design](mf_dev/mf_smooth_tracking_environment_design_ko.md) | ko | **제어 구현·실장 검증 대기** | 카탈로그 별 ROI, 단일 펄스·예측 제어, 장비 프로필·소유권·취소·제한 복구. 현재 기본 active와 명시 Start를 구분한다. |
+| [smooth_tracking_implementation_20261003](mf_report/mf_smooth_tracking_implementation_20261003_ko.md) | ko | **구현·모의 및 실내 검증**(2026-10-03) | 부드러운 영상 보정 구현, 기존 제어 인계와 예측 펄스 정리. 달 통합과 실제 하늘 제어 검증은 후속 범위. |
+| [moon_smooth_tracking_integration_plan_20261003](mf_dev/mf_moon_smooth_tracking_integration_plan_20261003_ko.md) | ko | **통합 설계·구현 전 검토 기록** | 유효 솔빙 즉시 정렬, 이동 완료 기준 유한 대기, 실패 시 중심 도착 확인과 대상별 영상 추적. 구현 이후 상태는 아래 인계 보고서로 관리한다. |
+| [target_tracking_integration_20261004](mf_report/mf_target_tracking_integration_20261004_ko.md) | ko | **코드 통합·자동 시험, 실장 대기** | 공통 비동기 Align, 달 중심·행성 운동·상대 별·솔빙 복구. 새 통합 설정은 기본 false이며 기존 최종 시험과 새 통합 시험군을 분리한다. |
 | [indi_mount_install](mf_dev/mf_indi_mount_install_ko.md) | 둘 다 | install | INDI 마운트 설치·사용 가이드. |
 | [indi_serial_reconnect_design](mf_dev/mf_indi_serial_reconnect_design_ko.md) | ko | **설정 조정·USB 재삽입 구현**(2026-08-12) | INDI/PiFinder 설정 조정과 stable by-id 기반 1회 재접속 구현. 지속 통신 감시는 후속 설계. |
 | [indi_serial_auto_discovery_design](mf_dev/mf_indi_serial_auto_discovery_design_ko.md) | ko | **구현·실장 검증 완료**(2026-08-13) | Web Serial Port의 Auto 선택 시 현재 장치를 지원 baud별로 `:GVP#`/`:GVN#` 검사해 OnStep stable port와 속도를 함께 찾는 설계·구현 기준. |

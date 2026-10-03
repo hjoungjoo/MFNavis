@@ -97,6 +97,10 @@ class TrackingMeasurement:
     rmse_px: float | None = None
     exposure: tuple[float, float] = (0.0, 0.0)
     absolute: bool = False
+    source: str = "catalog_stars"
+    degrees_of_freedom: int = 3
+    model_pointing: tuple[float, float] | None = None
+    target_radec: tuple[float, float] | None = None
 
     @property
     def key(self):
@@ -208,6 +212,7 @@ class TrackingProfile:
     coast_error_bound_arcsec: float = 5.0
     coast_travel_arcsec: float = 2.0
     coast_external_rate_bound: float = 5.0
+    local_reference: dict = field(default_factory=dict)
 
     def __post_init__(self):
         for name in (
@@ -221,7 +226,7 @@ class TrackingProfile:
         ):
             if type(getattr(self, name)) is not int:
                 raise ValueError(f"{name} must be an integer")
-        for name in ("timing", "axis", "goto"):
+        for name in ("timing", "axis", "goto", "local_reference"):
             if not isinstance(getattr(self, name), dict):
                 raise ValueError(f"{name} must be an object")
         for name in (
@@ -315,6 +320,31 @@ class TrackingProfile:
                 raise ValueError("unobservable pulse response")
             if any(np.dot(b[:, a], b[:, a + 1]) >= 0 for a in (0, 2)):
                 raise ValueError("opposing responses must oppose")
+        local = self.local_reference
+        if local:
+            if type(local.get("verified")) is not bool:
+                raise ValueError("explicit local optical verification required")
+            if local["verified"]:
+                shape = local.get("raw_shape", ())
+                if len(shape) != 2 or any(type(v) is not int or v < 8 for v in shape):
+                    raise ValueError("invalid local RAW dimensions")
+                if not local.get("optics") or not isinstance(local.get("info"), dict):
+                    raise ValueError("local optical identity required")
+                if not 0 < finite(local.get("fov_deg", -1)) < 120:
+                    raise ValueError("invalid local FOV")
+                finite(local.get("roll_deg", float("nan")))
+                if (
+                    not 0
+                    < finite(local.get("bound_arcsec", -1))
+                    <= self.max_error_bound_arcsec
+                ):
+                    raise ValueError("invalid local optical error bound")
+                if self.mount_type == "Alt/Az":
+                    finite(local.get("roll_timestamp", float("nan")))
+                    baseline = local.get("roll_target", ())
+                    if len(baseline) != 2 or abs(finite(baseline[1])) > 90:
+                        raise ValueError("Alt/Az local roll baseline required")
+                    finite(baseline[0])
 
     @classmethod
     def from_dict(cls, value):

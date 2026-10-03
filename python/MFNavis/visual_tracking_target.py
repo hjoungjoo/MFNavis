@@ -84,6 +84,37 @@ class TargetEphemeris:
             raise ValueError("body position unavailable")
         return tuple(float(v) for v in item["radec"])
 
+    def angular_radius(self, target, timestamp):
+        """Independent apparent size, using the same observer and UTC epoch."""
+        helper = self.helper()
+        name = target.body
+        # The centre detector does not need a planetary limb fit; a bounded
+        # acquisition patch still uses a conservative physical body radius.
+        radii_km = {
+            "MOON": 1737.4,
+            "JUPITER": 71492.0,
+            "SATURN": 120536.0,
+            "MARS": 3396.2,
+            "VENUS": 6051.8,
+            "MERCURY": 2440.5,
+            "URANUS": 25559.0,
+            "NEPTUNE": 24764.0,
+            "PLUTO": 1188.3,
+        }
+        if name not in radii_km:
+            raise ValueError("body size unavailable")
+        index = next(
+            i
+            for i, n in enumerate(helper.planet_names)
+            if n.replace("_BARYCENTER", "") == name
+        )
+        dt = datetime.fromtimestamp(timestamp, timezone.utc)
+        observer = helper.observer_loc.at(helper.ts.from_datetime(dt))
+        distance = float(
+            observer.observe(helper.planets[index]).apparent().distance().km
+        )
+        return math.asin(radii_km[name] / distance)
+
     def basis(
         self,
         target,

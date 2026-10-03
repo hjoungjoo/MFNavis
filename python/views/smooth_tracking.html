@@ -7,6 +7,8 @@
     <h5>{{ _('Smooth optical tracking') }}</h5>
     <p>{{ _('When plate solving pauses, verified star tracking can continue correcting drift. If stars disappear, prediction is limited by the verified equipment profile.') }}</p>
     <p id="smooth_tracking_status" role="status" aria-live="polite">{{ _('Loading…') }}</p>
+    <p id="smooth_alignment_status" role="status" aria-live="polite"></p>
+    <p><label><input type="checkbox" id="smooth_target_integration"><span>{{ _('Moon, planet and manual alignment tracking') }}</span></label></p>
     <div class="row">
       <div class="col s12 m4"><label for="smooth_mode">{{ _('Mode') }}</label>
         <select class="browser-default" id="smooth_mode"><option value="off">Off</option><option value="shadow">Shadow</option><option value="active">Active</option></select>
@@ -14,15 +16,31 @@
       <div class="col s12 m4"><label for="smooth_ra">{{ _('Target RA (J2000 degrees)') }}</label><input id="smooth_ra" type="number" step="any" min="0" max="360"></div>
       <div class="col s12 m4"><label for="smooth_dec">{{ _('Target Dec (J2000 degrees)') }}</label><input id="smooth_dec" type="number" step="any" min="-90" max="90"></div>
     </div>
+    <p><label for="smooth_body">{{ _('Target type') }}</label>
+      <select class="browser-default" id="smooth_body">
+        <option value="auto">{{ _('Automatic') }}</option>
+        <option value="fixed">{{ _('Star / deep sky') }}</option>
+        <option value="MOON">{{ _('Moon') }}</option>
+        <option value="JUPITER">{{ _('Jupiter') }}</option>
+        <option value="SATURN">{{ _('Saturn') }}</option>
+        <option value="MARS">{{ _('Mars') }}</option>
+        <option value="VENUS">{{ _('Venus') }}</option>
+        <option value="MERCURY">{{ _('Mercury') }}</option>
+        <option value="URANUS">{{ _('Uranus') }}</option>
+        <option value="NEPTUNE">{{ _('Neptune') }}</option>
+      </select>
+    </p>
     <p><label for="smooth_profile">{{ _('Import verified equipment profile (JSON)') }}</label><input id="smooth_profile" type="file" accept=".json,application/json"></p>
     <p>{{ _('Saving settings does not start motion. Calibration sends bounded test pulses and produces a model for review.') }}</p>
     <div class="row">
       <button class="btn" type="button" data-smooth-action="configure">{{ _('Save mode / profile') }}</button>
       <button class="btn" type="button" data-smooth-action="start">{{ _('Start correction') }}</button>
+      <button class="btn" type="button" data-smooth-action="align">{{ _('Align / confirm target centre') }}</button>
       <button class="btn" type="button" data-smooth-action="calibrate">{{ _('Calibrate response') }}</button>
       <button class="btn red darken-3" type="button" data-smooth-action="stop">{{ _('Stop correction') }}</button>
     </div>
     <p id="smooth_tracking_result" role="status"></p>
     <a id="smooth_calibration_download" class="btn" hidden>{{ _('Download calibration candidate') }}</a>
+    <a id="smooth_local_optics_download" class="btn" hidden>{{ _('Download local optical model for review') }}</a>
   </div>
 </div>

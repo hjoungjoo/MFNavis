@@ -345,7 +345,9 @@ class TrackingController:
             tuple(delta),
             predicted,
             "coast" if coast else "pulse",
-            self.coast_anchor.aligned_radec if coast else m.aligned_radec,
+            self.coast_anchor.aligned_radec
+            if coast
+            else (m.model_pointing or m.aligned_radec),
         )
         self.pending_plan = plan
         return plan

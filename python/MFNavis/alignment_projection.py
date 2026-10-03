@@ -31,7 +31,7 @@ def projection_context(shared_state, cfg) -> tuple:
     )
 
 
-def make_projection(solution, captured_at, context):
+def make_projection(solution, captured_at, context, timing=None):
     """Only the accepted solution's own solver canvas is a valid plate scale."""
     frame = solution.get("_alignment_frame")
     if frame is None or context is None:
@@ -44,7 +44,59 @@ def make_projection(solution, captured_at, context):
         "Dec": solution["Dec"],
         "Roll": solution["Roll"],
         "FOV": solution.get("FOV"),
+        "tracking_timing": timing,
     }
+
+
+def current_solved_target_pixel(shared, cfg, ra, dec, *, motion):
+    """Use a current accepted plate directly, without requiring an IMU anchor.
+
+    LookupError means no current plate; invalid projection is an alignment
+    error, not a reason to reinterpret Align as arrival confirmation.
+    """
+    import time
+
+    estimate = shared.solution()
+    plate = getattr(estimate, "alignment_projection", None)
+    if not plate or plate["captured_at"] != estimate.last_solve_success:
+        raise LookupError("no accepted plate")
+    if tuple(plate["context"]) != projection_context(shared, cfg):
+        raise LookupError("optics changed")
+    if motion["moving"]:
+        raise LookupError("observation moving")
+    age = time.time() - plate["captured_at"]
+    if not 0 <= age <= MAX_AGE_SECONDS:
+        raise LookupError("plate stale")
+    timing = plate.get("tracking_timing") or {}
+    completed = motion.get("completed_mono")
+    # Before a known motion, no previous plate may be adopted through IMU.
+    if (
+        completed is not None
+        and motion.get("origin") != "stationary"
+        and (timing.get("start_min", -1) < completed)
+    ):
+        raise LookupError("plate precedes observation completion")
+    if (
+        motion.get("pose_after", 0)
+        and timing.get("start_min", -1) < motion["pose_after"]
+    ):
+        raise LookupError("plate precedes correction motion")
+    imu = shared.imu()
+    if imu is not None and imu.is_usable(now=time.time()):
+        if imu.moving:
+            raise LookupError("camera moving")
+        # When available, retain the existing angular motion checks. The
+        # direct path remains usable for an accepted plate without an IMU.
+        if estimate.imu_anchor is not None:
+            q0 = quaternion.as_float_array(estimate.imu_anchor)
+            q1 = quaternion.as_float_array(imu.quat)
+            denom = np.linalg.norm(q0) * np.linalg.norm(q1)
+            if denom <= 0 or not np.isfinite([q0, q1]).all():
+                raise LookupError("orientation unavailable")
+            angle = math.degrees(2 * math.acos(min(1, abs(float(q0 @ q1 / denom)))))
+            if angle > MAX_MOTION_DEGREES:
+                raise LookupError("plate pose changed")
+    return project_target(plate, ra, dec)
 
 
 def _plate_rotation(plate):

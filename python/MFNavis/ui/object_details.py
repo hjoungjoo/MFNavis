@@ -1041,8 +1041,21 @@ class UIObjectDetails(UIModule):
             self.command_queues,
             self.config_object,
             self.shared_state,
+            body=(
+                self.object.names[0].upper()
+                if self.object.catalog_code == "PL" and self.object.names
+                else None
+            ),
+            identify_planets=False,
         ):
-            self.message(_("Aligned!"), 1)
+            self.message(
+                _("Alignment requested")
+                if self.config_object.get_option(
+                    "smooth_tracking_target_integration_enabled", False
+                )
+                else _("Aligned!"),
+                1,
+            )
         else:
             self.message(_("Too Far"), 2)
 

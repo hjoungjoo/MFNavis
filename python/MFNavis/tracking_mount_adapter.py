@@ -195,7 +195,11 @@ class IndiTrackingAdapter:
         ):
             return False
         if plan.kind != "calibration":
-            model_pointing = plan.model_pointing or measurement.aligned_radec
+            model_pointing = (
+                plan.model_pointing
+                or measurement.model_pointing
+                or measurement.aligned_radec
+            )
             if model_pointing is None:
                 return False
             separation = math.degrees(

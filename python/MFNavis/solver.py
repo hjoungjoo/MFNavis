@@ -919,7 +919,10 @@ def _build_successful_solve(
             FrameId=frame_id,
             ExposureQuality=exposure_quality,
             AlignmentProjection=make_projection(
-                solution, last_solve_success, alignment_context
+                solution,
+                last_solve_success,
+                alignment_context,
+                last_image_metadata.get("tracking_timing"),
             ),
         ),
         alignment=AlignmentResult(
@@ -1829,7 +1832,9 @@ def solver(
                                 raw_entry=solver_raw_entry,
                             )
                             if sep_run is not None:
-                                if visual_shadow is not None:
+                                if visual_shadow is not None or _sep_cfg.get_option(
+                                    "smooth_tracking_target_integration_enabled", False
+                                ):
                                     visual_raw_run = sep_run
                                 sep_count = len(sep_run.detection.centroids)
                                 if capture_token is not None:
@@ -2595,6 +2600,23 @@ def solver(
                     published_solution = bool(
                         solution and solution.get("RA") is not None
                     )
+                    if _sep_cfg.get_option(
+                        "smooth_tracking_target_integration_enabled", False
+                    ):
+                        from PiFinder.tracking_targets import publish_seed
+
+                        publish_seed(
+                            shared_state,
+                            last_image_metadata,
+                            fullframe_geometry,
+                            solver_raw_entry,
+                            visual_raw_run,
+                            moving=frame_moving,
+                            success=published_solution,
+                            confirming=bool(
+                                capture_continuity and not capture_continuity.accepted
+                            ),
+                        )
                     if published_solution and not solve_path.startswith(
                         "preprocessed_"
                     ):

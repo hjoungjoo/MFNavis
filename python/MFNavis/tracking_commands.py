@@ -47,6 +47,7 @@ INVALIDATING_COMMANDS = frozenset(
         "smooth_tracking_stop",
         "smooth_tracking_start",
         "smooth_tracking_calibrate",
+        "tracking_align",
     }
 )
 
@@ -86,7 +87,15 @@ class PriorityMountQueue:
                 ):
                     with self.stop_epoch.get_lock():
                         self.stop_epoch.value = self.cancellation.value
-                command["_control_epoch"] = self.cancellation.value
+                if command.get("type") in {
+                    "tracking_alignment_hold",
+                    "tracking_alignment_sync",
+                }:
+                    # Internal continuations retain the request's epoch even
+                    # if a manual command takes over just before insertion.
+                    command.setdefault("_control_epoch", self.cancellation.value)
+                else:
+                    command["_control_epoch"] = self.cancellation.value
         return self.queue.put(command, *args, **kwargs)
 
     def get(self, *args, **kwargs):
@@ -124,6 +133,9 @@ def stale_command(command, command_queue):
         "smooth_tracking_start",
         "smooth_tracking_calibrate",
         "toggle_guide_correction",
+        "tracking_align",
+        "tracking_alignment_hold",
+        "tracking_alignment_sync",
     }:
         return stamp != control_epoch(command_queue)
     motion = {

@@ -64,6 +64,8 @@
     "mount_type": "Alt/Az",
     "mount_control": false,
     "smooth_tracking_mode": "active",
+    "smooth_tracking_target_integration_enabled": false,
+    "alignment_solve_wait_max_s": 15.0,
     "smooth_tracking_profile": {},
     "smooth_tracking_prediction_enabled": true,
     "smooth_tracking_axis_recovery_enabled": false,
