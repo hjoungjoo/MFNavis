@@ -67,7 +67,7 @@ def test_target_remains_available_after_failed_solve():
     shared, _ = state()
     shared.solve_state = lambda: False
     app = Flask(__name__)
-    register_api_routes(app, SimpleNamespace(shared_state=shared))
+    register_api_routes(app, SimpleNamespace(shared_state=shared), require_auth=False)
     response = app.test_client().get("/api/observation")
     assert response.status_code == 200
     assert response.json["target"]["ra_deg"] == 359.9

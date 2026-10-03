@@ -89,6 +89,7 @@ def update(repo):
             target,
             "--",
             "python/requirements.txt",
+            "python/requirements-trixie.txt",
             "migration_source",
             "pi_config_files",
             ".gitmodules",

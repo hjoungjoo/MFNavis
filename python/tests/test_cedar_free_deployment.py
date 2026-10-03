@@ -226,9 +226,14 @@ def test_failed_update_restores_source_and_native_build(
     assert not (update_clone / ".git/update-transaction").exists()
 
 
-def test_dependency_change_is_rejected_before_mutation(repository, update_clone):
+@pytest.mark.parametrize(
+    "requirements", ["requirements.txt", "requirements-trixie.txt"]
+)
+def test_dependency_change_is_rejected_before_mutation(
+    repository, update_clone, requirements
+):
     before = git(update_clone, "rev-parse", "HEAD")
-    (repository / "python/requirements.txt").write_text("new-dependency==1\n")
+    (repository / "python" / requirements).write_text("new-dependency==1\n")
     commit(repository)
     result = run_update(update_clone)
     assert result.returncode != 0

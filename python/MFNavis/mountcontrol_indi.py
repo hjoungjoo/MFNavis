@@ -21,7 +21,7 @@ from collections import deque
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from multiprocessing import Queue
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from PiFinder import calc_utils, config
 from PiFinder import gps_time_sync
@@ -54,6 +54,9 @@ from PiFinder.indi_multipoint_align import (
     STATE_WAITING,
 )
 from PiFinder.multiproclogging import MultiprocLogging
+
+if TYPE_CHECKING:
+    from PiFinder.smooth_mount_runtime import SmoothMountRuntime
 
 try:
     import PyIndi  # type: ignore
@@ -592,7 +595,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         indi_port: int = 7624,
     ):
         self.mount_queue = mount_queue
-        self._smooth_runtime = None
+        self._smooth_runtime: Optional[SmoothMountRuntime] = None
         self.console_queue = console_queue
         self.error_notifier = ErrorNotifier(console_queue, "INDI Mount")
         self._connection_announced = False

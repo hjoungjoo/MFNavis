@@ -3,8 +3,11 @@ Machine-readable API
 
 PiFinder exposes a set of optional JSON and image endpoints under ``/api/`` for
 automation and external tools. They are registered on the same web server that
-serves the PiFinder web interface, and by default they require **no
-authentication**, so any client on the same network can call them.
+serves the PiFinder web interface and require authentication by default.
+Log in through the web interface and reuse its session cookie for API requests.
+Applications that explicitly configure ``server_instance.api_token`` may also
+authenticate with the ``token`` query parameter. Unauthorized calls return HTTP
+``401`` before reading device data or executing commands.
 
 Everything is served relative to the PiFinder's address, for example
 ``http://pifinder.local/api/status``. JSON endpoints return

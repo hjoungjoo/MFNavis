@@ -451,6 +451,7 @@ class Server:
                 "docs/MFNAVIS_RELEASE_en.md",
                 "docs/MFNAVIS_RELEASE_ko.md",
                 "python/views/css/mfnavis-korean.LICENSE.txt",
+                "deployment/imx678/README.md",
             }:
                 return send_from_directory(repo, filename, mimetype="text/plain")
             for prefix in ("LICENSES/", "OPEN_SOURCE_LICENSES/"):
@@ -3152,7 +3153,7 @@ class Server:
         try:
             from PiFinder.api_extensions import register_api_routes
 
-            register_api_routes(app, self, require_auth=False)
+            register_api_routes(app, self)
         except Exception:
             logger.exception("Failed to register API extension routes")
 

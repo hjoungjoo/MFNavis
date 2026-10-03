@@ -10,7 +10,7 @@ Usage:
     PiFinder/python/PiFinder/server.py, before run() is called:
 
         from PiFinder.api_extensions import register_api_routes
-        register_api_routes(app, self, require_auth=False)
+        register_api_routes(app, self)
 
 Dependencies: No additional dependencies. Reuses PiFinder's existing Flask / PIL / shared state.
 """
@@ -19,6 +19,7 @@ import io
 import json
 import logging
 import time
+from functools import wraps
 from pathlib import Path
 
 from flask import request, session, Response, render_template
@@ -164,7 +165,7 @@ def _livecam_solver_status(shared_state) -> dict:
     }
 
 
-def register_api_routes(app, server_instance, require_auth=False):
+def register_api_routes(app, server_instance, require_auth=True):
     """
     Register all /api/* routes on the Flask app.
 
@@ -176,7 +177,7 @@ def register_api_routes(app, server_instance, require_auth=False):
         The PiFinder Server class instance (self), used to access shared_state, etc.
     require_auth : bool
         Whether to enable session authentication for /api/* endpoints.
-        Defaults to False for easier access by automation tools.
+        Defaults to True. Disable only for explicitly trusted test applications.
     """
 
     # Built-in simple token authentication (optional), to avoid modifying the auth_required decorator
@@ -196,6 +197,7 @@ def register_api_routes(app, server_instance, require_auth=False):
     def _auth_wrapper(func):
         """Return 401 if authentication is enabled and the request is not authorized"""
 
+        @wraps(func)
         def wrapper(*args, **kwargs):
             if not _check_auth():
                 return _json_response({"error": "Unauthorized"}, 401)
@@ -277,6 +279,7 @@ def register_api_routes(app, server_instance, require_auth=False):
             return _json_response({"error": str(exc)}, 503)
 
     @app.route("/api/status")
+    @_auth_wrapper
     def api_status():
         try:
             ss = server_instance.shared_state
@@ -308,6 +311,7 @@ def register_api_routes(app, server_instance, require_auth=False):
     # ───────────────────────────────────────────────
 
     @app.route("/api/time")
+    @_auth_wrapper
     def api_time():
         try:
             ss = server_instance.shared_state
@@ -323,6 +327,7 @@ def register_api_routes(app, server_instance, require_auth=False):
             return _json_response({"error": str(e)}, 500)
 
     @app.route("/api/location")
+    @_auth_wrapper
     def api_location():
         try:
             server_instance.update_gps()  # 先刷新 GPS 缓存
@@ -342,10 +347,12 @@ def register_api_routes(app, server_instance, require_auth=False):
             return _json_response({"error": str(e)}, 500)
 
     @app.route("/api/observation")
+    @_auth_wrapper
     def api_observation():
         return _json_response(observation_snapshot(server_instance.shared_state))
 
     @app.route("/api/solution")
+    @_auth_wrapper
     def api_solution():
         try:
             ss = server_instance.shared_state
@@ -395,6 +402,7 @@ def register_api_routes(app, server_instance, require_auth=False):
             return _json_response({"error": str(e)}, 500)
 
     @app.route("/api/visible_stars")
+    @_auth_wrapper
     def api_visible_stars():
         """
         Return the visible star data within the current PiFinder field of view.
@@ -796,6 +804,7 @@ def register_api_routes(app, server_instance, require_auth=False):
             return _json_response({"success": False, "error": str(e)}, 500)
 
     @app.route("/api/imu")
+    @_auth_wrapper
     def api_imu():
         try:
             imu = server_instance.shared_state.imu()
@@ -808,6 +817,7 @@ def register_api_routes(app, server_instance, require_auth=False):
             return _json_response({"error": str(e)}, 500)
 
     @app.route("/api/sqm")
+    @_auth_wrapper
     def api_sqm():
         try:
             sqm = server_instance.shared_state.sqm()
@@ -823,6 +833,7 @@ def register_api_routes(app, server_instance, require_auth=False):
     # ───────────────────────────────────────────────
 
     @app.route("/api/screen")
+    @_auth_wrapper
     def api_screen():
         """Return the current screen display as a 128x128 PNG, equivalent to /image"""
         try:
@@ -836,6 +847,7 @@ def register_api_routes(app, server_instance, require_auth=False):
             return _png_response(empty)
 
     @app.route("/api/camera/raw")
+    @_auth_wrapper
     def api_camera_raw():
         """Return the raw CMOS image, if available.
 
@@ -882,6 +894,7 @@ def register_api_routes(app, server_instance, require_auth=False):
             return _json_response({"error": str(e)}, 500)
 
     @app.route("/api/camera/stages", methods=["GET", "POST"])
+    @_auth_wrapper
     def api_camera_stages():
         """Trigger or list pipeline stage dumps.
 
@@ -928,6 +941,7 @@ def register_api_routes(app, server_instance, require_auth=False):
             return _json_response({"error": str(e)}, 500)
 
     @app.route("/api/camera/stages/<dirname>/<filename>")
+    @_auth_wrapper
     def api_camera_stages_file(dirname, filename):
         """Download one file from a pipeline stage dump."""
         try:
@@ -954,6 +968,7 @@ def register_api_routes(app, server_instance, require_auth=False):
             return _json_response({"error": str(e)}, 500)
 
     @app.route("/api/camera/debug")
+    @_auth_wrapper
     def api_camera_debug():
         """Return the latest debug frame from the solver_debug_dumps directory"""
         try:
@@ -980,6 +995,7 @@ def register_api_routes(app, server_instance, require_auth=False):
             return _json_response({"error": str(e)}, 500)
 
     @app.route("/api/camera/raw-stack/status")
+    @_auth_wrapper
     def api_camera_raw_stack_status():
         try:
             settings = _raw_stack_settings()
@@ -1000,6 +1016,7 @@ def register_api_routes(app, server_instance, require_auth=False):
             return _json_response({"error": str(e)}, 500)
 
     @app.route("/api/camera/raw-stack/image")
+    @_auth_wrapper
     def api_camera_raw_stack_image():
         try:
             settings = _raw_stack_settings()
@@ -1025,6 +1042,7 @@ def register_api_routes(app, server_instance, require_auth=False):
             return _json_response({"error": str(e)}, 500)
 
     @app.route("/api/camera/raw-stack/download")
+    @_auth_wrapper
     def api_camera_raw_stack_download():
         try:
             settings = _raw_stack_settings()
@@ -1078,6 +1096,7 @@ def register_api_routes(app, server_instance, require_auth=False):
             return _json_response({"error": str(e)}, 500)
 
     @app.route("/api/camera/raw-stack/control", methods=["GET", "POST"])
+    @_auth_wrapper
     def api_camera_raw_stack_control():
         try:
             if request.method == "GET":
@@ -1225,6 +1244,7 @@ def register_api_routes(app, server_instance, require_auth=False):
         return data
 
     @app.route("/api/camera/controls", methods=["GET", "POST"])
+    @_auth_wrapper
     def api_camera_controls():
         """Read or set the camera exposure and gain.
 
@@ -1305,6 +1325,7 @@ def register_api_routes(app, server_instance, require_auth=False):
     # ───────────────────────────────────────────────
 
     @app.route("/api/key", methods=["POST"])
+    @_auth_wrapper
     def api_key():
         """Simulate button input. JSON body: {"button": "UP"} or {"button": 1}"""
         try:
@@ -1324,6 +1345,7 @@ def register_api_routes(app, server_instance, require_auth=False):
             return _json_response({"error": str(e)}, 500)
 
     @app.route("/api/stop", methods=["POST"])
+    @_auth_wrapper
     def api_stop():
         """Cleanly shut down the entire PiFinder application.
 
@@ -1377,6 +1399,7 @@ def register_api_routes(app, server_instance, require_auth=False):
         )
 
     @app.route("/api/mount/track_freq", methods=["GET", "POST"])
+    @_auth_wrapper
     def api_mount_track_freq():
         """Get or set the mount's non-sidereal tracking frequency.
 

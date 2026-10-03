@@ -20,6 +20,10 @@ pytestmark = pytest.mark.unit
 def paths(tmp_path, monkeypatch):
     runtime, root = tmp_path / "runtime", tmp_path / "sessions"
     monkeypatch.setattr(capture.utils, "runtime_dir", runtime)
+    # Keep recording tests independent of free space on the temporary filesystem.
+    monkeypatch.setattr(
+        capture.shutil, "disk_usage", lambda _: SimpleNamespace(free=10 * 1024**3)
+    )
     return runtime, root
 
 
@@ -321,7 +325,7 @@ def test_web_capture_controls_and_auth(paths):
     app.jinja_env.add_extension("jinja2.ext.i18n")
     app.jinja_env.install_null_translations()
     app.jinja_env.globals["web_language"] = lambda: "en"
-    register_api_routes(app, SimpleNamespace())
+    register_api_routes(app, SimpleNamespace(), require_auth=False)
     client = app.test_client()
     page = client.get("/solver-capture")
     assert page.status_code == 200

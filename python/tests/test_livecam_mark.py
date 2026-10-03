@@ -170,7 +170,7 @@ def test_image_endpoint_supports_independent_overlay_switches(monkeypatch, sep, 
     monkeypatch.setattr(RawLiveStackProcessor, "render_image", render)
     app = Flask(__name__)
     api_extensions.register_api_routes(
-        app, SimpleNamespace(shared_state=shared_state())
+        app, SimpleNamespace(shared_state=shared_state()), require_auth=False
     )
     query = [
         ("overlay", value)

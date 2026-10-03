@@ -41,7 +41,7 @@ def test_status_reports_preprocessing_and_solve_for_every_input(
     monkeypatch.setattr(api_extensions.time, "time", lambda: 110.0)
     server = SimpleNamespace(shared_state=shared)
     app = Flask(__name__)
-    api_extensions.register_api_routes(app, server)
+    api_extensions.register_api_routes(app, server, require_auth=False)
     response = app.test_client().get("/api/camera/raw-stack/status")
     assert response.status_code == 200
     data = response.get_json()

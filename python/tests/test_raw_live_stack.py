@@ -1066,7 +1066,7 @@ def test_download_endpoint_ignores_preview_downsampling(
     monkeypatch.setattr(api_extensions.config, "Config", lambda: object())
     server = SimpleNamespace(shared_state=shared)
     app = Flask(__name__)
-    api_extensions.register_api_routes(app, server)
+    api_extensions.register_api_routes(app, server, require_auth=False)
     client = app.test_client()
     preview = client.get("/api/camera/raw-stack/image")
     assert preview.status_code == 200
