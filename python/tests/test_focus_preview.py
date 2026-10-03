@@ -263,8 +263,19 @@ def test_edge_star_crop_contains_only_source_frame_pixels():
 
 
 @pytest.mark.unit
-def test_image_renderer_uses_original_display_autocontrast():
+@pytest.mark.parametrize(
+    "zoom_level, red_levels, bright_width",
+    (
+        (0, {0, 70, 141, 255}, 40),
+        (1, {0, 98, 254}, 16),
+        (2, {0, 98, 254}, 32),
+    ),
+)
+def test_image_renderer_uses_original_display_autocontrast(
+    zoom_level, red_levels, bright_width
+):
     preview = object.__new__(UIPreview)
+    preview.image_zoom_level = zoom_level
     preview.display_class = SimpleNamespace(resolution=(128, 128), titlebar_height=17)
     preview.colors = SimpleNamespace(
         red_image=Image.new("RGB", (128, 128), (255, 0, 0))
@@ -272,8 +283,13 @@ def test_image_renderer_uses_original_display_autocontrast():
     raw = np.tile(
         np.repeat(np.array([20, 70, 120, 200], dtype=np.uint8), 128), (512, 1)
     )
+    raw[240:272, 240:272] = 200
     rendered = np.asarray(preview._render_image_frame(Image.fromarray(raw)))
-    assert set(np.unique(rendered[:, :, 0])) == {0, 70, 141, 255}
+    assert set(np.unique(rendered[:, :, 0])) == red_levels
+    assert (
+        np.count_nonzero(rendered[rendered.shape[0] // 2, :, 0] == max(red_levels))
+        == bright_width
+    )
     assert np.all(rendered[:, :, 1:] == 0)
 
 
@@ -318,33 +334,35 @@ def test_single_star_renderer_preserves_brightest_raw_crop(monkeypatch):
 @pytest.mark.unit
 def test_focus_modes_follow_standard_square_cycle_order():
     assert UIPreview._display_mode_list == [
+        DISPLAY_IMAGE,
         DISPLAY_STARS,
         DISPLAY_SINGLE,
-        DISPLAY_IMAGE,
         DISPLAY_STATS,
     ]
 
     preview = object.__new__(UIPreview)
     preview._display_mode_cycle = cycle(UIPreview._display_mode_list)
     preview.display_mode = next(preview._display_mode_cycle)
+    assert preview.display_mode == DISPLAY_IMAGE
     redraws = []
     preview.update = lambda force=False: redraws.append(force)
 
     preview.key_square()
-    assert preview.display_mode == DISPLAY_SINGLE
+    assert preview.display_mode == DISPLAY_STARS
     preview.key_square()
-    assert preview.display_mode == DISPLAY_IMAGE
+    assert preview.display_mode == DISPLAY_SINGLE
     preview.key_square()
     assert preview.display_mode == DISPLAY_STATS
     preview.key_square()
-    assert preview.display_mode == DISPLAY_STARS
+    assert preview.display_mode == DISPLAY_IMAGE
     assert redraws == [True, True, True, True]
 
 
 @pytest.mark.unit
-def test_zoom_controls_apply_to_magnified_star_views_only():
+def test_zoom_controls_keep_camera_and_star_magnification_independent():
     preview = object.__new__(UIPreview)
     preview.focus_zoom = FOCUS_NOMINAL_ZOOM
+    preview.image_zoom_level = 0
     preview.display_mode = DISPLAY_STARS
     redraws = []
     preview.update = lambda force=False: redraws.append(force)
@@ -353,12 +371,21 @@ def test_zoom_controls_apply_to_magnified_star_views_only():
     assert preview.focus_zoom == FOCUS_NOMINAL_ZOOM + 2
 
     preview.display_mode = DISPLAY_IMAGE
-    preview.key_minus()
+    for expected in (1, 2, 2):
+        preview.key_plus()
+        assert preview.image_zoom_level == expected
+    for expected in (1, 0, 0):
+        preview.key_minus()
+        assert preview.image_zoom_level == expected
     assert preview.focus_zoom == FOCUS_NOMINAL_ZOOM + 2
     preview.display_mode = DISPLAY_SINGLE
     preview.key_minus()
     assert preview.focus_zoom == FOCUS_NOMINAL_ZOOM
-    assert redraws == [True, True]
+    assert preview.image_zoom_level == 0
+    preview.display_mode = DISPLAY_STATS
+    preview.key_plus()
+    preview.key_minus()
+    assert redraws == [True] * 8
 
 
 @pytest.mark.unit
@@ -850,6 +877,7 @@ def test_stats_reports_a_held_exposure_as_hold_not_the_saved_setting(monkeypatch
 
 def _bar_preview(display_class, display_mode, camera_exp=400_000):
     preview = _hold_preview(camera_exp=camera_exp)
+    preview.image_zoom_level = 0
     preview.display_class = display_class
     preview.colors = display_class.colors
     preview.fonts = display_class.fonts
@@ -898,11 +926,13 @@ def test_status_bar_carries_the_held_exposure_and_the_keys(monkeypatch):
 
 
 @pytest.mark.unit
-def test_status_bar_drops_zoom_on_the_image_view_where_it_does_nothing():
-    """+/- return early outside the magnified views, so do not advertise them."""
+@pytest.mark.parametrize("zoom_level", (0, 1, 2))
+def test_status_bar_advertises_zoom_and_magnification_on_the_image_view(zoom_level):
     preview = _bar_preview(DisplayBase(), DISPLAY_IMAGE)
+    preview.image_zoom_level = zoom_level
 
-    assert "ZOOM" not in preview._status_bar_hint()
+    assert "ZOOM" in preview._status_bar_hint()
+    assert f"{2**zoom_level}x" in preview._status_bar_hint()
     assert "EXP" in preview._status_bar_hint()
 
 
@@ -1028,6 +1058,7 @@ def test_recent_stack_shortcut_releases_discarded_focus():
 
 def _mf_preview(raw, *, rotation=0):
     preview = object.__new__(UIPreview)
+    preview.image_zoom_level = 0
     preview.display_class = SimpleNamespace(resolution=(128, 128), titlebar_height=17)
     preview.colors = SimpleNamespace(
         red_image=Image.new("RGB", (128, 128), (255, 0, 0))

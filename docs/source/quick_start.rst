@@ -373,7 +373,11 @@ Select Focus in the Start menu.
 
 .. image:: images/quick_start/start_menu.png
 
-The Focus screen finds the four brightest stars in the camera's view and shows each one
+The Focus screen opens in the **Image** view, showing the complete camera frame.  Use
+**+** and **-** to zoom the center of the image between 1x, 2x, and 4x.  The bottom bar
+shows the current magnification.  Press **SQUARE** to switch to the **Stars** view.
+
+The Stars view finds the four brightest stars in the camera's view and shows each one
 magnified in its own quadrant of the screen.  The same stars keep their quadrants while you
 work, even if the image shifts as you handle the lens.  When a star drops out, the next
 brightest takes its place.  None of this needs a plate solve, so the screen keeps working
@@ -407,10 +411,11 @@ all four stars together rather than by a single unusually bright star.
 
 Press **SQUARE** to cycle through four views:
 
+* **Image**: the default camera view, brightened for the screen, with **+**/**-** zoom
+  between 1x, 2x, and 4x.  This zoom also works in bright daytime scenes.
 * **Stars**: the four magnified star tiles described above.
 * **Single**: the brightest star alone at twice the magnification, with the HFD readout
   and trace along the bottom.
-* **Image**: the full camera frame, brightened for the screen.
 * **Stats**: the HFD alongside an FWHM estimate, the detected-star count, exposure, gain,
   and a histogram of the raw image.
 
@@ -419,8 +424,9 @@ Press **SQUARE** to cycle through four views:
 .. image:: images/quick_start/focus_stats_docs.png
    :width: 45%
 
-Press and hold **SQUARE** in any view to open the :ref:`user_guide:quick menu`, which offers
-the camera exposure setting.  With dark enough skies and good focus, the camera icon appears
+Use **UP** and **DOWN** to adjust exposure.  Press and hold **SQUARE** in any view to open
+the :ref:`user_guide:quick menu`, which offers Help and camera Gain.  With dark enough skies
+and good focus, the camera icon appears
 in the top right and the current constellation shows in the title bar.  Congratulations, the
 PiFinder knows where it's pointing!
 

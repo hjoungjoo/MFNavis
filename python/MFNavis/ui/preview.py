@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # -*- coding:utf-8 -*-
-"""Raw, magnified multi-star Focus screen."""
+"""Camera preview and magnified star views for focusing."""
 
 import math
 import sys
@@ -14,6 +14,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageOps
 
 from PiFinder import focus, mf_wide_focus, utils
 from PiFinder.ui.base import GuideKeyMixin, UIModule
+from PiFinder.ui.camera_render import crop_for_zoom
 from PiFinder.ui.marking_menus import MarkingMenu, MarkingMenuOption
 
 sys.path.append(str(utils.tetra3_dir))
@@ -25,6 +26,7 @@ FOCUS_NOMINAL_ZOOM = 10
 FOCUS_MIN_ZOOM = 4
 FOCUS_MAX_ZOOM = 16
 FOCUS_ZOOM_STEP = 2
+IMAGE_MAX_ZOOM_LEVEL = 2
 FOCUS_BLOB_MARGIN = 1.35
 FOCUS_VISUAL_MAX_BLOB_PX = 128
 FOCUS_TILE_COUNT = 4
@@ -131,12 +133,13 @@ class UIPreview(GuideKeyMixin, UIModule):
 
     __title__ = "CAMERA"
     __help_name__ = "camera"
-    _display_mode_list = [DISPLAY_STARS, DISPLAY_SINGLE, DISPLAY_IMAGE, DISPLAY_STATS]
+    _display_mode_list = [DISPLAY_IMAGE, DISPLAY_STARS, DISPLAY_SINGLE, DISPLAY_STATS]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.last_update = time.time()
         self.focus_zoom = FOCUS_NOMINAL_ZOOM
+        self.image_zoom_level = 0
         self.last_focus_result = None
         self._tracked_focus_blobs: tuple[focus.Blob, ...] = ()
         self._focus_slot_catalog_ids: tuple[Optional[object], ...] = ()
@@ -502,8 +505,9 @@ class UIPreview(GuideKeyMixin, UIModule):
         return ImageChops.multiply(rendered.convert("RGB"), self.colors.red_image)
 
     def _render_image_frame(self, raw_image: Image.Image) -> Image.Image:
-        """Fit and autocontrast the full camera image for display only."""
-        resized = raw_image.convert("L").resize(
+        """Zoom and autocontrast the camera image for display only."""
+        cropped = crop_for_zoom(raw_image.convert("L"), self.image_zoom_level)
+        resized = cropped.resize(
             (self.display_class.resolution[0], self._content_bottom()),
             resample=Image.Resampling.NEAREST,
         )
@@ -559,6 +563,7 @@ class UIPreview(GuideKeyMixin, UIModule):
         np.clip(scaled, 0, 255, out=scaled)
         image_obj = Image.fromarray(scaled.astype(np.uint8), mode="L")
         image_obj = self._orient_camera_image(image_obj)
+        image_obj = crop_for_zoom(image_obj, self.image_zoom_level)
         resized = image_obj.resize(
             (self.display_class.resolution[0], self._content_bottom()),
             resample=Image.Resampling.NEAREST,
@@ -740,14 +745,11 @@ class UIPreview(GuideKeyMixin, UIModule):
             previous = current
 
     def _status_bar_hint(self) -> str:
-        """Keys worth advertising in the view currently showing.
-
-        Only keys that do something here. ``+``/``-`` return early outside the
-        magnified views, so offering zoom on the full-frame Image view would
-        teach a key that does nothing.
-        """
+        """Advertise exposure and zoom controls for the current view."""
         hint = f"{self._UP_ARROW}{self._DOWN_ARROW}EXP"
-        if self.display_mode in (DISPLAY_STARS, DISPLAY_SINGLE):
+        if self.display_mode == DISPLAY_IMAGE:
+            hint = f"{hint} {2**self.image_zoom_level}x +/-ZOOM"
+        elif self.display_mode in (DISPLAY_STARS, DISPLAY_SINGLE):
             hint = f"{hint} +/-ZOOM"
         return hint
 
@@ -945,17 +947,23 @@ class UIPreview(GuideKeyMixin, UIModule):
         return self.screen_update()
 
     def key_plus(self):
-        """Increase the nominal focused-star magnification."""
-        if self.display_mode not in (DISPLAY_STARS, DISPLAY_SINGLE):
+        """Increase camera or focused-star magnification."""
+        if self.display_mode == DISPLAY_IMAGE:
+            self.image_zoom_level = min(IMAGE_MAX_ZOOM_LEVEL, self.image_zoom_level + 1)
+        elif self.display_mode in (DISPLAY_STARS, DISPLAY_SINGLE):
+            self.focus_zoom = min(FOCUS_MAX_ZOOM, self.focus_zoom + FOCUS_ZOOM_STEP)
+        else:
             return
-        self.focus_zoom = min(FOCUS_MAX_ZOOM, self.focus_zoom + FOCUS_ZOOM_STEP)
         self.update(force=True)
 
     def key_minus(self):
-        """Decrease the nominal focused-star magnification."""
-        if self.display_mode not in (DISPLAY_STARS, DISPLAY_SINGLE):
+        """Decrease camera or focused-star magnification."""
+        if self.display_mode == DISPLAY_IMAGE:
+            self.image_zoom_level = max(0, self.image_zoom_level - 1)
+        elif self.display_mode in (DISPLAY_STARS, DISPLAY_SINGLE):
+            self.focus_zoom = max(FOCUS_MIN_ZOOM, self.focus_zoom - FOCUS_ZOOM_STEP)
+        else:
             return
-        self.focus_zoom = max(FOCUS_MIN_ZOOM, self.focus_zoom - FOCUS_ZOOM_STEP)
         self.update(force=True)
 
     def key_up(self):
@@ -967,6 +975,6 @@ class UIPreview(GuideKeyMixin, UIModule):
         self._nudge_exposure(-1)
 
     def key_square(self):
-        """Cycle Stars -> Single -> Image -> Stats using the display-mode key."""
+        """Cycle Image -> Stars -> Single -> Stats using the display-mode key."""
         self.cycle_display_mode()
         self.update(force=True)
