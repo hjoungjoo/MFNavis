@@ -35,24 +35,31 @@ def _on_disk(config_dir: Path) -> dict:
 
 
 @pytest.mark.unit
-def test_new_install_uses_measured_imx462_color_optics(config_dir):
+@pytest.mark.parametrize("config_exists", [False, True])
+def test_new_install_uses_measured_imx462_color_optics(config_dir, config_exists):
+    if not config_exists:
+        (config_dir / "config.json").unlink()
     cfg = config.Config()
     assert cfg.get_option("camera_variant") == "color"
     assert cfg.get_option("camera_lens") == "manual"
-    assert cfg.get_option("camera_lens_focal_length_mm") == 8.2661
+    assert cfg.get_option("camera_lens_focal_length_mm") == 8.2409
 
     active = CalibrationProfileStore(cfg).load_active(
         "imx462_color", "manual", get_camera_profile("imx462_color")
     )
     assert active is not None
+    assert active["id"] == "auto-imx462_color-manual-8.2409mm-1"
+    assert active["verified_from_sky"] is True
     assert active["coefficients"] == {
-        "k1": -0.05,
+        "k1": -0.12,
         "k2": 0.0,
         "k3": 0.0,
         "p1": 0.0,
         "p2": 0.0,
     }
-    assert _on_disk(config_dir) == {}
+    assert (config_dir / "config.json").exists() is config_exists
+    if config_exists:
+        assert _on_disk(config_dir) == {}
 
 
 @pytest.mark.unit

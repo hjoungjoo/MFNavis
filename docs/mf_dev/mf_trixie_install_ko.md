@@ -2,7 +2,7 @@
 
 [English](mf_trixie_install_en.md) | [한국어](mf_trixie_install_ko.md)
 
-갱신일: 2026-09-27. 기본 설치 환경은 Raspberry Pi 4/Pi 5/CM5의
+갱신일: 2026-10-04. 기본 설치 환경은 Raspberry Pi 4/Pi 5/CM5의
 Raspberry Pi OS Trixie 64-bit / Python 3.13입니다. 보드 profile은 공통으로
 지원하지만 이번 Trixie 실기 검증 장비는 Raspberry Pi 5입니다.
 Pi 4와 CM5의 Trixie 실기 확인은 별도로 필요합니다. 이전 Bookworm 실측은
@@ -69,6 +69,15 @@ INDI 아카이브 설치는 기본적으로 필수입니다. 파일이 없거나
 제어는 별도로 켜기 전까지 꺼져 있습니다. INDI 없는 설치, 사용자 지정 아카이브와
 드라이버 개발은 [INDI 안내](mf_indi_mount_install_ko.md)를 참고합니다.
 MFDS는 native child worker로 실행하므로 별도 Cedar 서비스가 필요하지 않습니다.
+
+새 설치의 광학 기본값은 **IMX462 Color + 수동 초점거리 8.2409 mm**입니다.
+하늘 실측 Brown–Conrady 보정은 `k1=-0.12`, `k2=k3=p1=p2=0`이며, 렌즈 키와
+fingerprint가 맞는 활성 프로파일을 `default_config.json`에 함께 제공합니다.
+초점거리는 화면상 약 8.24 mm라도 보정 조회를 위해 네 자리 정밀도로 저장합니다.
+설치된 앱이 처음 설정을 읽을 때 자동 적용하므로 보정 파일을 따로 복사할 필요가
+없습니다. 기존 `~/MFNavis_data/config.json`의 렌즈·보정 설정은 재설치·갱신 시
+그대로 우선합니다. 다른 카메라·렌즈 조합에서는 Lens → Auto (Measure)와
+Distortion → Measure Sky로 해당 장비를 측정합니다.
 
 ## 하드웨어·기동 확인
 

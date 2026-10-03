@@ -5,20 +5,20 @@
     "camera_gain": 20,
     "camera_variant": "color",
     "camera_lens": "manual",
-    "camera_lens_focal_length_mm": 8.2661,
+    "camera_lens_focal_length_mm": 8.2409,
     "wide_solver_auto_calibration_enabled": false,
     "wide_solver_calibration_store_v1": {
         "version": 1,
         "profiles": {
-            "auto-imx462_color-manual-8.2661mm-1": {
-                "id": "auto-imx462_color-manual-8.2661mm-1",
+            "auto-imx462_color-manual-8.2409mm-1": {
+                "id": "auto-imx462_color-manual-8.2409mm-1",
                 "version": 1,
                 "source": "auto_sky",
                 "provisional": false,
                 "verified_from_sky": true,
                 "model": "brown_conrady",
                 "coefficients": {
-                    "k1": -0.05,
+                    "k1": -0.12,
                     "k2": 0.0,
                     "k3": 0.0,
                     "p1": 0.0,
@@ -27,21 +27,21 @@
                 "fit_summary": {
                     "frames": 5,
                     "radial_bins": {
-                        "central": 37,
-                        "mid": 131,
-                        "edge": 38
+                        "central": 29,
+                        "mid": 121,
+                        "edge": 32
                     },
-                    "matches_median": 41,
+                    "matches_median": 34,
                     "k1_mad": 0.0,
-                    "median_rmse_after_arcsec": 76.70623966685274,
+                    "median_rmse_after_arcsec": 102.28900661844807,
                     "method": "brown_k1_grid_search_v1"
                 },
-                "fingerprint": "6732fc275fae52de7561fbb1",
-                "created_at": "2026-09-23T18:23:40.448724+00:00"
+                "fingerprint": "c08eed0722b65e9a39293063",
+                "created_at": "2026-10-02T14:26:00.534200+00:00"
             }
         },
         "active": {
-            "imx462_color:manual-8.2661mm": "auto-imx462_color-manual-8.2661mm-1"
+            "imx462_color:manual-8.2409mm": "auto-imx462_color-manual-8.2409mm-1"
         }
     },
     "display_spi_speed_mhz": 0,

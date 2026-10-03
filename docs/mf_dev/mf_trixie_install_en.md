@@ -2,7 +2,7 @@
 
 [English](mf_trixie_install_en.md) | [한국어](mf_trixie_install_ko.md)
 
-Updated: 2026-09-27. The installation baseline is Raspberry Pi OS Trixie
+Updated: 2026-10-04. The installation baseline is Raspberry Pi OS Trixie
 64-bit / Python 3.13 on Raspberry Pi 4, Pi 5, and CM5. The board profiles are
 shared, but current Trixie hardware validation was performed on Raspberry Pi 5;
 Pi 4 and CM5 require their own Trixie checks. Earlier Bookworm measurements
@@ -68,6 +68,17 @@ Mount control remains disabled in the app until explicitly enabled.
 See the [INDI guide](mf_indi_mount_install_en.md) for an explicit installation
 without INDI, custom archives, and driver development. MFDS runs as native
 child workers and needs no separate Cedar service.
+
+Fresh installations use **IMX462 Color with a measured manual focal length of
+8.2409 mm**. The sky-measured Brown–Conrady calibration has `k1=-0.12` and
+`k2=k3=p1=p2=0`. `default_config.json` includes the matching active profile,
+lens key, and optical fingerprint. Keep all four focal-length decimals for
+calibration lookup, even though the displayed value is about 8.24 mm.
+The app loads these defaults on first startup; no separate calibration-file
+copy is needed. Saved lens and calibration settings in
+`~/MFNavis_data/config.json` retain precedence during reinstallation and
+updates. For another camera or lens, use Lens → Auto (Measure) and
+Distortion → Measure Sky to measure that optical combination.
 
 ## Check hardware and startup
 
