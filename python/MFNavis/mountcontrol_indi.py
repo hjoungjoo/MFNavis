@@ -97,9 +97,31 @@ USB_SERIAL_FRESH_TELEMETRY_WAIT_SECONDS = 20.0
 MANUAL_MOTION_LEASE_SECONDS = 1.2
 MANUAL_MOTION_MIN_LEASE_SECONDS = 0.3
 MANUAL_MOTION_MAX_LEASE_SECONDS = 5.0
-MANUAL_MOTION_MAX_CONTINUOUS_SECONDS = 10.0
+MANUAL_MOTION_REFRESH_SECONDS = 1.0
 MANUAL_MOTION_POLL_SECONDS = 0.1
 MANUAL_MOTION_STOP_RETRY_SECONDS = 0.5
+MANUAL_MOTION_PROPERTIES = {
+    "north": ("TELESCOPE_MOTION_NS.MOTION_NORTH",),
+    "south": ("TELESCOPE_MOTION_NS.MOTION_SOUTH",),
+    "east": ("TELESCOPE_MOTION_WE.MOTION_WEST",),
+    "west": ("TELESCOPE_MOTION_WE.MOTION_EAST",),
+    "northeast": (
+        "TELESCOPE_MOTION_NS.MOTION_NORTH",
+        "TELESCOPE_MOTION_WE.MOTION_WEST",
+    ),
+    "northwest": (
+        "TELESCOPE_MOTION_NS.MOTION_NORTH",
+        "TELESCOPE_MOTION_WE.MOTION_EAST",
+    ),
+    "southeast": (
+        "TELESCOPE_MOTION_NS.MOTION_SOUTH",
+        "TELESCOPE_MOTION_WE.MOTION_WEST",
+    ),
+    "southwest": (
+        "TELESCOPE_MOTION_NS.MOTION_SOUTH",
+        "TELESCOPE_MOTION_WE.MOTION_EAST",
+    ),
+}
 GOTO_REFINE_DELAY_SECONDS = 8.0
 GOTO_REFINE_SOLVE_TIMEOUT_SECONDS = 45.0
 # Solve-based GoTo completion accuracy (arcmin), independent of the tracking
@@ -639,6 +661,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._last_user_motion_stopped_wall = 0.0
         self._manual_motion_deadline: Optional[float] = None
         self._manual_motion_started_at: Optional[float] = None
+        self._manual_motion_refreshed_at = 0.0
         self._manual_motion_stop_retry_at = 0.0
         self._pending_goto_refine: Optional[dict[str, Any]] = None
         self._last_goto_target: Optional[tuple[float, float]] = None
@@ -1336,6 +1359,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._manual_motion_origin = None
         self._manual_motion_deadline = None
         self._manual_motion_started_at = None
+        self._manual_motion_refreshed_at = 0.0
         self._manual_motion_stop_retry_at = 0.0
 
     def _arm_manual_motion_deadline(
@@ -1351,6 +1375,7 @@ class MountControlIndi(BacklashCalibrationMixin):
             self._last_user_motion_started_wall = time.time()
         self._manual_motion_deadline = now + self._manual_motion_lease(lease_seconds)
         self._manual_motion_started_at = now
+        self._manual_motion_refreshed_at = now
         self._manual_motion_stop_retry_at = 0.0
         self._last_manual_motion_status_at = 0.0
 
@@ -1361,17 +1386,34 @@ class MountControlIndi(BacklashCalibrationMixin):
         if (
             self._manual_motion_direction is None
             or direction != self._manual_motion_direction
+            or self._manual_motion_origin != "user"
         ):
             return False
 
         now = time.monotonic()
-        if (
-            self._manual_motion_started_at is not None
-            and now - self._manual_motion_started_at
-            > MANUAL_MOTION_MAX_CONTINUOUS_SECONDS
-        ):
-            logger.warning("Manual mount motion maximum hold time exceeded")
+        if self._manual_motion_deadline is None or now >= self._manual_motion_deadline:
+            # A delayed keepalive must not restart motion after input was lost.
             return False
+
+        if now - self._manual_motion_refreshed_at >= MANUAL_MOTION_REFRESH_SECONDS:
+            # OnStep has a separate firmware motion timeout (5 seconds while
+            # soft limits are unavailable). Renew it as well as our input lease.
+            # The OnStepX driver forwards repeated direction switches without
+            # stopping the axes or changing the manual speed.
+            properties = MANUAL_MOTION_PROPERTIES[direction]
+            if self.client is not None and self.device is not None:
+                for name in properties:
+                    vector, switch = name.split(".")
+                    if not self.client.set_switch(self.device, vector, switch):
+                        return False
+            elif not self._apply_indi_properties(
+                [self._indi_property_on(name) for name in properties],
+                "manual_motion",
+                f"Manual {direction} motion renewed",
+                "manual_failed",
+            ):
+                return False
+            self._manual_motion_refreshed_at = time.monotonic()
 
         self._manual_motion_deadline = now + self._manual_motion_lease(lease_seconds)
         return True
@@ -4720,6 +4762,20 @@ class MountControlIndi(BacklashCalibrationMixin):
         reassert_slew_rate: bool = True,
         origin: str = "user",
     ) -> bool:
+        direction = direction.lower()
+        if direction not in MANUAL_MOTION_PROPERTIES:
+            logger.warning("Unknown manual mount direction: %s", direction)
+            return False
+        if (
+            origin == "user"
+            and self._manual_motion_origin == "user"
+            and direction == self._manual_motion_direction
+            and self._manual_motion_deadline is not None
+            and time.monotonic() < self._manual_motion_deadline
+        ):
+            # Older input clients resend a start every eight seconds. Treat it
+            # as a keepalive so long holds do not rewrite speed or reset status.
+            return self.manual_motion_keepalive(direction, lease_seconds)
         self._cancel_sync_goto("manual movement requested")
         if origin == "user" and self._goto_motion is not None:
             if not self.stop_mount(preserve_tracking=True):
@@ -4730,37 +4786,10 @@ class MountControlIndi(BacklashCalibrationMixin):
         if origin == "user" and self._guide_correction_enabled:
             if not self.toggle_guide_correction(enabled=False):
                 return False
-        direction = direction.lower()
         # A guide-rate write may have just dragged the shared :R<n># selector
         # down to 0.5x/1x; put the user's rate back before the move starts.
         # The guide-correction manual fallback opts out (it wants the slow
         # rate its nudge duration was computed for).
-        motion_map = {
-            "north": [self._indi_property_on("TELESCOPE_MOTION_NS.MOTION_NORTH")],
-            "south": [self._indi_property_on("TELESCOPE_MOTION_NS.MOTION_SOUTH")],
-            "east": [self._indi_property_on("TELESCOPE_MOTION_WE.MOTION_WEST")],
-            "west": [self._indi_property_on("TELESCOPE_MOTION_WE.MOTION_EAST")],
-            "northeast": [
-                self._indi_property_on("TELESCOPE_MOTION_NS.MOTION_NORTH"),
-                self._indi_property_on("TELESCOPE_MOTION_WE.MOTION_WEST"),
-            ],
-            "northwest": [
-                self._indi_property_on("TELESCOPE_MOTION_NS.MOTION_NORTH"),
-                self._indi_property_on("TELESCOPE_MOTION_WE.MOTION_EAST"),
-            ],
-            "southeast": [
-                self._indi_property_on("TELESCOPE_MOTION_NS.MOTION_SOUTH"),
-                self._indi_property_on("TELESCOPE_MOTION_WE.MOTION_WEST"),
-            ],
-            "southwest": [
-                self._indi_property_on("TELESCOPE_MOTION_NS.MOTION_SOUTH"),
-                self._indi_property_on("TELESCOPE_MOTION_WE.MOTION_EAST"),
-            ],
-        }
-        if direction not in motion_map:
-            logger.warning("Unknown manual mount direction: %s", direction)
-            return False
-
         if reassert_slew_rate:
             # Never switch the firmware's shared rate under an active pulse.
             # Manual input takes over only after the abort request succeeds.
@@ -4776,7 +4805,10 @@ class MountControlIndi(BacklashCalibrationMixin):
             self._slew_rate_reassert_at = None
 
         if not self._apply_indi_properties(
-            motion_map[direction],
+            [
+                self._indi_property_on(name)
+                for name in MANUAL_MOTION_PROPERTIES[direction]
+            ],
             "moving",
             f"Manual {direction} motion sent",
             "manual_failed",

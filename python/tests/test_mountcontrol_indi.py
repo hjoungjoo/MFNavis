@@ -431,6 +431,93 @@ def test_manual_motion_keepalive_extends_matching_motion():
     assert mount._manual_motion_deadline > original_deadline
 
 
+@pytest.mark.parametrize("direction", mci.MANUAL_MOTION_PROPERTIES)
+def test_long_manual_hold_renews_firmware_and_stops_when_input_is_lost(
+    monkeypatch, direction
+):
+    clock = [100.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    mount = DummyMountControl()
+    assert mount.manual_move(direction)
+    starts = len(mount.applied_properties)
+    expected = [
+        mount._indi_property_on(name)
+        for name in mci.MANUAL_MOTION_PROPERTIES[direction]
+    ]
+    # Firmware expires a manual start after 5 s when soft limits are not ready.
+    firmware_deadline = clock[0] + 5.0
+    for tick in range(1, 76):
+        clock[0] = 100.0 + tick * 0.4
+        assert clock[0] < firmware_deadline
+        previous = len(mount.applied_properties)
+        assert mount.manual_motion_keepalive(direction)
+        mount._check_manual_motion_deadline()
+        assert mount._manual_motion_direction == direction
+        if len(mount.applied_properties) > previous:
+            assert mount.applied_properties[-1] == expected
+            firmware_deadline = clock[0] + 5.0
+    assert len(mount.applied_properties) > starts + 20
+    assert mount._manual_motion_started_at == 100.0
+    # Losing the input stops axes even after a hold longer than the old 10 s cap.
+    clock[0] += 1.3
+    mount._check_manual_motion_deadline()
+    assert mount._manual_motion_direction is None
+    assert all("=Off" in prop for prop in mount.applied_properties[-1])
+    calls = len(mount.applied_properties)
+    assert not mount.manual_motion_keepalive(direction)
+    assert len(mount.applied_properties) == calls
+
+
+def test_repeated_manual_start_keeps_the_hold_and_speed(monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    mount = DummyMountControl()
+    assert mount.manual_move("northwest")
+    monkeypatch.setattr(
+        mount, "_reassert_slew_rate", lambda: pytest.fail("hold rewrote speed")
+    )
+    for tick in range(1, 51):
+        clock[0] = 100.0 + tick * 0.4
+        if tick % 20 == 0:
+            assert mount.manual_move("northwest")
+        else:
+            assert mount.manual_motion_keepalive("northwest")
+    assert mount._manual_motion_started_at == 100.0
+
+
+def test_late_keepalive_cannot_renew_expired_motion(monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    mount = DummyMountControl()
+    assert mount.manual_move("east")
+    deadline = mount._manual_motion_deadline
+    calls = len(mount.applied_properties)
+    clock[0] += 1.3
+    assert not mount.manual_motion_keepalive("east")
+    assert mount._manual_motion_deadline == deadline
+    assert len(mount.applied_properties) == calls
+
+
+def test_failed_firmware_refresh_does_not_extend_input_lease(monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    mount = DummyConnectedMount()
+    monkeypatch.setattr(mount, "_apply_indi_properties", lambda *args: True)
+    monkeypatch.setattr(mount, "_publish_manual_motion_progress", lambda **kw: None)
+    assert mount.manual_move("east")
+    deadline = mount._manual_motion_deadline
+    monkeypatch.setattr(mount.client, "set_switch", lambda *args: False)
+    clock[0] += 1.0
+    assert not mount.manual_motion_keepalive("east")
+    assert mount._manual_motion_deadline == deadline
+
+
+def test_keepalive_does_not_extend_bounded_guide_correction(monkeypatch):
+    mount = DummyMountControl()
+    assert mount.manual_move("south", origin="guide_correction")
+    assert not mount.manual_motion_keepalive("south")
+
+
 @pytest.mark.parametrize("tracking", [False, True])
 def test_direction_release_preserves_tracking_without_global_abort(
     monkeypatch, tracking

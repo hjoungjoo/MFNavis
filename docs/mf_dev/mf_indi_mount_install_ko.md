@@ -206,6 +206,28 @@ Python 의존성은 현재 설치된 정확한 버전으로 wheel을 수집합�
 
 최신 소스 빌드 스크립트로 만든 뒤 아카이브를 생성하면 패치된 `LX200 OnStepX`가 포함된 설치 결과를 아카이브와 같은 OS·Python ABI를 사용하는 aarch64 장비에 배포할 수 있습니다. 아카이브 metadata에는 OnStepX patch 이름과 checksum이 기록되어 설치된 바이너리가 어떤 patch에서 만들어졌는지 추적할 수 있습니다.
 
+2026-10-03에 갱신한 Trixie `v2.2.3.1-current` 아카이브에는 수동 이동이
+약 7초 뒤 멈추는 문제의 수정이 포함됩니다. MFNavis가 활성 방향을 주기적으로
+재전송하면 OnStepX 드라이버가 같은 방향의 요청도 펌웨어로 전달해 이동 타이머를
+갱신합니다. 입력이 끊기거나 정지 요청이 들어오면 기존 정지 처리를 유지합니다.
+MFNavis의 `manual_motion_keepalive` 수정과 함께 사용해야 합니다.
+
+이 아카이브는 기존 Trixie 패키지에서 `indi_lx200generic`만 다시 빌드해 교체했고,
+`indi_lx200_OnStepX`를 비롯한 alias와 다른 네이티브 파일·Python wheel은 유지합니다.
+`metadata/build_info.txt`에는 원본 아카이브·새 바이너리·patch의 SHA256이,
+`metadata/manual-motion-build/`에는 빌드 방법과 회귀 검사 결과가 들어 있습니다.
+Bookworm 아카이브는 이번 Trixie 갱신 대상에 포함되지 않습니다.
+
+이미 설치된 Trixie 장비에 적용하려면 다음 명령을 일반 사용자로 실행합니다.
+시스템 파일을 교체할 때 sudo 인증이 필요합니다. 전체 `.tar.gz`가 없어도
+함께 배포된 `.part-*`와 `.sha256`으로 설치할 수 있습니다.
+
+```bash
+cd ~/MFNavis
+bash scripts/install_indi_mount_archive.sh \
+  dist/mfnavis-indi-trixie-arm64-v2.2.3.1-current.tar.gz
+```
+
 ## 마운트 드라이버 설정
 
 INDI Web Manager를 엽니다.

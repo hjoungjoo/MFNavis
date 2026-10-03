@@ -43,9 +43,8 @@ SLEW_STEPS = [
 ]
 MANUAL_MOTION_KEEPALIVE_INTERVAL = 0.4
 MANUAL_MOTION_LEASE_SECONDS = 1.2
-# The mount process refuses to extend one manual_movement past its 10 s
-# continuous-hold cap on keepalives alone; re-send the full manual_movement to
-# keep a held key moving (same contract as ui/base.py's guide keys).
+# Retain start resends for older mount processes. The current controller treats
+# them as keepalives and renews the firmware timer through the OnStepX driver.
 MANUAL_MOTION_RESTART_INTERVAL = 8.0
 
 

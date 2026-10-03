@@ -35,10 +35,10 @@ index 42384f3..900d123 100644
  execute_process(COMMAND \"${CMAKE_COMMAND}\" -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200_10micron)\n
 diff --git a/drivers/telescope/lx200_OnStepX.cpp b/drivers/telescope/lx200_OnStepX.cpp
 new file mode 100644
-index 0000000..15dc4e5
+index 0000000..50358c0
 --- /dev/null
 +++ b/drivers/telescope/lx200_OnStepX.cpp
-@@ -0,0 +1,426 @@
+@@ -0,0 +1,474 @@
 +/*
 +    LX200 OnStepX
 +
@@ -91,6 +91,54 @@ index 0000000..15dc4e5
 +LX200_OnStepX::LX200_OnStepX()
 +{
 +    configureGuideRateProperty();
++}
++
++bool LX200_OnStepX::ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n)
++{
++    // Telescope::ISNewSwitch discards an unchanged busy direction switch.
++    // A held MFNavis button also needs to renew OnStep's firmware timer; send
++    // the same start command without an axis stop or a slew-rate rewrite.
++    if (dev != nullptr && strcmp(dev, getDeviceName()) == 0 && isConnected() && !isParked() && n > 0)
++    {
++        const bool ns = MovementNSSP.isNameMatch(name);
++        const bool we = MovementWESP.isNameMatch(name);
++        if (ns || we)
++        {
++            auto &movement = ns ? MovementNSSP : MovementWESP;
++            const int direction = movement.findOnSwitchIndex();
++            bool unchanged = movement.getState() == IPS_BUSY && direction >= 0;
++            bool activeRequested = false;
++            for (int i = 0; i < n && unchanged; ++i)
++            {
++                auto item = movement.findWidgetByName(names[i]);
++                unchanged = item != nullptr && item->getState() == states[i];
++                activeRequested = activeRequested || (states[i] == ISS_ON);
++            }
++            if (unchanged && activeRequested)
++            {
++                bool accepted;
++                if (ns)
++                {
++                    auto target = direction == 0 ? DIRECTION_NORTH : DIRECTION_SOUTH;
++                    if (ReverseMovementSP[REVERSE_NS].getState() == ISS_ON)
++                        target = target == DIRECTION_NORTH ? DIRECTION_SOUTH : DIRECTION_NORTH;
++                    accepted = MoveNS(target, MOTION_START);
++                }
++                else
++                {
++                    auto target = direction == 0 ? DIRECTION_WEST : DIRECTION_EAST;
++                    if (ReverseMovementSP[REVERSE_WE].getState() == ISS_ON)
++                        target = target == DIRECTION_WEST ? DIRECTION_EAST : DIRECTION_WEST;
++                    accepted = MoveWE(target, MOTION_START);
++                }
++                if (!accepted)
++                    movement.setState(IPS_ALERT);
++                movement.apply();
++                return accepted;
++            }
++        }
++    }
++    return LX200_OnStep::ISNewSwitch(dev, name, states, names, n);
 +}
 +
 +void LX200_OnStepX::configureGuideRateProperty()
@@ -467,10 +515,10 @@ index 0000000..15dc4e5
 +}
 diff --git a/drivers/telescope/lx200_OnStepX.h b/drivers/telescope/lx200_OnStepX.h
 new file mode 100644
-index 0000000..cb10eab
+index 0000000..ec656e5
 --- /dev/null
 +++ b/drivers/telescope/lx200_OnStepX.h
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,34 @@
 +/*
 +    LX200 OnStepX
 +
@@ -490,6 +538,7 @@ index 0000000..cb10eab
 +        const char *getDefaultName() override;
 +        bool initProperties() override;
 +        bool ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) override;
++        bool ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n) override;
 +
 +    protected:
 +        bool updateLocation(double latitude, double longitude, double elevation) override;

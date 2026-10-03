@@ -110,9 +110,7 @@ class TestMountActions:
         ]
 
     def test_long_hold_resends_manual_movement_past_the_10s_cap(self):
-        """Keepalives cannot extend one manual_movement past the mount
-        process's 10 s continuous-hold cap; a held button must re-send the
-        full manual_movement so motion continues (stops at ~11 s otherwise)."""
+        """Retain start resends for mount processes with the old 10 s cap."""
         dispatcher, _, mount = _dispatcher()
         dispatcher.set_mapping({"mount_up": "BTN_DPAD_UP"})
 
