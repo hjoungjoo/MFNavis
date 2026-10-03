@@ -1474,7 +1474,7 @@ class Server:
                 "server_host": cfg.get_option("mount_control_indi_host", "localhost"),
                 "server_port": int(cfg.get_option("mount_control_indi_port", 7624)),
                 "mount_type": cfg.get_option("mount_type", "Alt/Az"),
-                "manual_slew_rate": cfg.get_option("indi_manual_slew_rate", 5),
+                "manual_slew_rate": _mount_control_status().get("manual_slew_rate", 7),
                 "pulse_guide_rate": cfg.get_option("indi_pulse_guide_rate", 0.5),
                 "skysafari_lx200_mount_code": cfg.get_option(
                     "skysafari_lx200_mount_code", "auto"
@@ -2582,7 +2582,7 @@ class Server:
             try:
                 indi_cfg = _indi_config_values()
                 _require_onstepx_driver(indi_cfg)
-                rate = int(request.form.get("slew_rate") or "6")
+                rate = int(request.form.get("slew_rate") or "7")
                 if not 0 <= rate <= 9:
                     raise ValueError("Slew rate must be between 0 and 9")
                 _queue_mount_command({"type": "set_slew_rate", "rate": rate})

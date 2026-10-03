@@ -363,7 +363,8 @@ class AlignmentDispatcher:
             return
         if decision == "solved_alignment":
             shared.set_target_pixel(pixel)
-            cfg.set_option("target_pixel", pixel)
+            if p.get("origin") == "lcd":
+                cfg.set_option("target_pixel", pixel)
             reason = "accepted_solve"
             if p["mount_sync_enabled"]:
                 from PiFinder.calc_utils import catalog_to_equinox_of_date

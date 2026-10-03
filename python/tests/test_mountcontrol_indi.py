@@ -3025,9 +3025,9 @@ def test_guide_rate_write_rejection_stops_future_attempts(monkeypatch):
     assert attempts == []
 
 
-def test_manual_and_guide_profiles_survive_restart_independently():
+def test_manual_speed_resets_to_48x_and_guide_profile_survives_restart():
     mount = DummyMountControl()
-    assert mount.set_slew_rate(7)
+    assert mount.set_slew_rate(9)
     assert mount.set_guide_rate(1.0)
     restored = DummyMountControl()
     assert (restored.slew_rate, restored.guide_rate_we, restored.guide_rate_ns) == (
@@ -3038,7 +3038,26 @@ def test_manual_and_guide_profiles_survive_restart_independently():
     assert restored.set_slew_rate(6)
     assert restored.set_guide_rate(0.5)
     again = DummyMountControl()
-    assert (again.slew_rate, again.guide_rate_we, again.guide_rate_ns) == (6, 0.5, 0.5)
+    assert (again.slew_rate, again.guide_rate_we, again.guide_rate_ns) == (7, 0.5, 0.5)
+
+
+def test_manual_speed_ignores_saved_value_and_never_writes_config(monkeypatch):
+    cfg = mci.config.Config()
+    cfg.set_option("indi_manual_slew_rate", 2)
+    saved = cfg.config_file_path.read_bytes()
+
+    def unexpected_write(self):
+        pytest.fail("Runtime manual speed wrote persistent configuration")
+
+    monkeypatch.setattr(mci.config.Config, "dump_config", unexpected_write)
+    mount = DummyMountControl()
+    assert mount.slew_rate == 7
+    for requested, expected in ((6, 6), (9, 9), (10, 9), (-1, 0), (7, 7)):
+        assert mount.set_slew_rate(requested)
+        assert mount.refresh_slew_rate() == expected
+        assert mount._status_fields()["manual_slew_rate"] == expected
+        assert cfg.config_file_path.read_bytes() == saved
+    assert DummyMountControl().slew_rate == 7
 
 
 def test_manual_then_guide_reasserts_even_when_guide_cache_matches(monkeypatch):
@@ -3080,12 +3099,13 @@ def test_speed_refresh_ignores_temporary_driver_guide_selector(monkeypatch):
     assert mount.slew_rate == 7
 
 
-def test_manual_speed_change_during_pulse_is_saved_and_deferred():
+def test_manual_speed_change_during_pulse_is_retained_in_ram_and_deferred():
     mount = DummyConnectedMount()
     mount._guide_pulse_until = time.monotonic() + 2.5
     assert mount.set_slew_rate(6)
     assert mount.client.switches == []
-    assert DummyMountControl().slew_rate == 6
+    assert mount.slew_rate == 6
+    assert DummyMountControl().slew_rate == 7
     mount._check_slew_rate_reassert()
     assert mount.client.switches == []
     mount._guide_pulse_until = 0.0

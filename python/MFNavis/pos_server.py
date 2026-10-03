@@ -1115,12 +1115,11 @@ def _align_pifinder_if_enabled(shared_state, ra_deg: float, dec_deg: float) -> b
 
     if mountcontrol_queue is not None and _mount_control_enabled():
         mountcontrol_queue.put({"type": "toggle_guide_correction", "enabled": False})
+    # Runtime alignment stays in shared RAM; only successful LCD alignment
+    # replaces the saved startup alignment point.
     shared_state.set_target_pixel(target_pixel)
-    if pos_server_config is not None:
-        pos_server_config.set_option("target_pixel", target_pixel)
     if console_queue is not None:
         console_queue.put("SkySafari Alignment Set")
-    ui_queue.put("reload_config")
     logger.info(
         "SkySafari MFNavis align set target pixel: %s "
         "(solve age %.3fs, pose source %s, %.1fms)",

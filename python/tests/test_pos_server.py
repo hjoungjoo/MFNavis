@@ -1116,7 +1116,14 @@ class _AlignState:
 @pytest.mark.unit
 def test_skysafari_align_uses_cached_projection_without_solver_queue(monkeypatch):
     commands, responses, console, ui = (queue.Queue() for _ in range(4))
-    cfg = DummyConfig({"skysafari_pifinder_align": True})
+    cfg = DummyConfig(
+        {"skysafari_pifinder_align": True, "target_pixel": (200.0, 210.0)}
+    )
+
+    def unexpected_write(*args):
+        pytest.fail("SkySafari alignment wrote persistent configuration")
+
+    monkeypatch.setattr(cfg, "set_option", unexpected_write)
     state = _AlignState()
     monkeypatch.setattr(pos_server, "align_command_queue", commands)
     monkeypatch.setattr(pos_server, "align_response_queue", responses)
@@ -1137,9 +1144,9 @@ def test_skysafari_align_uses_cached_projection_without_solver_queue(monkeypatch
     assert commands.empty() and responses.empty()
     assert calls == [(12.3, 45.6, ("optics",))]
     assert console.get_nowait() == "SkySafari Alignment Set"
-    assert ui.get_nowait() == "reload_config"
+    assert ui.empty()
     assert state.target_pixel == (123.0, 234.0)
-    assert cfg.options["target_pixel"] == (123.0, 234.0)
+    assert cfg.options["target_pixel"] == (200.0, 210.0)
 
 
 @pytest.mark.unit

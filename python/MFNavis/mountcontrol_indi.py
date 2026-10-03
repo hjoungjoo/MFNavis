@@ -638,7 +638,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         self.client: Optional[PiFinderIndiClient] = None
         self._client_generation = 0
         self.device = None
-        self.slew_rate = 5
+        # Start at 48x; subsequent manual speed changes live only in RAM.
+        self.slew_rate = 7
         self.guide_rate_we = GUIDE_RATE_FINE_X
         self.guide_rate_ns = GUIDE_RATE_FINE_X
         self._load_motion_rates()
@@ -4963,13 +4964,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         return None
 
     def _load_motion_rates(self) -> None:
+        """Restore the fine guide rate; manual speed always starts at 48x."""
         cfg = config.Config()
-        try:
-            rate = int(cfg.get_option("indi_manual_slew_rate", 5))
-            if 0 <= rate <= 9:
-                self.slew_rate = rate
-        except (TypeError, ValueError, OverflowError):
-            logger.warning("Invalid saved manual speed; using default")
         try:
             value = float(cfg.get_option("indi_pulse_guide_rate", GUIDE_RATE_FINE_X))
             if value not in (0.25, 0.5, 1.0):
@@ -4980,7 +4976,7 @@ class MountControlIndi(BacklashCalibrationMixin):
 
     def refresh_slew_rate(self) -> int:
         # A temporary driver selector is not a user preference. All PiFinder
-        # speed controls now update the stored manual profile through this process.
+        # speed controls update the runtime manual speed through this process.
         self._write_controller_status(
             "connected" if self.connected else "idle",
             f"Manual speed {self.slew_rate}",
@@ -4989,16 +4985,15 @@ class MountControlIndi(BacklashCalibrationMixin):
 
     def set_slew_rate(self, rate: int) -> bool:
         rate = max(0, min(9, int(rate)))
-        config.Config().set_options({"indi_manual_slew_rate": rate})
         self.slew_rate = rate
-        # Save a change made during a pulse, then apply after its time window.
+        # Retain a change in RAM during a pulse, then apply after its time window.
         if (
             time.monotonic() < self._guide_pulse_until
             or self._manual_motion_origin == "guide_correction"
         ):
             self._schedule_slew_rate_reassert(0.0)
             self._write_controller_status(
-                "connected", f"Manual speed {rate} saved; waiting for guide motion"
+                "connected", f"Manual speed {rate} selected; waiting for guide motion"
             )
             return True
         if not self._reassert_slew_rate():
@@ -5006,7 +5001,7 @@ class MountControlIndi(BacklashCalibrationMixin):
             return False
         self._slew_rate_reassert_at = None
         self._write_controller_status(
-            "connected" if self.connected else "idle", f"Manual speed {rate} saved"
+            "connected" if self.connected else "idle", f"Manual speed {rate}"
         )
         self._console(f"INDI speed\n{self.slew_rate}")
         return True

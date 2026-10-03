@@ -199,8 +199,8 @@ class UIAlignDaytime(UIModule):
         self._draw_hint(_("{icon} SAVE  0 CANCEL").format(icon=self._SQUARE_))
 
     def _draw_inactive_overlay(self):
-        # Show the current saved alignment point for context, then the start hint.
-        target = self.config_object.get_option("target_pixel", None)
+        # Show the current RAM alignment point for context, then the start hint.
+        target = self.shared_state.target_pixel()
         if target:
             sx = target[1] * self.display_class.resX / CAMERA_NATIVE_RES
             sy = target[0] * self.display_class.resY / CAMERA_NATIVE_RES

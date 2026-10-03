@@ -146,7 +146,7 @@ class UIAlign(UIModule):
         self.star_list = np.empty((0, 2))
         self.alignment_star = None
         # target_pixel is (Y, X) in native camera space; scale to display space.
-        target_pixel = self.config_object.get_option("target_pixel", (256, 256))
+        target_pixel = self.shared_state.target_pixel() or (256, 256)
         scale_x = self.display_class.resX / CAMERA_NATIVE_RES
         scale_y = self.display_class.resY / CAMERA_NATIVE_RES
         self.marker_position = (
@@ -506,7 +506,6 @@ class UIAlign(UIModule):
                 # reset reticle to center
                 center_pixel = (CAMERA_NATIVE_RES // 2, CAMERA_NATIVE_RES // 2)
                 self.shared_state.set_target_pixel(center_pixel)
-                self.config_object.set_option("target_pixel", center_pixel)
                 self.marker_position = (
                     self.display_class.centerX,
                     self.display_class.centerY,

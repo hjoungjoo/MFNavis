@@ -452,7 +452,7 @@ class UIIndiGuide(UIIndiBase):
 
     def _draw_keypad_overlay(self):
         status = self._status()
-        slew_rate = int(status.get("slew_rate", 5))
+        slew_rate = int(status.get("slew_rate", 7))
         label = SLEW_STEPS[slew_rate] if 0 <= slew_rate < len(SLEW_STEPS) else ""
         font = self.fonts.base.font
         line_h = self.fonts.base.height + 2

@@ -1,6 +1,8 @@
 """Web controls must share the controller's speed ownership and motion lease."""
 
 from queue import Queue
+from types import SimpleNamespace
+import json
 
 import pytest
 
@@ -38,6 +40,7 @@ def motion_client(monkeypatch, tmp_path):
     "url,form,expected",
     [
         ("/indi/slew_rate", {"slew_rate": "6"}, {"type": "set_slew_rate", "rate": 6}),
+        ("/indi/slew_rate", {}, {"type": "set_slew_rate", "rate": 7}),
         (
             "/indi/guide_rate",
             {"guide_rate": "0.5"},
@@ -91,4 +94,29 @@ def test_no_controller_does_not_fall_back_to_unmanaged_motion(motion_client):
         headers={"X-Requested-With": "XMLHttpRequest"},
     )
     assert response.status_code == 400
+    assert queue.empty()
+
+
+@pytest.mark.parametrize("runtime_rate", [None, 6])
+def test_web_manual_speed_uses_ram_status_or_48x_default(
+    motion_client, monkeypatch, tmp_path, runtime_rate
+):
+    client, queue, server = motion_client
+    cfg = module.config.Config()
+    cfg.set_option("indi_manual_slew_rate", 2)
+    if runtime_rate is not None:
+        (tmp_path / "mount_control_status.json").write_text(
+            json.dumps({"manual_slew_rate": runtime_rate}), encoding="utf-8"
+        )
+    rendered = {}
+    template = SimpleNamespace(render=lambda **values: rendered.update(values) or "")
+    monkeypatch.setattr(server.app.jinja_env, "get_template", lambda *_: template)
+    monkeypatch.setattr(server.network, "get_ap_clients", lambda: [])
+    monkeypatch.setattr(module.sys_utils, "get_indi_onstep_properties", lambda **kw: {})
+
+    response = client.get("/indi")
+
+    assert response.status_code == 200
+    assert rendered["manual_slew_rate"] == (7 if runtime_rate is None else runtime_rate)
+    assert cfg.get_option("indi_manual_slew_rate") == 2
     assert queue.empty()

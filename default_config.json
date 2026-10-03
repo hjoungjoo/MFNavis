@@ -93,7 +93,7 @@
     "indi_tracking_guide_manual_retarget_enabled": true,
     "indi_guide_pulse_invert_we": false,
     "indi_guide_pulse_invert_ns": false,
-    "indi_manual_slew_rate": 5,
+    "indi_manual_slew_rate": 7,
     "indi_pulse_guide_rate": 0.5,
     "onstep_connection_type": "network",
     "onstep_serial_port": "",
