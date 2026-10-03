@@ -49,6 +49,9 @@ updates; use full setup when dependencies, services, or OS configuration change.
 The setup script:
 
 - Installs OS packages and the MFDS binary package pinned in `deployment/mfds.lock.json`.
+- Installs the required `avahi-daemon` package for `.local` access and enables
+  automatic startup. Setup and reinstalls restart the service; setup stops if
+  the service fails to start or its active-state check fails.
 - Creates `.venv-trixie` with `--system-site-packages` and installs
   the pinned `python-libinput` wheel from piwheels before
   `python/requirements-trixie.txt`, avoiding its source package's Python 3.13
@@ -98,7 +101,7 @@ sudo reboot
 After reconnecting, check:
 
 ```bash
-systemctl status mfnavis mfnavis_splash indiwebmanager gpsd gpsd.socket --no-pager
+systemctl status mfnavis mfnavis_splash indiwebmanager gpsd gpsd.socket avahi-daemon --no-pager
 journalctl -u mfnavis -b -n 100 --no-pager
 ~/MFNavis/.venv-trixie/bin/python -c 'import sys, PyIndi; print(sys.version)'
 ```

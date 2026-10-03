@@ -54,7 +54,7 @@ fi
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
     git sudo python3-pip python3-venv python3-dev build-essential pkg-config \
-    samba samba-common-bin dnsmasq hostapd dhcpcd gpsd wget iw nftables \
+    samba samba-common-bin avahi-daemon dnsmasq hostapd dhcpcd gpsd wget iw nftables \
     libinput10 libcap2-bin libjpeg-dev zlib1g-dev libfreetype6-dev \
     liblcms2-dev libopenjp2-7-dev libtiff-dev libffi-dev libssl-dev \
     python3-picamera2 rpicam-apps i2c-tools spi-tools
@@ -356,6 +356,11 @@ mfnavis_configure_python_services
 bash "${MFNAVIS_REPO_DIR}/scripts/install_service_control.sh" "${MFNAVIS_USER}"
 bash "${MFNAVIS_REPO_DIR}/scripts/install_runtime_control.sh" "${MFNAVIS_USER}"
 sudo systemctl daemon-reload
+# mDNS is required for <hostname>.local access. Apply config on reinstalls too.
+sudo systemctl unmask avahi-daemon.service avahi-daemon.socket
+sudo systemctl enable avahi-daemon.service
+sudo systemctl restart avahi-daemon.service
+sudo systemctl is-active --quiet avahi-daemon.service
 sudo systemctl enable mfnavis
 sudo systemctl enable mfnavis_splash
 

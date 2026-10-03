@@ -49,6 +49,8 @@ Trixie로 바뀌지는 않습니다. 새 Trixie OS를 준비하기 전에 `~/MFN
 설치 스크립트는 다음을 수행합니다.
 
 - OS 패키지와 `deployment/mfds.lock.json`에 고정된 MFDS 바이너리를 설치합니다.
+- `.local` 주소 접속에 필수인 `avahi-daemon`을 설치하고 자동 시작을 활성화합니다.
+  설치·재설치 때 서비스를 재시작하며 실행 상태 확인에 실패하면 설치를 중단합니다.
 - `--system-site-packages`로 `.venv-trixie`를 만들고
   Python 3.13에서 빌드할 수 없는 `python-libinput` 소스 패키지 대신
   piwheels의 고정 버전 wheel을 먼저 설치한 뒤 `python/requirements-trixie.txt`를
@@ -97,7 +99,7 @@ sudo reboot
 재접속 후 확인합니다.
 
 ```bash
-systemctl status mfnavis mfnavis_splash indiwebmanager gpsd gpsd.socket --no-pager
+systemctl status mfnavis mfnavis_splash indiwebmanager gpsd gpsd.socket avahi-daemon --no-pager
 journalctl -u mfnavis -b -n 100 --no-pager
 ~/MFNavis/.venv-trixie/bin/python -c 'import sys, PyIndi; print(sys.version)'
 ```
