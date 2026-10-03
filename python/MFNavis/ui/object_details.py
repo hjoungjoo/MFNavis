@@ -461,12 +461,7 @@ class UIObjectDetails(UIModule):
         if any(value is None for value in errors):
             return _("WAIT")
         accuracy = (
-            min(
-                self.config_object.get_option("indi_goto_refine_accuracy_arcmin", 3.0),
-                self.config_object.get_option(
-                    "indi_tracking_guide_threshold_arcmin", 3.0
-                ),
-            )
+            self.config_object.get_option("indi_goto_refine_accuracy_arcmin", 1.0)
             / 60.0
         )
         if all(abs(value) <= accuracy for value in errors):

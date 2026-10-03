@@ -354,8 +354,8 @@ def test_pulse_completion_waits_for_a_solve_after_the_last_pulse(monkeypatch):
     "error, state_name, expected",
     [
         (0.00, "enabled", "Tracking"),
-        (0.05, "enabled", "Tracking"),
-        (0.051, "enabled", "Adjusting"),
+        (1.0 / 60.0, "enabled", "Tracking"),
+        (1.01 / 60.0, "enabled", "Adjusting"),
         (0.40, "enabled", "Adjusting"),
         (0.00, "suspended", "Paused"),
         (0.00, "settling", "Settling"),

@@ -4315,6 +4315,10 @@ msgstr "자동 도입 / Guide 설정"
 msgid "Refine Accuracy arcmin"
 msgstr "정밀 보정 정확도 arcmin"
 
+#: views/indi_mount.html
+msgid "GoTo / Tracking Accuracy arcmin"
+msgstr "GoTo 완료·추적 유지 허용 오차 (분각)"
+
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:504
 msgid "Tracking Guide GoTo Recovery (re-slew when off target by more than 3 deg)"
@@ -6751,3 +6755,63 @@ msgstr "고도 제한과 각 축 제한은 별도 설정입니다. 메리디안 
 
 msgid "Meridian values are reported by INDI. In Alt/Az mode this driver does not read them back from the controller."
 msgstr "메리디안은 INDI가 보고하는 값입니다. 경위대 모드에서 이 드라이버는 컨트롤러의 메리디안 값을 재조회하지 않습니다."
+
+#: views/smooth_tracking.html
+msgid "Smooth optical tracking"
+msgstr "부드러운 영상 추적 보정"
+
+#: views/smooth_tracking.html
+msgid "When plate solving pauses, verified star tracking can continue correcting drift. If stars disappear, prediction is limited by the verified equipment profile."
+msgstr "전체 솔빙이 멈춰도 검증된 기준 별 추적으로 드리프트 보정을 이어갑니다. 별도 사라지면 장비별 검증 한도 안에서만 예측 보정을 유지합니다."
+
+#: views/smooth_tracking.html
+msgid "Target RA (J2000 degrees)"
+msgstr "목표 적경 (J2000, 도)"
+
+#: views/smooth_tracking.html
+msgid "Target Dec (J2000 degrees)"
+msgstr "목표 적위 (J2000, 도)"
+
+#: views/smooth_tracking.html
+msgid "Import verified equipment profile (JSON)"
+msgstr "검증된 장비 프로필 가져오기 (JSON)"
+
+#: views/smooth_tracking.html
+msgid "Saving settings does not start motion. Calibration sends bounded test pulses and produces a model for review."
+msgstr "설정을 저장해도 이동을 시작하지 않습니다. 응답 교정은 제한된 시험 펄스를 보내며 검토할 모델 후보를 만듭니다."
+
+#: views/smooth_tracking.html
+msgid "Save mode / profile"
+msgstr "모드·프로필 저장"
+
+#: views/smooth_tracking.html
+msgid "Start correction"
+msgstr "보정 시작"
+
+#: views/smooth_tracking.html
+msgid "Calibrate response"
+msgstr "응답 교정"
+
+#: views/smooth_tracking.html
+msgid "Stop correction"
+msgstr "보정 중단"
+
+#: views/smooth_tracking.html
+msgid "Download calibration candidate"
+msgstr "교정 후보 내려받기"
+
+#: views/smooth_tracking.html
+msgid "Settings saved; correction is not armed."
+msgstr "설정을 저장했습니다. 보정은 시작하지 않았습니다."
+
+#: views/smooth_tracking.html
+msgid "Request queued; check tracking status."
+msgstr "요청을 접수했습니다. 추적 상태를 확인하세요."
+
+#: views/smooth_tracking.html
+msgid "Enter valid target RA and Dec"
+msgstr "목표 적경과 적위를 올바르게 입력하세요."
+
+#: views/smooth_tracking.html
+msgid "Profile exceeds 64 KiB"
+msgstr "프로필 파일이 64 KiB를 넘습니다."

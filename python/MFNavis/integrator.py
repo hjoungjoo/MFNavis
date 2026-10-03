@@ -171,6 +171,21 @@ def integrator(
                 shared_state.set_solution(copy.deepcopy(estimate))
                 capture_published_ns = time.monotonic_ns()
 
+            if not telemetry.replaying and hasattr(shared_state, "smooth_tracking"):
+                visual = shared_state.smooth_tracking()
+                if (visual.get("request") or {}).get("mode") == "active":
+                    measurement = visual.get("measurement")
+                    if measurement is not None and not visual.get("fault"):
+                        pointing_updated = (
+                            _apply_visual_measurement(
+                                estimate,
+                                measurement,
+                                shared_state.target_pixel(),
+                                visual.get("active_reference"),
+                            )
+                            or pointing_updated
+                        )
+
             # 2. Pull the current IMU sample — from the replay stream when
             #    replaying — and record it. Recording happens before the
             #    anchor gate so sessions capture IMU data from the start,
@@ -275,6 +290,37 @@ def integrator(
             telemetry.stop()
 
 
+def _apply_visual_measurement(estimate, measurement, target_pixel, reference):
+    """Update estimate cells only; reject stale/uncertain optical provenance."""
+    if (
+        not measurement.valid
+        or not measurement.timing.verified
+        or measurement.camera_radec_roll is None
+        or measurement.aligned_radec is None
+        or not reference
+        or reference["id"] != measurement.context.reference
+        or tuple(reference["target_pixel"]) != tuple(target_pixel)
+        or measurement.timing.wall_midpoint <= (estimate.estimate_time or 0)
+        or not measurement.timing.usable(time.monotonic(), 2, 0.05)
+    ):
+        return False
+    camera = Pointing(*measurement.camera_radec_roll)
+    estimate.pointing.camera.estimate = camera
+    estimate.pointing.aligned.estimate = Pointing(
+        *measurement.aligned_radec, camera.Roll
+    )
+    estimate.estimate_time = measurement.timing.wall_midpoint
+    estimate.last_visual_observation = measurement.timing.wall_midpoint
+    estimate.solve_source = SolveSource.VISUAL
+    estimate.visual_context = {
+        "session": measurement.context.session,
+        "reference": measurement.context.reference,
+        "sequence": measurement.sequence,
+        "bound_arcsec": measurement.bound_arcsec,
+    }
+    return True
+
+
 def _apply_successful_solve(
     estimate: PointingEstimate,
     result: SuccessfulSolve,
@@ -289,6 +335,20 @@ def _apply_successful_solve(
     (``last_solve_success`` == the frame's ``exposure_end``) becomes
     the aggregate's ``estimate_time``.
     """
+    if estimate.visual_context is not None:
+        if result.last_solve_success <= (estimate.last_solve_success or 0):
+            return estimate
+        if result.last_solve_success <= (estimate.estimate_time or 0):
+            estimate.pointing.camera.solve = result.camera
+            estimate.pointing.aligned.solve = result.aligned
+            estimate.alignment = result.alignment
+            estimate.alignment_projection = result.diagnostics.AlignmentProjection
+            estimate.last_solve_success = result.last_solve_success
+            if result.last_solve_attempt >= estimate.last_solve_attempt:
+                estimate.last_solve_attempt = result.last_solve_attempt
+                estimate.diagnostics = result.diagnostics
+            return estimate
+        estimate.visual_context = None
     estimate.pointing.camera = PointingAxis(
         solve=result.camera,
         estimate=result.camera,
@@ -348,7 +408,8 @@ def _realign_estimate(estimate, target_pixel, idr):
     anchor = estimate.imu_anchor
     if anchor is None:
         anchor = quaternion.quaternion(np.nan)
-    idr.solve(camera.as_radecroll(), aligned.as_radecroll(), anchor)
+    if estimate.visual_context is None:
+        idr.solve(camera.as_radecroll(), aligned.as_radecroll(), anchor)
     return True
 
 
@@ -370,10 +431,15 @@ def _apply_failed_solve(
     still knows where we point. ``estimate_time`` is likewise left intact;
     a fresh epoch only attaches when the IMU actually advances the cells.
     """
-    estimate.diagnostics = result.diagnostics
-    estimate.last_solve_attempt = result.last_solve_attempt
-    estimate.last_solve_success = result.last_solve_success
-    estimate.solve_source = SolveSource.CAMERA_FAILED
+    if result.last_solve_attempt >= estimate.last_solve_attempt:
+        estimate.diagnostics = result.diagnostics
+        estimate.last_solve_attempt = result.last_solve_attempt
+        estimate.last_solve_success = (
+            max(estimate.last_solve_success or 0, result.last_solve_success or 0)
+            or None
+        )
+    if estimate.visual_context is None:
+        estimate.solve_source = SolveSource.CAMERA_FAILED
     return estimate
 
 
@@ -387,6 +453,10 @@ def _advance_with_imu(
     Returns ``True`` if cells were advanced, ``False`` if the IMU does
     not report actual motion or motion was below the deadband.
     """
+    if estimate.visual_context is not None:
+        # Without an IMU sample synchronized to this optical exposure, advancing
+        # from the old plate anchor would erase the newer optical correction.
+        return False
     if not imu.orientation_valid():
         return False
 

@@ -515,7 +515,7 @@ class UIIndiGuide(UIIndiBase):
                 {
                     "type": "toggle_guide_correction",
                     "accuracy_arcmin": self.config_object.get_option(
-                        "indi_goto_refine_accuracy_arcmin", 3.0
+                        "indi_goto_refine_accuracy_arcmin", 1.0
                     ),
                 }
             )

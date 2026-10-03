@@ -31,6 +31,8 @@ import threading
 from pathlib import Path
 from PIL import Image, ImageOps
 from multiprocessing import Process, Queue
+from multiprocessing import Event
+from PiFinder.tracking_commands import PriorityMountQueue
 from multiprocessing.managers import BaseManager
 
 import PiFinder.i18n  # noqa: F401
@@ -493,8 +495,10 @@ def main(
     alignment_command_queue: Queue = Queue()
     alignment_response_queue: Queue = Queue()
     ui_queue: Queue = Queue()
-    mountcontrol_queue: Queue = Queue()
-    goto_guide_queue: Queue = Queue()
+    mountcontrol_queue = PriorityMountQueue()
+    goto_guide_queue = PriorityMountQueue(
+        mountcontrol_queue.cancellation, mountcontrol_queue.stop_epoch
+    )
 
     # init queues for logging
     keyboard_logqueue: Queue = log_helper.get_queue()
@@ -828,6 +832,16 @@ def main(
 
         mountcontrol_process = start_mountcontrol_process()
         goto_guide_process = start_goto_guide_process()
+        from PiFinder.smooth_tracking_runtime import run_worker
+
+        tracking_stop_event = Event()
+        tracking_process = Process(
+            name="SmoothTracking",
+            target=run_worker,
+            args=(shared_state, tracking_stop_event),
+            daemon=True,
+        )
+        tracking_process.start()
         next_mountcontrol_health_check = time.monotonic() + 5.0
         next_goto_guide_health_check = time.monotonic() + 5.0
 
@@ -1351,6 +1365,11 @@ def main(
 
         except KeyboardInterrupt:
             logger.info("KeyboardInterrupt received: shutting down.")
+            tracking_stop_event.set()
+            tracking_process.join(timeout=2)
+            if tracking_process.is_alive():
+                tracking_process.terminate()
+                tracking_process.join(timeout=1)
             logger.info("SHUTDOWN")
             try:
                 logger.debug("\tClearing console queue...")

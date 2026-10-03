@@ -248,7 +248,7 @@ def test_stale_status_cannot_supply_fresh_looking_imu(rig):
     assert not commands(service)
 
 
-def test_fresh_solve_restarts_normal_goto_then_fine_alignment(rig):
+def test_fresh_solve_uses_arrival_error_for_fine_alignment(rig):
     service, clock, _, _ = rig
     start(rig)
     acknowledge(rig)
@@ -256,19 +256,56 @@ def test_fresh_solve_restarts_normal_goto_then_fine_alignment(rig):
     solve(rig, dec=30.2)
     service._tick_state_machine()
     cmd = commands(service)[-1]
-    assert service.phase == "pifinder_goto"
-    assert cmd["origin"] == "pifinder_goto"
-    assert cmd["sync_dec"] == 30.2
-    assert service.correction_count == 1
-    acknowledge(rig)
-    solve(rig, dec=30.2)
-    service._tick_state_machine()
     assert service.phase == "pifinder_pulse_align"
-    assert commands(service)[-1]["manual_approach"] is True
+    assert cmd["type"] == "toggle_guide_correction"
+    assert cmd["manual_approach"] is True
+    assert service.correction_count == 1
     solve(rig)
     service._tick_state_machine()
     assert service.phase == "complete"
     assert commands(service)[-1]["origin"] == "pifinder_final_sync"
+
+
+def test_recovered_solve_keeps_goto_batch_count(rig):
+    service, clock, _, _ = rig
+    start(rig)
+    acknowledge(rig)
+    service.correction_count = 4
+    clock[0] += 1
+    solve(rig, dec=32.0)
+    service._tick_state_machine()
+    assert service.phase == "pifinder_goto"
+    assert service.correction_count == 5
+    cmd = commands(service)[-1]
+    assert cmd["type"] == "sync_and_goto"
+    assert cmd["sync_dec"] == 32.0
+    assert cmd["dec"] == 30.0
+
+
+def test_recovered_solve_at_batch_limit_waits_instead_of_slewing(rig):
+    service, clock, _, _ = rig
+    start(rig)
+    acknowledge(rig)
+    service.correction_count = service._max_gotos()
+    clock[0] += 1
+    solve(rig, dec=32.0)
+    service._tick_state_machine()
+    assert not commands(service)
+    assert service.last_action == "waiting for fresh solve before retry"
+    assert service.solve_anchor_required_after_wall > clock[0]
+
+
+def test_solve_recovery_does_not_reenable_unconverged_pulses(rig):
+    service, clock, _, _ = rig
+    start(rig)
+    acknowledge(rig)
+    service.pulse_alignment_unreliable = True
+    clock[0] += 1
+    solve(rig, dec=30.2)
+    service._tick_state_machine()
+    assert service.pulse_alignment_unreliable
+    assert service.phase == "pifinder_goto"
+    assert commands(service)[-1]["type"] == "sync_and_goto"
 
 
 def test_solve_during_slew_is_not_a_recovery_anchor(rig):
@@ -286,7 +323,7 @@ def test_solve_during_slew_is_not_a_recovery_anchor(rig):
     assert not commands(service)
     solve(rig)
     service._tick_state_machine()
-    assert commands(service)[-1]["origin"] == "pifinder_goto"
+    assert commands(service)[-1]["origin"] == "pifinder_final_sync"
 
 
 def test_failed_frame_mid_goto_keeps_existing_native_slew(rig):
@@ -344,8 +381,10 @@ def test_repeated_outages_and_recovery_while_tracking(rig, guide_enabled):
         service._tick_state_machine()
         solve(rig)
         service._tick_state_machine()
-        assert service.phase == "pifinder_goto"
-        assert commands(service)[-1]["ra"] == 110.0
+        assert service.phase == "complete"
+        recovered_commands = commands(service)
+        assert recovered_commands[-1]["ra"] == 110.0
+        assert all(c["type"] != "sync_and_goto" for c in recovered_commands)
 
 
 @pytest.mark.parametrize(
@@ -473,8 +512,8 @@ def test_recovery_after_guide_motion_uses_new_camera_solve(rig):
     clock[0] += 2
     solve(rig)
     service._tick_state_machine()
-    assert service.phase == "pifinder_goto"
-    assert commands(service)[-1]["origin"] == "pifinder_goto"
+    assert service.phase == "complete"
+    assert commands(service)[-1]["origin"] == "pifinder_final_sync"
 
 
 def test_no_imu_during_fine_alignment_can_use_existing_mount_frame(rig):

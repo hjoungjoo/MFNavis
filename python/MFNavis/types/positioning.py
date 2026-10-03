@@ -126,6 +126,7 @@ class SolveSource(str, Enum):
     CAMERA = "CAM"
     CAMERA_FAILED = "CAM_FAILED"
     IMU = "IMU"
+    VISUAL = "VISUAL"
 
 
 # =====================================================================
@@ -385,6 +386,10 @@ class PointingEstimate:
     imu_observed_time: Optional[float] = None
     last_solve_attempt: float = 0.0
     last_solve_success: Optional[float] = None
+
+    # Independent optical observations never change the SuccessfulSolve clock.
+    last_visual_observation: Optional[float] = None
+    visual_context: Optional[dict] = None
 
     # --- Annotation ---
     constellation: Optional[str] = None

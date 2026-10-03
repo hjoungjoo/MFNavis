@@ -345,6 +345,53 @@ class SharedStateObj:
         # We need gps lock and datetime
         self.__tz_finder = TimezoneFinder()
         self.__current_ui_state = None
+        from PiFinder.tracking_mailbox import TrackingMailbox
+
+        self.__smooth_tracking = TrackingMailbox()
+
+    def smooth_tracking(self, action="snapshot", value=None):
+        """Small bounded messages; all mutation ordering lives in the mailbox."""
+        mailbox = self.__smooth_tracking
+        if action == "snapshot":
+            return mailbox.snapshot()
+        operations = {
+            "arm": mailbox.arm,
+            "stop": mailbox.stop,
+            "reference": mailbox.publish_reference,
+            "revoke": mailbox.revoke,
+            "active_reference": mailbox.activate_reference,
+            "recovery_permission": mailbox.grant_recovery,
+            "measurement": mailbox.publish,
+            "fault": mailbox.fail,
+            "permission": mailbox.grant,
+            "status": mailbox.set_status,
+            "rois": mailbox.set_rois,
+        }
+        if action not in operations:
+            raise ValueError("unknown tracking mailbox operation")
+        return operations[action](value)
+
+    def smooth_tracking_frame(self):
+        """Return a matching exposure's copied ROIs, never an entire RAW over IPC."""
+        from PiFinder.tracking_quality import extract_rois
+
+        rois = self.__smooth_tracking.get_rois()
+        frame = self.__solver_frame
+        if not rois or not frame or not frame.get("raw"):
+            return None
+        metadata, raw = frame["metadata"], frame["raw"]
+        if metadata.get("capture_epoch") != rois["capture_epoch"] or metadata.get(
+            "frame_id"
+        ) != raw.get("frame_id"):
+            return None
+        if len(rois["centers"]) > 128 or not 2 <= rois["radius"] <= 32:
+            raise ValueError("unbounded tracking ROI request")
+        return {
+            "metadata": metadata,
+            "reference": rois["reference"],
+            "raw_shape": tuple(raw["frame"].shape),
+            "patches": extract_rois(raw["frame"], rois["centers"], rois["radius"]),
+        }
 
     def serialize(self, output_file):
         with open(output_file, "wb") as f:

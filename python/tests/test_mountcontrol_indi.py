@@ -2458,6 +2458,100 @@ def test_goto_refine_completes_without_regoto_inside_accuracy():
     assert mount.goto_calls == []
 
 
+def _predictive_mount(monkeypatch, inverted=False):
+    clock = [1000.0]
+    observation = [(10.0, 0.0, 1000.0)]
+    mount = DummyConnectedMount()
+    monkeypatch.setattr(mci.time, "time", lambda: clock[0])
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(mount, "_current_plate_solve", lambda: observation[0])
+    monkeypatch.setattr(mount, "_cached_tracking_enabled", lambda: True)
+    monkeypatch.setattr(mount, "_guide_pulse_supported", lambda: True)
+    monkeypatch.setattr(mount, "_select_guide_rate_for_error", lambda error: True)
+    monkeypatch.setattr(mount, "_guide_pulse_inversions", lambda: (False, inverted))
+    mount._confirmed_guide_rates = (0.5, 0.5)
+    mount.toggle_guide_correction(True, 10.0, 0.0, 3.0, predictive_tracking=True)
+    for elapsed in (0, 3, 6):
+        clock[0] = 1000.0 + elapsed
+        observation[0] = (10.0 - elapsed * 2 / 3600, 0.0, clock[0])
+        mount._check_guide_correction()
+    return mount, clock, observation
+
+
+@pytest.mark.parametrize("inverted", [False, True])
+def test_retired_prediction_flag_cannot_send_between_solves(monkeypatch, inverted):
+    mount, clock, observation = _predictive_mount(monkeypatch, inverted)
+    assert not mount._guide_predictive_tracking
+    assert mount._guide_correction_mode == "complete"
+    assert not mount.client.numbers
+    for tick in range(1, 16):
+        clock[0] = 1006.0 + tick * 0.2
+        mount._check_guide_correction()
+    assert not mount.client.numbers
+    assert mount._guide_correction_last_solve_time == observation[0][2]
+
+
+@pytest.mark.parametrize(
+    "guard", ["stale", "manual", "goto", "off", "disconnect", "disable", "stop"]
+)
+def test_predictive_tracking_stops_at_control_boundaries(monkeypatch, guard):
+    mount, clock, _ = _predictive_mount(monkeypatch)
+    clock[0] += 1
+    if guard == "stale":
+        clock[0] += 20
+    elif guard == "manual":
+        mount._manual_motion_direction = "east"
+    elif guard == "goto":
+        mount._goto_motion = {"started_at": clock[0]}
+    elif guard == "off":
+        monkeypatch.setattr(mount, "_cached_tracking_enabled", lambda: False)
+    elif guard == "disconnect":
+        mount.mark_disconnected("test")
+    elif guard == "disable":
+        mount.toggle_guide_correction(False)
+    elif guard == "stop":
+        monkeypatch.setattr(mount, "_apply_indi_properties", lambda *a, **k: True)
+        assert mount.stop_mount()
+    previous_count = len(mount.client.numbers)
+    mount._check_guide_correction()
+    assert len(mount.client.numbers) == previous_count
+
+
+def test_predictive_tracking_reversal_disables_feedforward(monkeypatch):
+    mount, clock, observation = _predictive_mount(monkeypatch)
+    clock[0] += 3
+    observation[0] = (10.001, 0.0, clock[0])
+    previous_count = len(mount.client.numbers)
+    mount._check_guide_correction()
+    assert len(mount.client.numbers) == previous_count
+
+
+def test_initial_alignment_does_not_enable_predictive_tracking(monkeypatch):
+    mount, clock, _ = _predictive_mount(monkeypatch)
+    mount.toggle_guide_correction(True, 10.0, 0.0, 3.0, manual_approach=True)
+    clock[0] += 1
+    previous_count = len(mount.client.numbers)
+    mount._check_guide_correction()
+    assert not mount._guide_predictive_tracking
+    assert len(mount.client.numbers) == previous_count
+
+
+def test_old_drift_history_cannot_restore_predictive_pulses(monkeypatch):
+    mount, clock, _ = _predictive_mount(monkeypatch)
+    mount._guide_drift = SimpleNamespace(rate=(5.0, 0.0), pulse_remainder=[100.0, 0.0])
+    for tick in range(1, 10):
+        clock[0] = 1006.0 + tick * 0.201
+        mount._check_guide_correction()
+    assert not mount.client.numbers
+
+
+def test_regular_pulse_keeps_post_solve_settling_delay(monkeypatch):
+    mount, clock, _ = _predictive_mount(monkeypatch)
+    clock[0] += 1
+    mount._send_guide_pulse("east", 100)
+    assert mount._guide_pulse_until == pytest.approx(clock[0] + 0.6)
+
+
 def test_guide_correction_requires_a_target():
     mount = DummyMountControl()
 
@@ -2654,6 +2748,42 @@ def test_guide_correction_does_not_pulse_inside_accuracy():
     mount._check_guide_correction()
 
     assert mount._manual_motion_direction is None
+
+
+def test_recovery_guide_rejects_pre_arrival_solve_from_shared_state(monkeypatch):
+    clock = [1004.0]
+    monkeypatch.setattr(mci.time, "time", lambda: clock[0])
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    state = DummySharedState(DummySolution(100.0, 20.2, 1000.0))
+    mount = DummyConnectedMount()
+    mount.shared_state = state
+    monkeypatch.setattr(mount, "_guide_axis_error", lambda *args: 12.0)
+    monkeypatch.setattr(mount, "_guide_pulse_supported", lambda: True)
+    monkeypatch.setattr(mount, "_select_guide_rate_for_error", lambda error: True)
+    monkeypatch.setattr(mount, "_guide_pulse_inversions", lambda: (False, False))
+    mount._confirmed_guide_rates = (0.5, 0.5)
+    mount.handle_command(
+        {
+            "type": "toggle_guide_correction",
+            "enabled": True,
+            "target_ra": 100.0,
+            "target_dec": 20.0,
+            "accuracy_arcmin": 3.0,
+            "predictive_tracking": True,
+            "observation_after_wall": 1001.0,
+        }
+    )
+    mount._check_guide_correction()
+    assert not mount.client.numbers
+    assert mount._guide_correction_last_solve_time == 0.0
+
+    # An actual post-arrival error is still corrected normally.
+    state._solution = DummySolution(100.0, 20.2, 1002.0)
+    mount._check_guide_correction()
+    assert mount.client.numbers[-1][1:] == (
+        "TELESCOPE_TIMED_GUIDE_NS",
+        {"TIMED_GUIDE_S": 2500.0},
+    )
 
 
 @pytest.mark.parametrize("solve_time", [980.0, 1001.0, float("nan"), float("inf")])
@@ -3236,7 +3366,10 @@ def test_initial_reset_failure_reports_error_without_retry(monkeypatch, raises):
     assert mount.statuses[-1][0] == "initialization_failed"
 
 
-def test_diverging_pulses_request_recovery_from_distinct_fresh_solves(monkeypatch):
+@pytest.mark.parametrize("solve_outages", [False, True])
+def test_diverging_pulses_request_recovery_from_distinct_fresh_solves(
+    monkeypatch, solve_outages
+):
     mount, clock, observation, errors, _motions, pulses = _manual_approach_mount(
         monkeypatch, axis_errors=(0.1, 0.0)
     )
@@ -3245,6 +3378,11 @@ def test_diverging_pulses_request_recovery_from_distinct_fresh_solves(monkeypatc
     mount._check_guide_correction()
     assert len(pulses) == 1
     for i in range(3):
+        if solve_outages:
+            mount.toggle_guide_correction(False)
+            mount.toggle_guide_correction(True, 10.0, 20.0, 1.5)
+            mount._check_guide_correction()
+            assert len(pulses) == i + 1
         clock[0] += 4
         observation[0] = clock[0]
         errors[0] = (10 + i) / 60

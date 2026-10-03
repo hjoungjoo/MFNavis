@@ -183,6 +183,7 @@ class IndiGotoGuideService:
         self.tracking_recovery_state = "idle"
         self.tracking_recovery_goto_sent_at = 0.0
         self.tracking_recovery_goto_idle_since = 0.0
+        self.tracking_recovery_solve_after_wall = 0.0
         self.tracking_recovery_attempts = 0
         self.tracking_recovery_retry_at = 0.0
         # Manual re-target: a user mount manual-move during tracking, once ended
@@ -198,6 +199,7 @@ class IndiGotoGuideService:
         # (config checkboxes untouched); cleared by the next GoTo or once a
         # manual move ends and settles.
         self.tracking_guide_suspended = False
+        self.smooth_tracking_legacy_suspended = False
         # Monotonic timestamp of the first post-settle tick that found no
         # high-quality solve coordinate; bounds the solve-anchor wait.
         self.solve_anchor_wait_since = 0.0
@@ -218,6 +220,8 @@ class IndiGotoGuideService:
 
     def run(self) -> None:
         logger.info("INDI GoTo/Guide service started")
+        if hasattr(self.shared_state, "smooth_tracking"):
+            self.shared_state.smooth_tracking("stop", "policy_service_started")
         self.service_state = "idle"
         running = True
         while running:
@@ -256,6 +260,37 @@ class IndiGotoGuideService:
             return True
 
         command_type = str(command.get("type", "")).strip()
+        from PiFinder.tracking_commands import stale_command
+
+        if stale_command(command, self.mountcontrol_queue):
+            return True
+        if command_type in {
+            "smooth_tracking_start",
+            "smooth_tracking_stop",
+            "smooth_tracking_calibrate",
+        }:
+            from PiFinder.smooth_tracking_runtime import start_session
+
+            if command_type == "smooth_tracking_stop":
+                self.shared_state.smooth_tracking("stop", "user_stop")
+                if self.smooth_tracking_legacy_suspended:
+                    self.tracking_guide_suspended = True
+                    self._disable_tracking_guide("smooth tracking stopped")
+            else:
+                try:
+                    start_session(self, command)
+                    self.last_action = "smooth tracking session armed"
+                except (ValueError, TypeError, KeyError) as exc:
+                    self.last_action = f"smooth tracking rejected: {exc}"
+                    self.shared_state.smooth_tracking(
+                        "status",
+                        {
+                            "state": "DISABLED",
+                            "reason": str(exc),
+                        },
+                    )
+            self._write_status(force=True)
+            return True
         if os.environ.get("MFNAVIS_VISUAL_TRACKING_EXPERIMENT"):
             try:
                 from PiFinder.visual_tracking_runtime import mirror_control
@@ -367,6 +402,7 @@ class IndiGotoGuideService:
                 self.tracking_last_motion_at = time.monotonic()
                 self.tracking_last_imu_motion_at = 0.0
                 self.tracking_guide_suspended = False
+                self._resume_legacy_ownership()
                 self.manual_retarget_pending = False
                 self._reset_tracking_recovery()
                 self.last_action = "tracking target set"
@@ -389,6 +425,7 @@ class IndiGotoGuideService:
             return True
         if command_type == "resume_tracking_guide":
             self.tracking_guide_suspended = False
+            self._resume_legacy_ownership()
             self.tracking_guide_last_action = "resumed by user"
             self.last_action = "tracking guide resumed"
             logger.info("Tracking guide resumed by user request")
@@ -465,6 +502,7 @@ class IndiGotoGuideService:
             )
             return
 
+        self._resume_legacy_ownership()
         if self.tracking_guide_suspended:
             self.tracking_guide_suspended = False
             logger.info("Tracking guide suspension cleared by new GoTo")
@@ -621,7 +659,14 @@ class IndiGotoGuideService:
             context["solve_age_seconds"] = round(solve_age_seconds, 1)
         return context
 
+    def _resume_legacy_ownership(self) -> None:
+        if self.smooth_tracking_legacy_suspended:
+            self.shared_state.smooth_tracking("stop", "explicit_legacy_restart")
+        self.smooth_tracking_legacy_suspended = False
+
     def _tick_state_machine(self) -> None:
+        if self.smooth_tracking_legacy_suspended:
+            return
         goto_active = self.phase in {
             "native_pending",
             "native_goto",
@@ -967,13 +1012,13 @@ class IndiGotoGuideService:
             self._cancel_solve_fallback("target below recovery altitude limit")
             return True
         self._reset_tracking_recovery()
-        self.correction_count = 0
-        self.previous_goto_error_arcmin = None
         self.final_sync_sent = False
-        self.pulse_alignment_unreliable = False
         self.solve_fallback_source = ""
-        logger.info("Plate solve restored; restarting MFNavis GoTo and fine alignment")
-        self._begin_pifinder_goto(self.active_target_ra, self.active_target_dec)
+        # Recovery is an arrival observation, not a new user GoTo. Restarting
+        # unconditionally sends a slew even when centered and discards both
+        # the retry count and a failed guide-direction/convergence assessment.
+        logger.info("Plate solve restored; evaluating post-arrival error")
+        self._evaluate_goto_arrival(current)
         return True
 
     def _begin_manual_retarget(self) -> None:
@@ -1133,10 +1178,10 @@ class IndiGotoGuideService:
     def _final_accuracy_arcmin(self) -> float:
         try:
             value = float(
-                self.config_values.get("indi_goto_refine_accuracy_arcmin", 3.0)
+                self.config_values.get("indi_goto_refine_accuracy_arcmin", 1.0)
             )
         except (TypeError, ValueError):
-            value = 3.0
+            value = 1.0
         return max(0.1, value)
 
     def _pulse_align_threshold_arcmin(self) -> float:
@@ -1448,6 +1493,10 @@ class IndiGotoGuideService:
             self.last_action = "waiting for solve anchor"
             return
         self.solve_anchor_wait_since = 0.0
+        self._evaluate_goto_arrival(current)
+
+    def _evaluate_goto_arrival(self, current: dict[str, Any]) -> None:
+        """Choose a correction from a verified, fresh post-motion solve."""
         self.current_ra = self._finite_float(current.get("ra"))
         self.current_dec = self._finite_float(current.get("dec"))
         self.last_error_arcmin = self._target_error_arcmin(
@@ -1562,6 +1611,14 @@ class IndiGotoGuideService:
             )
 
     def _tick_tracking_guide_states(self) -> None:
+        from PiFinder.smooth_tracking_runtime import tick_policy
+
+        if tick_policy(self):
+            return
+        if self.smooth_tracking_legacy_suspended:
+            self.tracking_guide_state = "suspended"
+            self.tracking_guide_last_action = "explicit legacy restart required"
+            return
         # B4 mode gate (docs/mf_report/mf_field_test_20260724_analysis_ko.md): the
         # tracking guide is a pifinder-mode feature. In indi_mount (or off)
         # mode the mount moves only on user-issued GoTo/manual/sync commands
@@ -1804,9 +1861,7 @@ class IndiGotoGuideService:
                 # Re-arm mount-control guide correction on the NEW target (disable
                 # first forces _enable_pulse_correction to re-send with it).
                 self._disable_tracking_guide("manual re-target")
-                accuracy = float(
-                    self.config_values.get("indi_tracking_guide_threshold_arcmin", 3.0)
-                )
+                accuracy = self._final_accuracy_arcmin()
                 self._enable_pulse_correction(accuracy)
                 self.tracking_guide_state = "enabled"
                 self.tracking_guide_last_action = (
@@ -1850,8 +1905,7 @@ class IndiGotoGuideService:
         if pulse_diverged:
             self.pulse_alignment_unreliable = True
         recovery_for_fine_error = self.pulse_alignment_unreliable and (
-            self.tracking_guide_error_arcmin
-            > float(self.config_values.get("indi_tracking_guide_threshold_arcmin", 3.0))
+            self.tracking_guide_error_arcmin > self._final_accuracy_arcmin()
         )
         if self.pulse_alignment_unreliable and not goto_recovery_enabled:
             self.tracking_guide_state = "paused"
@@ -1905,9 +1959,7 @@ class IndiGotoGuideService:
         # Otherwise pulse-guide fine correction. Within the envelope this closes
         # the error; with recovery Off it is the only tool and pulses slowly
         # toward the target without any mount slew.
-        accuracy = float(
-            self.config_values.get("indi_tracking_guide_threshold_arcmin", 3.0)
-        )
+        accuracy = self._final_accuracy_arcmin()
         self._enable_pulse_correction(accuracy)
         self.tracking_recovery_attempts = 0
         self.tracking_guide_recovery_mode = "pulse"
@@ -1936,6 +1988,8 @@ class IndiGotoGuideService:
                     "target_ra": self.tracking_target_ra,
                     "target_dec": self.tracking_target_dec,
                     "accuracy_arcmin": accuracy,
+                    "predictive_tracking": False,
+                    "observation_after_wall": self.tracking_recovery_solve_after_wall,
                 }
             )
             self.tracking_guide_active_sent = True
@@ -2069,6 +2123,7 @@ class IndiGotoGuideService:
         self.tracking_recovery_state = "goto_wait"
         self.tracking_recovery_goto_sent_at = time.monotonic()
         self.tracking_recovery_goto_idle_since = 0.0
+        self.tracking_recovery_solve_after_wall = 0.0
         self.tracking_guide_recovery_mode = "goto"
         self.tracking_guide_state = "recovering_goto"
         self.tracking_guide_last_action = (
@@ -2102,17 +2157,36 @@ class IndiGotoGuideService:
             return
         if self._mount_summary_reports_motion(mount_status):
             self.tracking_recovery_goto_idle_since = 0.0
+            self.tracking_recovery_solve_after_wall = 0.0
             self.tracking_guide_last_action = "waiting for recovery goto"
             return
         if self.tracking_recovery_goto_idle_since == 0.0:
             self.tracking_recovery_goto_idle_since = now
+            self.tracking_recovery_solve_after_wall = time.time()
             return
         if (
             now - self.tracking_recovery_goto_idle_since
             < MFNAVIS_FINAL_GOTO_SETTLE_SECONDS
         ):
             return
-        # Recovery GoTo finished; re-baseline and re-measure on the next tick.
+        # INDI being idle does not make the last camera exposure a measurement
+        # of arrival. Using its pre-slew error can kick a centered target out
+        # again, either with a guide pulse or another sync + GoTo.
+        pointing = self._refresh_pointing_status()
+        current = pointing.get("current") or {}
+        timestamp = self._finite_float(current.get("timestamp"))
+        if (
+            not pointing.get("usable_for_goto")
+            or not self._is_recent_solve(current)
+            or timestamp is None
+            or timestamp < self.tracking_recovery_solve_after_wall
+            or self._finite_float(current.get("ra")) is None
+            or self._finite_float(current.get("dec")) is None
+        ):
+            self.tracking_guide_last_action = "waiting for post-recovery solve"
+            return
+        # Recovery arrival is observed; re-baseline on the next tick. Preserve
+        # the observation boundary for mount-control's independent solve read.
         self.tracking_recovery_state = "idle"
         self.tracking_motion_ra = None
         self.tracking_motion_dec = None
@@ -2164,6 +2238,7 @@ class IndiGotoGuideService:
         self.tracking_recovery_state = "idle"
         self.tracking_recovery_goto_sent_at = 0.0
         self.tracking_recovery_goto_idle_since = 0.0
+        self.tracking_recovery_solve_after_wall = 0.0
         self.tracking_recovery_attempts = 0
         self.tracking_recovery_retry_at = 0.0
         self.tracking_guide_recovery_mode = "none"
@@ -2429,10 +2504,10 @@ class IndiGotoGuideService:
                 )
             ),
             "indi_goto_refine_accuracy_arcmin": float(
-                cfg.get_option("indi_goto_refine_accuracy_arcmin", 3.0)
+                cfg.get_option("indi_goto_refine_accuracy_arcmin", 1.0)
             ),
             "indi_tracking_guide_threshold_arcmin": float(
-                cfg.get_option("indi_tracking_guide_threshold_arcmin", 3.0)
+                cfg.get_option("indi_goto_refine_accuracy_arcmin", 1.0)
             ),
             "indi_tracking_guide_settle_seconds": float(
                 cfg.get_option("indi_tracking_guide_settle_seconds", 1.0)
@@ -2473,6 +2548,7 @@ class IndiGotoGuideService:
             "message": status.get("message"),
             "updated": status.get("updated"),
             "device": status.get("device"),
+            "connection_epoch": status.get("connection_epoch", -1),
             "alignment_min_altitude": status.get("alignment_min_altitude"),
             "alignment_max_altitude": status.get("alignment_max_altitude"),
             "park_state": status.get("park_state"),

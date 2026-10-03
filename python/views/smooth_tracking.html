@@ -1,0 +1,28 @@
+<div class="card grey darken-2" id="smooth_tracking_panel"
+     data-saved="{{ _('Settings saved; correction is not armed.') }}"
+     data-queued="{{ _('Request queued; check tracking status.') }}"
+     data-coordinates="{{ _('Enter valid target RA and Dec') }}"
+     data-size="{{ _('Profile exceeds 64 KiB') }}">
+  <div class="card-content grey-text">
+    <h5>{{ _('Smooth optical tracking') }}</h5>
+    <p>{{ _('When plate solving pauses, verified star tracking can continue correcting drift. If stars disappear, prediction is limited by the verified equipment profile.') }}</p>
+    <p id="smooth_tracking_status" role="status" aria-live="polite">{{ _('Loading…') }}</p>
+    <div class="row">
+      <div class="col s12 m4"><label for="smooth_mode">{{ _('Mode') }}</label>
+        <select class="browser-default" id="smooth_mode"><option value="off">Off</option><option value="shadow">Shadow</option><option value="active">Active</option></select>
+      </div>
+      <div class="col s12 m4"><label for="smooth_ra">{{ _('Target RA (J2000 degrees)') }}</label><input id="smooth_ra" type="number" step="any" min="0" max="360"></div>
+      <div class="col s12 m4"><label for="smooth_dec">{{ _('Target Dec (J2000 degrees)') }}</label><input id="smooth_dec" type="number" step="any" min="-90" max="90"></div>
+    </div>
+    <p><label for="smooth_profile">{{ _('Import verified equipment profile (JSON)') }}</label><input id="smooth_profile" type="file" accept=".json,application/json"></p>
+    <p>{{ _('Saving settings does not start motion. Calibration sends bounded test pulses and produces a model for review.') }}</p>
+    <div class="row">
+      <button class="btn" type="button" data-smooth-action="configure">{{ _('Save mode / profile') }}</button>
+      <button class="btn" type="button" data-smooth-action="start">{{ _('Start correction') }}</button>
+      <button class="btn" type="button" data-smooth-action="calibrate">{{ _('Calibrate response') }}</button>
+      <button class="btn red darken-3" type="button" data-smooth-action="stop">{{ _('Stop correction') }}</button>
+    </div>
+    <p id="smooth_tracking_result" role="status"></p>
+    <a id="smooth_calibration_download" class="btn" hidden>{{ _('Download calibration candidate') }}</a>
+  </div>
+</div>

@@ -40,6 +40,7 @@
 </div>
 {% endif %}
 
+{% include "smooth_tracking.html" %}
 <div class="card grey darken-2">
   <div class="card-content">
     <h5 class="grey-text">{{ _('Current INDI Driver State') }}</h5>
@@ -554,7 +555,7 @@
         </div>
         <div class="input-field col s12 m6">
           <input value="{{ indi_goto_refine_accuracy_arcmin }}" id="indi_goto_refine_accuracy_arcmin" type="number" min="0.1" step="0.1" name="indi_goto_refine_accuracy_arcmin">
-          <label for="indi_goto_refine_accuracy_arcmin" class="active">{{ _('Refine Accuracy arcmin') }}</label>
+          <label for="indi_goto_refine_accuracy_arcmin" class="active">{{ _('GoTo / Tracking Accuracy arcmin') }}</label>
         </div>
       </div>
       <div class="row">
@@ -626,6 +627,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/js/smooth_tracking.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   var selects = document.querySelectorAll('select');

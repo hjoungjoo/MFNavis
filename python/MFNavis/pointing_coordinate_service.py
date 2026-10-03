@@ -444,7 +444,7 @@ class PointingCoordinateService:
                 SOURCE_SOLVE,
                 f"{solve_source} estimate has no plate-solve anchor",
             )
-        if solve_source not in {"CAM", "CAM_FAILED", "IMU"}:
+        if solve_source not in {"CAM", "CAM_FAILED", "IMU", "VISUAL"}:
             return CoordinateSample.invalid(
                 SOURCE_SOLVE, f"untrusted solution source {solve_source or 'unknown'}"
             )
@@ -469,7 +469,11 @@ class PointingCoordinateService:
         # retained value like the plate-anchored IMU estimate so consumers do
         # not fall through to an unrelated absolute-IMU coordinate.
         sample_source = (
-            SOURCE_SOLVE if solve_source == "CAM" else SOURCE_PIFINDER_IMU_ESTIMATE
+            "visual_estimate"
+            if solve_source == "VISUAL"
+            else SOURCE_SOLVE
+            if solve_source == "CAM"
+            else SOURCE_PIFINDER_IMU_ESTIMATE
         )
         return CoordinateSample(
             ra_deg=radec[0],
@@ -483,6 +487,10 @@ class PointingCoordinateService:
             valid=True,
             metadata={
                 "solve_source": solve_source,
+                "last_visual_observation": _as_float(
+                    getattr(solution, "last_visual_observation", None)
+                ),
+                "visual_context": getattr(solution, "visual_context", None),
                 "last_solve_attempt": _as_float(
                     getattr(solution, "last_solve_attempt", None)
                 ),

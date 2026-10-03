@@ -448,6 +448,13 @@ class CameraInterface:
     def get_image_loop(
         self, shared_state, camera_image, command_queue, console_queue, cfg
     ):
+        import uuid
+        from dataclasses import asdict
+        from PiFinder.tracking_capture import CaptureClock
+
+        capture_epoch = uuid.uuid4().hex
+        tracking_clock = CaptureClock()
+        capture_sequence = 0
         try:
             # Store shared_state for access by capture() methods
             self.shared_state = shared_state
@@ -611,6 +618,11 @@ class CameraInterface:
 
                     image_metadata = {
                         "frame_id": frame_id,
+                        "capture_epoch": capture_epoch,
+                        "camera_type": shared_state.camera_type(),
+                        "capture_backend": f"{type(self).__module__}.{type(self).__qualname__}",
+                        "capture_sequence": capture_sequence,
+                        "synthetic": not capture_succeeded or test_mode_on,
                         "exposure_start": image_start_time,
                         "exposure_end": image_end_time,
                         "imu": imu_end,
@@ -630,6 +642,16 @@ class CameraInterface:
                     }
                     publish_solver_frame = getattr(
                         shared_state, "set_solver_frame", None
+                    )
+                    capture_sequence += 1
+                    timing_profile = cfg.get_option("smooth_tracking_profile", {}) or {}
+                    image_metadata["tracking_timing"] = asdict(
+                        tracking_clock.measure(
+                            image_metadata,
+                            timing_profile.get("timing", {})
+                            if isinstance(timing_profile, dict)
+                            else {},
+                        )
                     )
                     if callable(publish_solver_frame):
                         publish_solver_frame(

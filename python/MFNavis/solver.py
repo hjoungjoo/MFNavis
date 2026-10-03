@@ -2595,6 +2595,19 @@ def solver(
                     published_solution = bool(
                         solution and solution.get("RA") is not None
                     )
+                    if published_solution and not solve_path.startswith(
+                        "preprocessed_"
+                    ):
+                        from PiFinder.smooth_tracking_runtime import publish_reference
+
+                        publish_reference(
+                            shared_state,
+                            _sep_cfg,
+                            solution,
+                            last_image_metadata,
+                            fullframe_geometry,
+                            solver_raw_entry,
+                        )
                     if visual_shadow is not None:
                         try:
                             visual_shadow.observe(

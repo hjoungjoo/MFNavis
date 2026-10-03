@@ -66,6 +66,12 @@ def _set_imu_moving(service, moving):
     service._pointing["imu"]["metadata"]["moving"] = moving
 
 
+def test_tracking_hold_disables_prediction(monkeypatch):
+    service = _make_service(monkeypatch, [1000.0])
+    service._enable_pulse_correction(3.0)
+    assert service.mountcontrol_queue.commands[-1]["predictive_tracking"] is False
+
+
 def test_runtime_goto_type_changes_without_config_write(monkeypatch):
     service = _make_service(monkeypatch, [1000.0])
 
@@ -86,10 +92,24 @@ def test_pulse_align_threshold_is_capped_to_reachable_error(monkeypatch):
     )
 
 
-def test_refine_accuracy_falls_back_to_three_arcmin(monkeypatch):
+def test_refine_accuracy_falls_back_to_one_arcmin(monkeypatch):
     service = _make_service(monkeypatch, [1000.0])
 
-    assert service._final_accuracy_arcmin() == pytest.approx(3.0)
+    assert service._final_accuracy_arcmin() == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("accuracy", [1.0, 2.0])
+def test_tracking_uses_goto_accuracy_even_with_old_threshold(monkeypatch, accuracy):
+    service = _make_service(monkeypatch, [1000.0])
+    service.config_values["indi_goto_refine_accuracy_arcmin"] = accuracy
+    service.config_values["indi_tracking_guide_threshold_arcmin"] = 99.0
+    service._pointing["current"].update(dec=20.01)
+    service.tracking_motion_ra, service.tracking_motion_dec = 100.0, 20.01
+    service.tracking_last_motion_at = 990.0
+    service._tick_tracking_guide()
+    command = service.mountcontrol_queue.commands[-1]
+    assert command["type"] == "toggle_guide_correction"
+    assert command["accuracy_arcmin"] == service._final_accuracy_arcmin() == accuracy
 
 
 def test_lower_configured_pulse_align_threshold_is_preserved(monkeypatch):
@@ -344,6 +364,47 @@ def test_recovery_starts_after_settle_when_motion_ends(monkeypatch):
     sync_command = commands[-1]
     assert sync_command["origin"] == "tracking_recovery"
     assert sync_command["pointing_source"] == "mount_imu_delta"
+
+
+@pytest.mark.parametrize("stale_dec", [20.2, 22.0])
+def test_recovery_waits_for_post_arrival_solve_before_rearming(monkeypatch, stale_dec):
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    service.config_values.update(
+        indi_tracking_guide_settle_seconds=1.0,
+        indi_goto_refine_accuracy_arcmin=3.0,
+    )
+    # The mount has returned to Dec 20, but the last camera exposure predates
+    # arrival. Both pulse-sized and GoTo-sized old errors must stay unused.
+    service._pointing["current"].update(dec=stale_dec, timestamp=1000.0)
+    service.tracking_recovery_state = "goto_wait"
+    service.tracking_recovery_goto_sent_at = 1000.0
+    clock[0] = 1001.1
+    service._tick_tracking_guide()
+    for epoch in (1002.2, 1003.3, 1004.4, 1005.5):
+        clock[0] = epoch
+        service._tick_tracking_guide()
+        assert service.tracking_recovery_state == "goto_wait"
+        assert not service.mountcontrol_queue.commands
+
+    service._pointing["current"].update(dec=20.0, timestamp=clock[0])
+    service._tick_tracking_guide()
+    assert service.tracking_recovery_state == "idle"
+    for epoch in (1006.6, 1007.7, 1008.8):
+        clock[0] = epoch
+        service._tick_tracking_guide()
+    assert service.tracking_guide_state == "enabled"
+    assert service.mountcontrol_queue.commands == [
+        {
+            "type": "toggle_guide_correction",
+            "enabled": True,
+            "target_ra": 100.0,
+            "target_dec": 20.0,
+            "accuracy_arcmin": 3.0,
+            "predictive_tracking": False,
+            "observation_after_wall": 1001.1,
+        }
+    ]
 
 
 def test_goto_waits_for_matching_sync_ack_before_arrival_checks(monkeypatch):
@@ -1127,7 +1188,7 @@ def test_tracking_uses_recovery_instead_of_known_unreliable_pulses(
 ):
     service = _make_service(monkeypatch, [1000.0])
     service.pulse_alignment_unreliable = True
-    service.config_values["indi_tracking_guide_threshold_arcmin"] = 3.0
+    service.config_values["indi_goto_refine_accuracy_arcmin"] = 3.0
     service._pointing["current"]["dec"] = 20.0 + error_arcmin / 60
     service.tracking_motion_ra = 100.0
     service.tracking_motion_dec = service._pointing["current"]["dec"]

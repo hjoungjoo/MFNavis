@@ -1,6 +1,7 @@
 import io
 import json
 import logging
+import math
 import time
 import uuid
 import os
@@ -1484,7 +1485,7 @@ class Server:
                     cfg.get_option("skysafari_planet_track_freq", True)
                 ),
                 "indi_goto_refine_accuracy_arcmin": float(
-                    cfg.get_option("indi_goto_refine_accuracy_arcmin", 3.0)
+                    cfg.get_option("indi_goto_refine_accuracy_arcmin", 1.0)
                 ),
                 "indi_goto_method": cfg.get_option("indi_goto_method", "pifinder"),
                 "indi_goto_allow_unaligned_imu": bool(
@@ -2032,6 +2033,72 @@ class Server:
                 }
             )
 
+        @app.route("/indi/smooth_tracking", methods=["GET", "POST"])
+        @auth_required
+        def indi_smooth_tracking():
+            from PiFinder.smooth_tracking_runtime import public_status
+            from PiFinder.tracking_contracts import TrackingProfile
+
+            if request.method == "GET":
+                return jsonify(
+                    {
+                        "ok": True,
+                        "configured_mode": config.Config().get_option(
+                            "smooth_tracking_mode", "active"
+                        ),
+                        **public_status(self.shared_state.smooth_tracking()),
+                    }
+                )
+            payload = request.get_json(silent=True) or request.form.to_dict()
+            action = payload.get("action")
+            try:
+                if action == "configure":
+                    mode = payload.get("mode", "off")
+                    if mode not in {"off", "shadow", "active"}:
+                        raise ValueError("mode must be off, shadow or active")
+                    cfg = config.Config()
+                    options = {"smooth_tracking_mode": mode}
+                    if "profile" in payload:
+                        profile = payload["profile"]
+                        if isinstance(profile, str):
+                            profile = json.loads(profile)
+                        TrackingProfile.from_dict(profile)
+                        options["smooth_tracking_profile"] = profile
+                    else:
+                        profile = cfg.get_option("smooth_tracking_profile", {}) or {}
+                    checked = TrackingProfile.from_dict(profile)
+                    if mode == "active" and not (
+                        checked.verified or checked.equipment_verified
+                    ):
+                        raise ValueError("active requires a verified equipment profile")
+                    for name in ("prediction", "axis_recovery", "goto_recovery"):
+                        if name in payload:
+                            if type(payload[name]) is not bool:
+                                raise ValueError(f"{name} must be a boolean")
+                            options[f"smooth_tracking_{name}_enabled"] = payload[name]
+                    # Configuration never arms motion and cancels the old session.
+                    self.shared_state.smooth_tracking("stop", "configuration_changed")
+                    cfg.set_options(options)
+                    return jsonify({"ok": True, "armed": False, "mode": mode})
+                if action not in {"start", "stop", "calibrate"}:
+                    raise ValueError(
+                        "action must be configure, start, stop or calibrate"
+                    )
+                if self.goto_guide_queue is None:
+                    raise ValueError("GoTo/Guide service unavailable")
+                command = {"type": f"smooth_tracking_{action}"}
+                if action in {"start", "calibrate"}:
+                    ra, dec = float(payload["ra"]), float(payload["dec"])
+                    if not math.isfinite(ra) or not math.isfinite(dec) or abs(dec) > 90:
+                        raise ValueError("invalid target coordinates")
+                    if payload.get("frame") not in {"catalog", "of_date"}:
+                        raise ValueError("explicit coordinate frame required")
+                    command.update(ra=ra, dec=dec, frame=payload["frame"])
+                self.goto_guide_queue.put(command)
+                return jsonify({"ok": True, "queued": True}), 202
+            except (ValueError, TypeError, KeyError) as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 400
+
         @app.route("/indi/pointing_status")
         @auth_required
         def indi_pointing_status():
@@ -2097,7 +2164,7 @@ class Server:
 
             try:
                 refine_accuracy_arcmin = float(
-                    request.form.get("indi_goto_refine_accuracy_arcmin") or "3.0"
+                    request.form.get("indi_goto_refine_accuracy_arcmin") or "1.0"
                 )
                 if refine_accuracy_arcmin <= 0:
                     raise ValueError("Refine accuracy must be greater than zero")
@@ -2112,7 +2179,14 @@ class Server:
                 "indi_goto_allow_unaligned_imu",
                 request.form.get("indi_goto_allow_unaligned_imu") == "on",
             )
-            cfg.set_option("indi_goto_refine_accuracy_arcmin", refine_accuracy_arcmin)
+            # One accuracy controls arrival and subsequent tracking. Mirror the
+            # retired key for an older process still running during an upgrade.
+            cfg.set_options(
+                {
+                    "indi_goto_refine_accuracy_arcmin": refine_accuracy_arcmin,
+                    "indi_tracking_guide_threshold_arcmin": refine_accuracy_arcmin,
+                }
+            )
             cfg.set_option(
                 "indi_tracking_guide_enabled",
                 request.form.get("indi_tracking_guide_enabled") == "on",
