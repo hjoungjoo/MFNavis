@@ -902,11 +902,14 @@ class UIModule:
 
         guide_queue = self._goto_guide_queue()
         if number == 0:
-            queue.put({"type": "stop_movement"})
+            self._guide_active_motion_direction = None
+            self._guide_next_motion_keepalive_at = 0.0
+            self._guide_next_motion_restart_at = 0.0
+            queue.put({"type": "stop_movement", "stop_tracking": True})
             # Also stop the GoTo/Guide auto-correction (and clear its tracking
             # target) so it does not immediately re-correct.
             if guide_queue is not None:
-                guide_queue.put({"type": "stop_movement"})
+                guide_queue.put({"type": "stop_movement", "stop_tracking": True})
             self.message(_("Mount Stop"), 1)
         elif number == 1:
             self._toggle_goto_method()

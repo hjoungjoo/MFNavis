@@ -65,7 +65,7 @@ def test_guide_mixin_discrete_commands_and_goto_type_toggle():
     screen.key_number_press(9)
 
     assert screen.command_queues["mountcontrol"].commands == [
-        {"type": "stop_movement"},
+        {"type": "stop_movement", "stop_tracking": True},
         {"type": "reduce_slew_rate", "notify_ui": True},
         {"type": "increase_slew_rate", "notify_ui": True},
     ]
@@ -73,7 +73,7 @@ def test_guide_mixin_discrete_commands_and_goto_type_toggle():
     assert screen._test_config_values["session.indi_goto_method"] == "off"
     assert screen.command_queues["ui_queue"].commands == []
     assert screen.command_queues["goto_guide"].commands == [
-        {"type": "stop_movement"},
+        {"type": "stop_movement", "stop_tracking": True},
         {"type": "set_goto_method", "goto_method": "off"},
     ]
     assert messages[-1] == ("GoTo Type\nOff", 1)
@@ -90,6 +90,17 @@ def test_guide_mixin_goto_type_cycles_all_choices_for_plain_number_input():
     assert screen._test_config_values["session.indi_goto_method"] == "indi_mount"
     screen.key_number(1)
     assert screen._test_config_values["session.indi_goto_method"] == "pifinder"
+
+
+def test_zero_stop_cancels_held_direction_keepalive():
+    screen = _screen()
+    screen.key_number_press(8)
+    screen.key_number_press(0)
+    before = list(screen.command_queues["mountcontrol"].commands)
+    screen._guide_send_motion_keepalive()
+    assert screen._guide_active_motion_direction is None
+    assert screen.command_queues["mountcontrol"].commands == before
+    assert before[-1] == {"type": "stop_movement", "stop_tracking": True}
 
 
 def test_indi_indicator_matches_goto_type_and_connection_state():

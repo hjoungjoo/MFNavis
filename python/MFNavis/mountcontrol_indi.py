@@ -4807,15 +4807,29 @@ class MountControlIndi(BacklashCalibrationMixin):
             self._arm_goto_refine(target_ra, dec_deg, refine_accuracy_arcmin)
         return True
 
-    def stop_mount(self, preserve_tracking: bool = False) -> bool:
+    def stop_mount(
+        self, preserve_tracking: bool = False, *, stop_tracking: bool = False
+    ) -> bool:
         self._cancel_sync_goto("stop requested")
+        if stop_tracking:
+            # Explicit 0-key Stop cancels every source of further motion.
+            # Direction-key release still stops only the manual axes below.
+            self._pending_goto_refine = None
+            self._guide_correction_enabled = False
+            self._guide_manual_approach = False
+            self._guide_predictive_tracking = False
+            self._guide_correction_mode = "off"
+            self._pending_guide_rate = None
+            self._approach_rate_request = None
         # Releasing a direction button stops the axes, not sidereal tracking.
         # OnStep's global abort can turn tracking off, leaving the guide loop
         # trying to chase the sky's full drift after an otherwise good retarget.
-        manual_stop = self._manual_motion_direction is not None
+        manual_stop = self._manual_motion_direction is not None and not stop_tracking
         was_tracking = (
-            manual_stop or preserve_tracking
-        ) and self._cached_tracking_enabled() is True
+            not stop_tracking
+            and (manual_stop or preserve_tracking)
+            and self._cached_tracking_enabled() is True
+        )
         used_abort = not manual_stop
         properties = (
             [
@@ -4842,6 +4856,8 @@ class MountControlIndi(BacklashCalibrationMixin):
                 "stop_failed",
             )
         if not stopped:
+            if stop_tracking:
+                self.set_tracking(False)
             self._console("INDI stop\nfailed")
             return False
 
@@ -4864,7 +4880,7 @@ class MountControlIndi(BacklashCalibrationMixin):
                 self._alignment_stop_pending = "observation"
             elif ledger["correction_moving"]:
                 self._alignment_stop_pending = "correction"
-        if self._manual_motion_origin == "guide_correction":
+        if self._manual_motion_origin == "guide_correction" and not stop_tracking:
             self._guide_observation_after_wall = (
                 time.time() + GOTO_APPROACH_SETTLE_SECONDS
             )
@@ -4875,6 +4891,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._clear_manual_motion_deadline()
         self._goto_motion = None
         self._guide_pulse_until = 0.0
+        if stop_tracking and not self.set_tracking(False):
+            return False
         if used_abort and was_tracking and not self.set_tracking(True):
             return False
         logger.info("Mount stop command sent")
@@ -6094,7 +6112,10 @@ class MountControlIndi(BacklashCalibrationMixin):
                 ),
             )
         elif command_type == "stop_movement":
-            self.stop_mount()
+            if command.get("stop_tracking"):
+                self.stop_mount(stop_tracking=True)
+            else:
+                self.stop_mount()
         elif command_type == "set_tracking":
             # Joystick "Tracking Off" button. GoTo/sync paths re-enable
             # tracking themselves, so an off state lasts until the next GoTo

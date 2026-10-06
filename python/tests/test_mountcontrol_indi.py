@@ -603,6 +603,42 @@ def test_failed_axis_stop_falls_back_to_abort_and_restores_tracking(monkeypatch)
     assert mount._manual_motion_direction is None
 
 
+@pytest.mark.parametrize("manual", [False, True])
+def test_explicit_stop_disables_native_tracking_and_pending_corrections(
+    monkeypatch, manual
+):
+    mount = DummyMountControl()
+    if manual:
+        assert mount.manual_move("north")
+    monkeypatch.setattr(mount, "_cached_tracking_enabled", lambda: True)
+    tracking = []
+    monkeypatch.setattr(
+        mount, "set_tracking", lambda enabled: tracking.append(enabled) or True
+    )
+    mount._guide_correction_enabled = True
+    mount._pending_goto_refine = {"target_ra": 10.0, "target_dec": 20.0}
+    mount._pending_guide_rate = {"requested": 1.0}
+
+    mount.handle_command({"type": "stop_movement", "stop_tracking": True})
+
+    assert tracking == [False]
+    assert "TELESCOPE_ABORT_MOTION.ABORT=On" in mount.applied_properties[-1][0]
+    assert mount._manual_motion_direction is None
+    assert mount._guide_correction_enabled is False
+    assert mount._pending_goto_refine is None
+    assert mount._pending_guide_rate is None
+
+
+def test_explicit_stop_does_not_report_success_when_tracking_off_fails(monkeypatch):
+    mount = DummyMountControl()
+    console = []
+    monkeypatch.setattr(mount, "_console", console.append)
+    monkeypatch.setattr(mount, "set_tracking", lambda enabled: False)
+
+    assert not mount.stop_mount(stop_tracking=True)
+    assert "INDI mount\nstopped" not in console
+
+
 @pytest.mark.parametrize("abort_ok", [True, False])
 def test_only_unrecovered_stop_failure_requires_error_dialog(monkeypatch, abort_ok):
     from queue import Queue as LocalQueue

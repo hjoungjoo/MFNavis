@@ -51,7 +51,7 @@ with mount control on, status screens), they use one shared mapping:
 
 | Key | Mount action |
 | --- | --- |
-| `0` | Stop (also stops the GoTo/Guide auto-correction) |
+| `0` | Stop movement, mount tracking, and GoTo/Guide auto-correction |
 | `2` | Move South — **while held** |
 | `4` | Move West — **while held** |
 | `5` | GoTo — **only where an object is selected** (Object Details); re-arms auto-correction |
@@ -69,7 +69,8 @@ works on a screen that has a selected object (Object Details); on plain menus an
 status screens there is no target, so `5` is unused there. There is **no
 step-size setting** (removed) and **no Init/Sync on `1`** (removed — the mount
 auto-inits and syncs at startup, and a stray `1` would needlessly restart the
-connection). `0` (Stop) also halts the GoTo/Guide **auto-correction** (tracking
+connection). `0` (Stop) explicitly turns mount tracking off, cancels held-direction
+keepalive and pending retarget/refinement, and halts GoTo/Guide **auto-correction** (tracking
 guide) and clears its target so it will not immediately re-correct; a later `5`
 (GoTo) or a new tracking start re-arms it. The slew rate (speed) is on `9`
 (faster) / `3` (slower) — **not** on `+`/`-`, which keep their per-screen

@@ -484,7 +484,10 @@ class IndiGotoGuideService:
             logger.info("Tracking guide resumed by user request")
             return True
         if command_type == "stop_movement":
-            self._forward_to_mountcontrol({"type": "stop_movement"})
+            stop_command: dict[str, Any] = {"type": "stop_movement"}
+            if command.get("stop_tracking"):
+                stop_command["stop_tracking"] = True
+            self._forward_to_mountcontrol(stop_command)
             self.active_target_ra = None
             self.active_target_dec = None
             self.current_ra = None
@@ -504,6 +507,10 @@ class IndiGotoGuideService:
             # next GoTo / tracking start re-arms it.
             self.tracking_target_ra = None
             self.tracking_target_dec = None
+            self.manual_retarget_pending = False
+            self.manual_retarget_idle_since = 0.0
+            self.manual_retarget_after_wall = 0.0
+            self.manual_target_origin = None
             self.service_state = "idle"
             self.phase = "idle"
             self.wait_reason = ""

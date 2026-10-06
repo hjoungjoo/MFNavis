@@ -297,7 +297,7 @@ and creates no dedicated SD-card log.
 | `restart_driver` | `restart_driver()` | Restart INDI Web Manager/server/driver |
 | `sync` | `sync_mount()` | Sync mount coordinates |
 | `goto_target` | `goto_target()` | Send GoTo |
-| `stop_movement` | `stop_mount()` | Abort mount motion |
+| `stop_movement` | `stop_mount()` | Stop motion; `stop_tracking=true` (LCD 0 key) also cancels pending corrections and confirms tracking Off |
 | `manual_movement` | `manual_move()` | Start/continue manual movement |
 | `manual_movement_keepalive` | `manual_motion_keepalive()` | Extend manual movement lease |
 | `toggle_guide_correction` | `toggle_guide_correction()` | Solve-based guide correction |

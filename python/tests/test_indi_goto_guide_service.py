@@ -72,6 +72,24 @@ def test_tracking_hold_disables_prediction(monkeypatch):
     assert service.mountcontrol_queue.commands[-1]["predictive_tracking"] is False
 
 
+def test_explicit_stop_forwards_tracking_off_and_cancels_manual_retarget(monkeypatch):
+    service = _make_service(monkeypatch, [1000.0])
+    service.phase = "manual_retarget"
+    service.manual_retarget_pending = True
+    service.manual_retarget_after_wall = 999.0
+
+    service.handle_command({"type": "stop_movement", "stop_tracking": True})
+
+    assert service.mountcontrol_queue.commands[0] == {
+        "type": "stop_movement",
+        "stop_tracking": True,
+    }
+    assert service.tracking_target_ra is None
+    assert service.tracking_target_dec is None
+    assert service.manual_retarget_pending is False
+    assert service.phase == "idle"
+
+
 def test_runtime_goto_type_changes_without_config_write(monkeypatch):
     service = _make_service(monkeypatch, [1000.0])
 

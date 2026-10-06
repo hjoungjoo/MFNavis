@@ -317,7 +317,7 @@ USB 분리 뒤 늦게 도착한 좌표 callback도 `connected=false`인 동안 �
 | `sync` | `sync_mount()` | mount 좌표를 지정 RA/Dec로 sync |
 | `goto_target` | `goto_target()` | 지정 RA/Dec로 GoTo |
 | `toggle_guide_correction` | `toggle_guide_correction()` | solve 기반 1회/반복 보정 토글 |
-| `stop_movement` | `stop_mount()` | abort motion |
+| `stop_movement` | `stop_mount()` | 이동 정지. `stop_tracking=true`(LCD 0키)이면 대기 보정도 취소하고 Tracking Off를 확인 |
 | `manual_movement` | `manual_move()` | 방향키 수동 이동 시작/유지 |
 | `manual_movement_keepalive` | `manual_motion_keepalive()` | 같은 방향 lease 연장 |
 | `increase_slew_rate` | `change_slew_rate(1)` | slew rate 증가 |

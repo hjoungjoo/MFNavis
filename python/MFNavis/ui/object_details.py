@@ -773,7 +773,7 @@ class UIObjectDetails(UIModule):
         self.screen.paste(frame, (left, image_top))
 
         # Dim the text bands enough for readability while retaining the image.
-        header_bottom = top + self.fonts.base.height + self.fonts.small.height + 5
+        header_bottom = top + self.fonts.small.height + 4
         footer_top = (
             height - self.fonts.small.height - 4 - 2 * (self.fonts.base.height + 2)
         )
@@ -787,11 +787,10 @@ class UIObjectDetails(UIModule):
                 (2, y), text, font=font, fill=self.colors.get(255), anchor="lt"
             )
 
-        fitted_text(self.object.display_name, top + 2, self.fonts.base.font)
         fitted_text(
             f"{zoom_factor}x  "
             f"{_(OBJ_TYPES.get(self.object.obj_type, 'Unknown'))}  {self.object.const}",
-            top + self.fonts.base.height + 3,
+            top + 2,
             self.fonts.small.font,
         )
         self._render_pointing_instructions(compact=True)
