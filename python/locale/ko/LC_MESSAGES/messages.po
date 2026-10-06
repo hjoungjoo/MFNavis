@@ -6815,3 +6815,29 @@ msgstr "목표 적경과 적위를 올바르게 입력하세요."
 #: views/smooth_tracking.html
 msgid "Profile exceeds 64 KiB"
 msgstr "프로필 파일이 64 KiB를 넘습니다."
+
+#: views/smooth_tracking.html
+msgid "Valid tracking stars"
+msgstr "유효한 추적 별"
+
+#: views/smooth_tracking.html
+msgid "Saturated star regions"
+msgstr "포화된 별 영역"
+
+#: views/smooth_tracking.html
+msgid "Star regions with insufficient signal"
+msgstr "신호가 부족한 별 영역"
+
+#: views/smooth_tracking.html
+msgid "Measurement error bound"
+msgstr "측정 오차 상한 / 허용 상한"
+
+#: views/smooth_tracking.html
+msgid "Exposure timing is unverified"
+msgstr "촬영 시각 미검증"
+
+msgid "Corrected axes"
+msgstr "보정 축"
+
+msgid "Video motion uncertainty estimate"
+msgstr "영상 이동 오차 추정"

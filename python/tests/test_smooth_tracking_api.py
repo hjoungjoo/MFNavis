@@ -2,10 +2,57 @@
 
 from queue import Queue
 from types import SimpleNamespace
+from pathlib import Path
+import json
+import shutil
+import subprocess
 import pytest
 from PiFinder.tracking_mailbox import TrackingMailbox
 
 pytestmark = pytest.mark.unit
+
+
+def test_diagnostics_script_starts_with_translated_bound_label():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node required for browser script execution")
+    script = Path(__file__).parents[1] / "views/js/smooth_tracking.js"
+    harness = r"""
+      const fs = require('fs'), vm = require('vm');
+      const elements = {};
+      const panel = {dataset: {bound: '오차 상한', stars: '별', motionNoise: '이동 오차',
+        controlledAxes: '보정축'}, querySelectorAll: () => []};
+      const document = {contains: () => true, getElementById: id =>
+        id === 'smooth_tracking_panel' ? panel : (elements[id] ||= {})};
+      let polls = 0;
+      const context = {document, URL, Blob, console, setTimeout: () => {},
+        fetch: async () => {polls++; return {ok: true, json: async () => ({
+          mode: 'shadow', state: 'FINE_TRACKING', configured_mode: 'shadow',
+          response_axes: [1], measurement: {reason: 'catalog_stars', stars: 12,
+            bound_arcsec: 100, relative_bound_arcsec: 8, timing: {verified: true}},
+          error_budget_arcsec: 200,
+        })};}};
+      const code = fs.readFileSync(process.argv[1], 'utf8');
+      vm.runInNewContext(code, context);
+      setImmediate(() => {
+        vm.runInNewContext(code, context);
+        console.log(JSON.stringify({polls, status: elements.smooth_measurement_status?.textContent,
+          label: panel.dataset.bound}));
+      });
+    """
+    result = subprocess.run(
+        [node, "-e", harness, str(script)],
+        check=True,
+        text=True,
+        capture_output=True,
+        timeout=5,
+    )
+    data = json.loads(result.stdout)
+    assert data["polls"] == 1
+    assert data["label"] == "오차 상한"
+    assert "오차 상한: 100.0″ / 200.0″" in data["status"]
+    assert "이동 오차: 8.0″" in data["status"]
+    assert "보정축: Dec" in data["status"]
 
 
 @pytest.fixture(name="motion_client")
@@ -105,6 +152,42 @@ def test_web_panel_and_script_are_available(motion_client):
     assert client.post(
         "/indi/smooth_tracking", json={"action": "stop"}
     ).status_code in {302, 401}
+
+
+def test_web_diagnostics_show_used_reference_budget_and_rejected_stars(
+    motion_client, monkeypatch
+):
+    from dataclasses import replace
+    from PiFinder import smooth_tracking_runtime
+    from test_smooth_tracking import measurement
+
+    client, mount, server = setup_client(motion_client)
+    box = TrackingMailbox()
+    box.arm(
+        {
+            "session": "session",
+            "mode": "shadow",
+            "profile": {"max_error_bound_arcsec": 180},
+        }
+    )
+    m = measurement(3, 100, roi_counts={"accepted": 14, "saturated": 20})
+    box.publish(replace(m, timing=replace(m.timing, verified=False)))
+    box.publish_reference({"id": "latest", "capture_epoch": "capture", "sequence": 2})
+    box.activate_reference({"id": "used", "absolute_bound": 67})
+    server.shared_state.smooth_tracking = lambda: box.snapshot()
+    monkeypatch.setattr(smooth_tracking_runtime.time, "monotonic", lambda: 100)
+    data = client.get("/indi/smooth_tracking").json
+    assert data["reference"]["id"] == "latest"
+    assert data["active_reference"] == {
+        "id": "used",
+        "absolute_bound": 67,
+        "timing": None,
+    }
+    assert data["error_budget_arcsec"] == 180
+    assert data["measurement"]["age_s"] == pytest.approx(0.05)
+    assert data["measurement"]["timing"]["verified"] is False
+    assert data["measurement"]["roi_counts"] == {"accepted": 14, "saturated": 20}
+    assert mount.empty() and server.goto_guide_queue.empty()
 
 
 def test_new_optical_prediction_setting_remains_supported(motion_client):

@@ -188,6 +188,7 @@ class SmoothMountRuntime:
             if (
                 isinstance(self.controller, CalibrationController)
                 and self.controller.context is not None
+                and self.controller.started is not None
             ):
                 self.controller.hold("calibration_reference_changed")
                 self._publish(now)
@@ -203,8 +204,24 @@ class SmoothMountRuntime:
                 return
             # Preserve recovery budget across reference replacement.
             budget = self.controller.budget
+            limits = (
+                self.controller.best_effort_started,
+                self.controller.command_travel,
+                self.controller.next_send,
+                self.controller.feedback_gain,
+                self.controller.direction_cooldowns.copy(),
+                self.controller.saturation.copy(),
+            )
             self.controller.arm(measurement.context)
             self.controller.budget = budget
+            (
+                self.controller.best_effort_started,
+                self.controller.command_travel,
+                self.controller.next_send,
+                self.controller.feedback_gain,
+                self.controller.direction_cooldowns,
+                self.controller.saturation,
+            ) = limits
             if active:
                 self.controller.ready_after = max(
                     self.controller.ready_after, self.drain_until

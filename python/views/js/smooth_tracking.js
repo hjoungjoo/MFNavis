@@ -1,7 +1,7 @@
 (() => {
   const panel = document.getElementById('smooth_tracking_panel');
-  if (!panel || panel.dataset.bound) return;
-  panel.dataset.bound = 'true';
+  if (!panel || panel.dataset.smoothBound) return;
+  panel.dataset.smoothBound = 'true';
   const result = document.getElementById('smooth_tracking_result');
   let initialized = false, candidateUrl, opticsUrl;
   async function poll() {
@@ -15,6 +15,21 @@
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       document.getElementById('smooth_tracking_status').textContent = `${data.mode}: ${data.state} — ${data.reason || ''}`;
+      const measurement = data.measurement;
+      const details = [];
+      if (measurement) {
+        const counts = measurement.roi_counts || {};
+        details.push(measurement.reason, `${panel.dataset.stars}: ${measurement.stars}`);
+        if (counts.saturated) details.push(`${panel.dataset.saturated}: ${counts.saturated}`);
+        if (counts.low_signal) details.push(`${panel.dataset.lowSignal}: ${counts.low_signal}`);
+        const budget = Number.isFinite(data.error_budget_arcsec) ? ` / ${data.error_budget_arcsec.toFixed(1)}″` : '';
+        details.push(`${panel.dataset.bound}: ${measurement.bound_arcsec.toFixed(1)}″${budget}`);
+        if (Number.isFinite(measurement.relative_bound_arcsec)) details.push(`${panel.dataset.motionNoise}: ${measurement.relative_bound_arcsec.toFixed(1)}″`);
+        if (!measurement.timing.verified) details.push(panel.dataset.unverifiedTiming);
+      }
+      if (data.response_axes && data.response_axes.length < 2) details.push(`${panel.dataset.controlledAxes}: ${data.response_axes.map(axis => axis === 0 ? 'RA' : 'Dec').join('/')}`);
+      const measurementStatus = document.getElementById('smooth_measurement_status');
+      if (measurementStatus) measurementStatus.textContent = details.join(' · ');
       if (!initialized) {
         document.getElementById('smooth_mode').value = data.configured_mode;
         document.getElementById('smooth_target_integration').checked = data.target_integration_enabled;

@@ -78,6 +78,47 @@ def reference_scene(rotation=0):
     return ref, request, p
 
 
+def test_invalid_tracking_frame_keeps_star_counts_and_exclusion_evidence():
+    ref, request, p = reference_scene()
+    tracker = StarTracker(ref, request, p)
+    rois = tracker.roi_request()
+    yy, xx = np.indices(ref["raw_shape"])
+    raw = np.full(ref["raw_shape"], 50.0)
+    for i, (y, x) in enumerate(rois["centers"]):
+        if i == 3:
+            raw[round(y), round(x)] = 1000  # A hot pixel is not a star.
+        else:
+            amplitude = 5000 if i < 3 else 1 if i == 4 else 1000
+            raw += amplitude * np.exp(-((yy - y) ** 2 + (xx - x) ** 2) / 3)
+    frame = {
+        "reference": ref["id"],
+        "patches": extract_rois(raw, rois["centers"], 12),
+        "metadata": {
+            "capture_epoch": ref["capture_epoch"],
+            "capture_sequence": 2,
+            "actual_exposure_us": 100000,
+            "actual_gain": 8,
+            "tracking_timing": asdict(
+                CaptureTiming(100.7, 100.9, 100.8, 0.001, 1100.8, True, "clock")
+            ),
+        },
+    }
+    result = tracker.measure(frame, 101)
+    assert not result.valid
+    assert result.reason == "stars_lost_or_ambiguous"
+    assert result.stars == 4
+    assert result.roi_counts == {
+        "saturated": 3,
+        "invalid_shape": 1,
+        "low_signal": 1,
+        "accepted": 4,
+    }
+    # Diagnostics do not relax the measurement approval criteria.
+    controller = TrackingController(p)
+    controller.arm(result.context)
+    assert controller.tick(snapshot(result, 101), 101, request["control"]) is None
+
+
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
 def test_raw_to_reference_to_measurement_without_another_solve(rotation):
     ref, request, p = reference_scene(rotation)
@@ -185,6 +226,78 @@ def test_prediction_never_crosses_invalid_context(reason):
         bad, 10.1, permission=TrackingPermission(context(), 12, 2, purpose="coast")
     )
     assert controller.tick(s, 10.1, 2) is None
+
+
+@pytest.mark.parametrize("frame_interval", [0.03, 0.1, 0.2])
+def test_video_calibration_retains_a_two_second_baseline(frame_interval):
+    controller = CalibrationController(profile(verified=False, equipment_verified=True))
+    controller.arm(context())
+    for seq in range(int(4 / frame_interval)):
+        now = 100 + seq * frame_interval
+        m = measurement(seq, now, error=(20 + 0.1 * (now - 100), 20))
+        data = snapshot(
+            m,
+            now,
+            permission=TrackingPermission(
+                context(), now + 2, seq, purpose="calibration"
+            ),
+        )
+        plan = controller.tick(data, now, 2)
+        if plan:
+            break
+    assert plan is not None
+    assert plan.kind == "calibration"
+    assert (
+        controller.baseline[-1].timing.midpoint - controller.baseline[0].timing.midpoint
+        >= 2
+    )
+    assert len(controller.baseline) <= 8
+
+
+def test_calibration_respects_pulse_duty_between_probes():
+    p = profile(verified=False, equipment_verified=True, max_duty=0.02)
+    controller = CalibrationController(p)
+    controller.arm(context())
+    plan = None
+    error = np.array([20.0, 20.0])
+    for seq in range(8):
+        now = 100 + seq * 0.5
+        m = measurement(seq, now, error=tuple(error))
+        data = snapshot(
+            m,
+            now,
+            permission=TrackingPermission(
+                context(), now + 2, seq, purpose="calibration"
+            ),
+        )
+        plan = controller.tick(data, now, 2)
+        if plan:
+            break
+    assert plan is not None
+    sent_at = now
+    error -= np.asarray(profile().response)[:, 0] * plan.duration_ms
+    controller.acknowledge(
+        plan, CorrectionReceipt(plan.command_id, "accepted", sent_at, sent_at + 0.26)
+    )
+    deadline = controller.next_send
+    for seq in range(10, 60):
+        now = sent_at + (seq - 9) * 0.5
+        m = measurement(seq, now, error=tuple(error))
+        data = snapshot(
+            m,
+            now,
+            permission=TrackingPermission(
+                context(), now + 2, seq, purpose="calibration"
+            ),
+        )
+        next_plan = controller.tick(data, now, 2)
+        if now < deadline:
+            assert next_plan is None
+        if next_plan:
+            break
+    assert next_plan is not None
+    assert now >= deadline
+    assert controller.probes == 1
 
 
 def test_calibration_bootstraps_response_without_activating_model():
@@ -438,6 +551,37 @@ def test_stop_cancels_queued_motion_without_dropping_speed_then_move():
         for q in (mount, guide):
             q.queue.close()
             q.queue.join_thread()
+
+
+@pytest.mark.parametrize("kind", ["sync_and_goto", "stop_movement", "set_track_freq"])
+def test_guide_disable_survives_following_control_command(kind):
+    from PiFinder.tracking_commands import PriorityMountQueue, stale_command
+
+    commands = PriorityMountQueue()
+    try:
+        commands.put({"type": "toggle_guide_correction", "enabled": False})
+        commands.put({"type": kind})
+        disable = commands.get(timeout=1)
+        assert disable["_control_epoch"] < commands.control_epoch
+        assert not stale_command(disable, commands)
+        commands.get(timeout=1)
+    finally:
+        commands.queue.close()
+        commands.queue.join_thread()
+
+
+def test_old_guide_enable_is_canceled_by_new_goto():
+    from PiFinder.tracking_commands import PriorityMountQueue, stale_command
+
+    commands = PriorityMountQueue()
+    try:
+        commands.put({"type": "toggle_guide_correction", "enabled": True})
+        commands.put({"type": "sync_and_goto"})
+        assert stale_command(commands.get(timeout=1), commands)
+        commands.get(timeout=1)
+    finally:
+        commands.queue.close()
+        commands.queue.join_thread()
 
 
 def test_own_recovery_lease_survives_motion_frames_but_not_stop_or_timeout(monkeypatch):

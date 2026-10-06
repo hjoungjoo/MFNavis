@@ -2,11 +2,19 @@
      data-saved="{{ _('Settings saved; correction is not armed.') }}"
      data-queued="{{ _('Request queued; check tracking status.') }}"
      data-coordinates="{{ _('Enter valid target RA and Dec') }}"
-     data-size="{{ _('Profile exceeds 64 KiB') }}">
+     data-size="{{ _('Profile exceeds 64 KiB') }}"
+     data-stars="{{ _('Valid tracking stars') }}"
+     data-saturated="{{ _('Saturated star regions') }}"
+     data-low-signal="{{ _('Star regions with insufficient signal') }}"
+     data-bound="{{ _('Measurement error bound') }}"
+     data-controlled-axes="{{ _('Corrected axes') }}"
+     data-motion-noise="{{ _('Video motion uncertainty estimate') }}"
+     data-unverified-timing="{{ _('Exposure timing is unverified') }}">
   <div class="card-content grey-text">
     <h5>{{ _('Smooth optical tracking') }}</h5>
     <p>{{ _('When plate solving pauses, verified star tracking can continue correcting drift. If stars disappear, prediction is limited by the verified equipment profile.') }}</p>
     <p id="smooth_tracking_status" role="status" aria-live="polite">{{ _('Loading…') }}</p>
+    <p id="smooth_measurement_status" role="status" aria-live="polite"></p>
     <p id="smooth_alignment_status" role="status" aria-live="polite"></p>
     <p><label><input type="checkbox" id="smooth_target_integration"><span>{{ _('Moon, planet and manual alignment tracking') }}</span></label></p>
     <div class="row">

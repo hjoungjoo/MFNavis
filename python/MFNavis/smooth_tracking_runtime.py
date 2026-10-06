@@ -392,6 +392,9 @@ def public_status(snapshot):
     """JSON-sized diagnostics; no arrays, RAW buffers, or serialized permission."""
     m = snapshot.get("measurement")
     ref = snapshot.get("reference")
+    request = snapshot.get("request") or {}
+    active_ref = snapshot.get("active_reference")
+    now = time.monotonic()
     return {
         **snapshot["status"],
         "fault": snapshot["fault"],
@@ -399,6 +402,14 @@ def public_status(snapshot):
         "target_identity": (snapshot.get("request") or {}).get("target_identity"),
         "target_revision": (snapshot.get("request") or {}).get("target_revision"),
         "quality_revision": snapshot["quality_revision"],
+        "error_budget_arcsec": request.get("profile", {}).get(
+            "max_error_bound_arcsec", TrackingProfile.max_error_bound_arcsec
+        ),
+        "active_reference": {
+            key: active_ref.get(key) for key in ("id", "absolute_bound", "timing")
+        }
+        if active_ref
+        else None,
         "reference": {
             key: ref.get(key)
             for key in (
@@ -424,6 +435,9 @@ def public_status(snapshot):
             "error_arcsec": m.error,
             "bound_arcsec": m.bound_arcsec,
             "timing": asdict(m.timing),
+            "age_s": now - m.timing.midpoint,
+            "roi_counts": dict(m.roi_counts),
+            "relative_bound_arcsec": m.relative_bound_arcsec,
         }
         if m
         else None,

@@ -4521,6 +4521,16 @@ class MountControlIndi(BacklashCalibrationMixin):
             }
             self._write_controller_status("sync_goto_failed", "INDI unavailable")
             return False
+        if self._guide_correction_enabled and not self.toggle_guide_correction(False):
+            self._sync_goto_status = {
+                "request_id": command["request_id"],
+                "state": "failed",
+                "reason": "Could not disable guide correction before sync",
+            }
+            self._write_controller_status(
+                "sync_goto_failed", self._sync_goto_status["reason"]
+            )
+            return False
         with self._sync_property_lock:
             self._sync_driver_errors = []
         transaction = dict(command)
@@ -4536,6 +4546,15 @@ class MountControlIndi(BacklashCalibrationMixin):
             "target_dec": values[3],
             "started_monotonic": time.monotonic(),
         }
+        # Disabling the loop prevents new pulses; it does not end a pulse
+        # already accepted by the driver. OnStep rejects Sync during that
+        # motion, so drain its duration and settle window in the event loop.
+        if time.monotonic() < self._guide_pulse_until:
+            self._arm_sync_goto_stage(transaction, "waiting_guide_idle")
+            return True
+        return self._request_sync_goto_mode(transaction)
+
+    def _request_sync_goto_mode(self, transaction: dict[str, Any]) -> bool:
         self._arm_sync_goto_stage(transaction, "waiting_sync_mode")
         try:
             requested = self.client.set_switch(self.device, "ON_COORD_SET", "SYNC")
@@ -4585,6 +4604,11 @@ class MountControlIndi(BacklashCalibrationMixin):
             self._cancel_sync_goto(f"Timeout: {transaction['stage']}")
             return
         stage = transaction["stage"]
+        if stage == "waiting_guide_idle":
+            if time.monotonic() < self._guide_pulse_until:
+                return
+            self._request_sync_goto_mode(transaction)
+            return
         name = (
             "EQUATORIAL_EOD_COORD"
             if stage == "waiting_sync_coordinates"

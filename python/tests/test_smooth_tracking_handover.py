@@ -1,5 +1,6 @@
 """Correction ownership at legacy/optical handover; no hardware I/O."""
 
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -8,6 +9,7 @@ import pytest
 from PiFinder.smooth_mount_runtime import SmoothMountRuntime
 from PiFinder.smooth_tracking_runtime import start_session
 from PiFinder.tracking_control import TrackingController
+from PiFinder.tracking_calibration import CalibrationController
 from PiFinder.tracking_mailbox import TrackingMailbox
 from test_indi_goto_guide_service import _make_service
 from test_mountcontrol_indi import DummyMountControl
@@ -285,6 +287,97 @@ def test_handover_rejects_frame_exposed_during_legacy_pulse(mount, monkeypatch):
     data["measurement"] = measurement(2, 101.0)
     runtime.tick()
     assert len(runtime.controller.history.samples) == 1
+
+
+@pytest.mark.parametrize("started", [None, 100.0])
+def test_calibration_reference_refresh_can_rebind_only_before_baseline(
+    mount, monkeypatch, started
+):
+    monkeypatch.setattr("PiFinder.smooth_mount_runtime.time.monotonic", lambda: 101.0)
+    mount.mount_queue = SimpleNamespace(control_epoch=2)
+    refreshed = replace(context(), reference="fresh-reference")
+    data = snapshot(
+        measurement(2, 101.0, context=refreshed),
+        101.0,
+        permission=None,
+        request={
+            "mode": "active",
+            "session": "session",
+            "control": 2,
+            "purpose": "calibration",
+        },
+        reference=None,
+    )
+    mount.shared_state = SimpleNamespace(smooth_tracking=lambda *a: data)
+    runtime = mount._smooth_runtime
+    runtime.last_epoch = 2
+    runtime.session = "session"
+    runtime.claimed = True
+    runtime.controller = CalibrationController(profile())
+    runtime.controller.arm(context())
+    runtime.controller.started = started
+    runtime.recovery = SimpleNamespace(state="idle", observe_reference=Mock())
+    runtime.adapter = SimpleNamespace(
+        poll=lambda now: None,
+        refresh=Mock(),
+        ready=lambda *a, **kw: "",
+        command_future=None,
+    )
+    runtime.tick()
+    if started is None:
+        assert runtime.controller.context == refreshed
+        assert runtime.controller.started is None
+        assert runtime.controller.state == "ACQUIRING"
+    else:
+        assert runtime.controller.context == context()
+        assert runtime.controller.state == "LIMITED"
+        assert runtime.controller.reason == "calibration_reference_changed"
+
+
+def test_reference_refresh_preserves_best_effort_duty_and_response_backoff(
+    mount, monkeypatch
+):
+    clock = [101.0]
+    monkeypatch.setattr(
+        "PiFinder.smooth_mount_runtime.time.monotonic", lambda: clock[0]
+    )
+    mount.mount_queue = SimpleNamespace(control_epoch=2)
+    refreshed = replace(context(), reference="fresh-reference")
+    data = snapshot(
+        measurement(2, 101, context=refreshed),
+        101,
+        permission=None,
+        request={"mode": "shadow", "session": "session", "control": 2},
+        reference=None,
+    )
+    mount.shared_state = SimpleNamespace(smooth_tracking=lambda *a: data)
+    runtime = mount._smooth_runtime
+    runtime.last_epoch = 2
+    runtime.session = "session"
+    runtime.controller = TrackingController(profile(best_effort_s=12))
+    runtime.controller.arm(context())
+    runtime.controller.best_effort_started = 90
+    runtime.controller.command_travel = 14
+    runtime.controller.next_send = 104
+    runtime.controller.feedback_gain = 0.5
+    runtime.controller.direction_cooldowns = {"south": 110}
+    runtime.controller.saturation.append((100, True, 30))
+    runtime.recovery = SimpleNamespace(state="idle", observe_reference=Mock())
+    runtime.tick()
+    assert runtime.controller.context == refreshed
+    assert runtime.controller.best_effort_started == 90
+    assert runtime.controller.command_travel == 14
+    assert runtime.controller.next_send == 104
+    assert runtime.controller.feedback_gain == 0.5
+    assert runtime.controller.direction_cooldowns == {"south": 110}
+    assert list(runtime.controller.saturation) == [(100, True, 30)]
+    clock[0] = 103
+    data["measurement"] = measurement(
+        3, 103, context=replace(refreshed, reference="newer")
+    )
+    runtime.tick()
+    assert runtime.controller.state == "LIMITED"
+    assert runtime.controller.reason == "best_effort_budget_exhausted"
 
 
 def test_own_corrections_are_not_learned_as_external_drift():

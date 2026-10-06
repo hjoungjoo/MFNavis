@@ -49,7 +49,7 @@ class TrackingController:
         self.profile = profile
         self.context = None
         self.state, self.reason = "DISABLED", "not_armed"
-        self.history = MotionHistory()
+        self.history = MotionHistory(profile.robust_tracking)
         self.budget = RecoveryBudget(profile)
         self.last_key = None
         self.last_measurement = None
@@ -73,6 +73,12 @@ class TrackingController:
         self.coast_drift = None
         self.coast_travel = 0.0
         self.coasting = False
+        self.feedback_gain = 1.0
+        self.feedback_pending = None
+        self.direction_cooldowns = {}
+        self.command_travel = 0.0
+        self.best_effort_started = None
+        self.pending_saturated = False
 
     def arm(self, context):
         self.__init__(self.profile)
@@ -86,6 +92,7 @@ class TrackingController:
         self.reason = reason
         self.position_remaining[:] = 0
         self.drift = self.pending_plan = self.recovery_request = None
+        self.feedback_pending = None
         self.ramp_started = None
         self.confirmations = 0
         self.confirmation_started = None
@@ -99,6 +106,68 @@ class TrackingController:
         self.state, self.reason = "DISABLED", reason
         self.context = None
         self.coast_anchor = self.coast_drift = None
+
+    def _controlled_error(self, error):
+        result = np.zeros(2)
+        result[list(self.profile.response_axes)] = np.asarray(error)[
+            list(self.profile.response_axes)
+        ]
+        return result
+
+    def _beneficial(self, error, delta, bound):
+        axes = list(self.profile.response_axes)
+        e, d = np.asarray(error)[axes], np.asarray(delta)[axes]
+        uncertainty = self.profile.response_fractional_bound * np.linalg.norm(delta)
+        if len(axes) == 1:
+            toward = float(np.sign(e[0]) * d[0])
+            return toward > uncertainty and toward + uncertainty < 2 * (
+                abs(e[0]) - bound
+            )
+        # A small step can reduce a confidently large error even when that
+        # step is smaller than the absolute plate-solve uncertainty.
+        lower = (
+            float(e @ d)
+            - bound * np.linalg.norm(d)
+            - (np.linalg.norm(e) + bound) * uncertainty
+        )
+        return lower > 0.5 * (np.linalg.norm(d) + uncertainty) ** 2
+
+    def _observe_response(self, m, now):
+        if not self.feedback_pending or not self.profile.robust_tracking:
+            return
+        plan, before, drift, drift_bound = self.feedback_pending
+        self.feedback_pending = None
+        if drift is None or before.context != m.context:
+            return
+        dt = m.timing.midpoint - before.timing.midpoint
+        observed = np.asarray(before.error) - m.error + drift * dt
+        noise = (
+            (
+                before.bound_arcsec
+                if before.relative_bound_arcsec is None
+                else before.relative_bound_arcsec
+            )
+            + (
+                m.bound_arcsec
+                if m.relative_bound_arcsec is None
+                else m.relative_bound_arcsec
+            )
+            + (drift_bound or 0) * dt
+        )
+        axes = list(self.profile.response_axes)
+        delta = np.asarray(plan.expected_delta)[axes]
+        length = np.linalg.norm(delta)
+        if length <= 0:
+            return
+        toward = float(observed[axes] @ delta / length)
+        if toward < -noise:
+            self.feedback_gain = max(0.1, self.feedback_gain * 0.5)
+            self.direction_cooldowns[plan.direction] = now + 10
+            self.reason = "adverse_response_backoff"
+        elif toward > length * (1 + self.profile.response_fractional_bound) + noise:
+            self.feedback_gain = max(0.1, self.feedback_gain * 0.5)
+        elif toward > noise:
+            self.feedback_gain = min(1.0, self.feedback_gain + 0.05)
 
     def _coast_usable(self, snapshot, now, epoch):
         m, permission = snapshot.get("measurement"), snapshot.get("permission")
@@ -142,6 +211,8 @@ class TrackingController:
             return ""
         if m is None or m.context != self.context or not m.valid:
             return "invalid_measurement"
+        if not m.timing.verified:
+            return "timing_unverified"
         if not m.timing.usable(
             now, self.profile.max_age_s, self.profile.max_timing_uncertainty_s
         ):
@@ -160,6 +231,17 @@ class TrackingController:
 
     def tick(self, snapshot, now, epoch):
         if self.state in {"DISABLED", "LIMITED"}:
+            return None
+        if (
+            self.profile.best_effort_s
+            and self.best_effort_started is not None
+            and (
+                now - self.best_effort_started >= self.profile.best_effort_s
+                or self.command_travel >= self.profile.best_effort_travel_arcsec
+            )
+        ):
+            self.hold("best_effort_budget_exhausted")
+            self.state = "LIMITED"
             return None
         reason = self._usable(snapshot, now, epoch)
         if reason:
@@ -200,12 +282,14 @@ class TrackingController:
             if m.timing.start_min <= self.ready_after:
                 self.reason = "waiting_post_command_exposure"
                 return None
+            self._observe_response(m, now)
             mode, drift = self.history.observe(
                 m.timing.midpoint,
                 m.error,
                 self.applied,
                 m.bound_arcsec,
                 self.profile.max_drift_arcsec_s,
+                relative_bound=m.relative_bound_arcsec,
             )
             if mode in {"step_pending", "oscillatory", "unknown"}:
                 self.hold(mode, disturbance=True)
@@ -230,16 +314,32 @@ class TrackingController:
             )
             self.last_time = m.timing.midpoint
             self.last_measurement = m
-            self.drift = drift if m.quality == "valid" else None
+            self.drift = (
+                drift
+                if m.quality == "valid"
+                or (
+                    self.profile.robust_tracking and m.relative_bound_arcsec is not None
+                )
+                else None
+            )
             if self.drift is not None:
                 self.coast_anchor, self.coast_drift = m, self.drift.copy()
                 self.coast_travel = 0.0
-            error = np.asarray(m.error)
+            error = self._controlled_error(
+                self.history.filtered_error
+                if self.profile.robust_tracking
+                and self.history.filtered_error is not None
+                else m.error
+            )
             distance = np.linalg.norm(error)
-            deadband = max(self.profile.deadband_arcsec, 2 * m.bound_arcsec)
+            deadband = max(self.profile.deadband_arcsec, m.bound_arcsec)
             usable_error = error * max(0.0, 1 - deadband / max(distance, 1e-12))
             ramp = min(1.0, (now - self.ramp_started) / self.profile.ramp_s)
-            gain = self.profile.kp * (0.3 if m.quality == "degraded" else 1.0)
+            gain = (
+                self.profile.kp
+                * self.feedback_gain
+                * (0.3 if m.quality == "degraded" else 1.0)
+            )
             self.position_remaining = gain * usable_error * dt * ramp
             self.state = (
                 "DEGRADED_TRACKING" if m.quality == "degraded" else "FINE_TRACKING"
@@ -266,38 +366,70 @@ class TrackingController:
             desired = self.drift * min(0.2, self.profile.prediction_horizon_s)
             predicted = True
         b = np.asarray(self.profile.response)
-        norms = np.linalg.norm(b, axis=0)
-        if not self.profile.verified or np.any(norms <= 0):
+        controlled_b = np.zeros_like(b)
+        controlled_b[list(self.profile.response_axes)] = b[
+            list(self.profile.response_axes)
+        ]
+        norms = np.linalg.norm(controlled_b, axis=0)
+        enabled = np.array(
+            [
+                d in self.profile.response_directions
+                and self.direction_cooldowns.get(d, 0) <= now
+                for d in DIRECTIONS
+            ]
+        )
+        if not self.profile.verified or np.any(norms[enabled] <= 0):
             self.reason = "response_profile_unverified"
             return None
         # Pick a physical direction that reduces the residual. Serial packets
         # compete for one duty budget and never contain opposing directions.
-        dot = b.T @ desired
+        if not enabled.any():
+            self.reason = "waiting_response_cooldown"
+            return None
+        dot = controlled_b.T @ desired
         durations = np.maximum(0, dot / np.maximum(norms**2, 1e-15))
-        scores = dot / norms
+        scores = np.divide(
+            dot, norms, out=np.full(4, -np.inf), where=(norms > 0) & enabled
+        )
         axis = int(np.argmax(scores))
         duration = min(self.profile.max_pulse_ms, math.floor(durations[axis]))
         if duration < self.profile.min_pulse_ms:
             return None
         saturated = durations[axis] > self.profile.max_pulse_ms
-        if fresh:
-            self.saturation.append((now, saturated, float(np.linalg.norm(m.error))))
         if len(self.saturation) >= 3:
             recent = list(self.saturation)[-3:]
             if all(s[1] for s in recent) and recent[-1][0] - recent[0][0] >= 2:
                 self.state, self.reason = "PULSE_RECOVERY", "pulse_saturated"
                 if recent[-1][2] >= recent[0][2]:
                     if not (permission.allow_axis or permission.allow_goto):
-                        self.hold("pulse_capacity_insufficient")
-                        self.state = "LIMITED"
-                        return None
-                    self.recovery_request = {
-                        "measurement_key": m.key,
-                        "error": m.error,
-                        "absolute": m.absolute,
-                        "reason": "capacity_insufficient",
-                    }
+                        if not self.profile.best_effort_s:
+                            self.hold("pulse_capacity_insufficient")
+                            self.state = "LIMITED"
+                            return None
+                        self.state, self.reason = (
+                            "CAPACITY_LIMITED_TRACKING",
+                            "bounded_best_effort",
+                        )
+                    else:
+                        self.recovery_request = {
+                            "measurement_key": m.key,
+                            "error": m.error,
+                            "absolute": m.absolute,
+                            "reason": "capacity_insufficient",
+                        }
         delta = b[:, axis] * duration
+        travel_bound = np.linalg.norm(delta) * (
+            1 + self.profile.response_fractional_bound
+        )
+        if self.profile.best_effort_s and (
+            self.command_travel + travel_bound > self.profile.best_effort_travel_arcsec
+            or self.best_effort_started is not None
+            and now + self.profile.start_delay_bound_s + duration / 1000
+            >= self.best_effort_started + self.profile.best_effort_s
+        ):
+            self.hold("best_effort_budget_exhausted")
+            self.state = "LIMITED"
+            return None
         total_bound = (
             m.bound_arcsec
             + np.linalg.norm(delta) * self.profile.response_fractional_bound
@@ -306,7 +438,7 @@ class TrackingController:
         )
         if not coast and (
             total_bound > self.profile.max_error_bound_arcsec
-            or np.linalg.norm(delta) <= m.bound_arcsec
+            or not self._beneficial(m.error, delta, m.bound_arcsec)
         ):
             self.reason = "command_uncertainty_exceeds_budget"
             return None
@@ -321,6 +453,14 @@ class TrackingController:
             m.timing.start_min + self.profile.max_age_s,
             now + 0.2,
         )
+        if self.profile.best_effort_s and self.best_effort_started is not None:
+            expiry = min(
+                expiry,
+                self.best_effort_started
+                + self.profile.best_effort_s
+                - self.profile.start_delay_bound_s
+                - duration / 1000,
+            )
         if coast:
             remaining = min(
                 self.profile.coast_max_s,
@@ -350,6 +490,7 @@ class TrackingController:
             else (m.model_pointing or m.aligned_radec),
         )
         self.pending_plan = plan
+        self.pending_saturated = saturated
         return plan
 
     def validate_dispatch(self, plan, snapshot, now, epoch):
@@ -375,6 +516,29 @@ class TrackingController:
             self.hold(receipt.reason or "command_rejected")
             return
         self.sent_ids.add(plan.command_id)
+        if plan.kind == "pulse" and self.last_measurement is not None:
+            self.saturation.append(
+                (
+                    receipt.submitted_mono,
+                    self.pending_saturated,
+                    float(
+                        np.linalg.norm(
+                            self._controlled_error(self.last_measurement.error)
+                        )
+                    ),
+                )
+            )
+            self.feedback_pending = (
+                plan,
+                self.last_measurement,
+                None if self.drift is None else self.drift.copy(),
+                self.history.drift_uncertainty,
+            )
+            self.command_travel += float(np.linalg.norm(plan.expected_delta)) * (
+                1 + self.profile.response_fractional_bound
+            )
+            if self.profile.best_effort_s and self.best_effort_started is None:
+                self.best_effort_started = receipt.submitted_mono
         # IDs only live for the session; keep memory bounded independently of run length.
         if len(self.sent_ids) > 256:
             self.sent_ids = {plan.command_id}
@@ -405,4 +569,9 @@ class TrackingController:
             "inflight": asdict(self.inflight) if self.inflight else None,
             "recovery_request": self.recovery_request,
             "last_command": self.events[-1] if self.events else None,
+            "feedback_gain": self.feedback_gain,
+            "response_directions": self.profile.response_directions,
+            "response_axes": self.profile.response_axes,
+            "command_travel_arcsec": self.command_travel,
+            "best_effort_started": self.best_effort_started,
         }

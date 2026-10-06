@@ -200,6 +200,21 @@ def test_controller_rechecks_stop_quality_and_permission_at_dispatch():
     assert np.linalg.norm(controller.position_remaining) == 0
 
 
+def test_fresh_unverified_exposure_is_reported_without_authorizing_a_pulse():
+    from dataclasses import replace
+
+    controller = TrackingController(profile())
+    controller.arm(context())
+    m = measurement(1, 10)
+    m = replace(m, timing=replace(m.timing, verified=False))
+    assert controller.tick(snapshot(m, 10), 10, 2) is None
+    assert controller.reason == "timing_unverified"
+    assert controller.pending_plan is None
+    old = measurement(2, 1)
+    assert controller.tick(snapshot(old, 10), 10, 2) is None
+    assert controller.reason == "stale_measurement"
+
+
 def test_closed_loop_converges_and_never_bursts_after_cloud():
     controller = TrackingController(profile())
     controller.arm(context())

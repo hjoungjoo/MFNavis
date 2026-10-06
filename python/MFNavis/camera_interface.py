@@ -200,6 +200,26 @@ class CameraInterface:
             return float(profile.analog_gain)
         return float(getattr(self, "gain", 1.0))
 
+    def _restore_saved_gain(self, cfg) -> None:
+        """Restore the gain explicitly committed by Exp Save or configuration."""
+        from PiFinder.camera_controls import normalize_gain
+
+        saved = cfg.get_option("camera_gain")
+        if saved is None:
+            return
+        try:
+            selection, _ = normalize_gain(saved)
+            if selection != "profile" and not np.isfinite(float(saved)):
+                raise ValueError("nonfinite saved gain")
+        except (TypeError, ValueError):
+            logger.warning("Ignoring invalid saved camera gain")
+            return
+        gain = self.get_default_gain() if selection == "profile" else selection
+        self.exposure_time, self.gain = self.set_camera_config(self.exposure_time, gain)
+        self._gain_mode = "profile" if selection == "profile" else "manual"
+        self.reset_framewise_auto_star(gain_locked=(self._gain_mode == "manual"))
+        logger.info("Restored saved camera gain: %gx (%s)", self.gain, self._gain_mode)
+
     def framewise_auto_star_active(self) -> bool:
         """Whether the hardware backend's Auto(Star) v2 owns controls."""
         return False
@@ -481,6 +501,8 @@ class CameraInterface:
                 logger.info(f"Camera type set to: {camera_type}")
 
             test_mode_on = False
+
+            self._restore_saved_gain(cfg)
 
             # Check if auto-exposure was previously enabled in config.
             # "auto" selects the match-count controller, "auto_star" the
@@ -1030,7 +1052,8 @@ class CameraInterface:
                         if command.startswith("set_gain"):
                             # Gain is deliberately runtime-only: unlike the
                             # exposure above it is not written to config, so a
-                            # restart goes back to the camera profile default.
+                            # restart restores a committed gain when present,
+                            # otherwise the camera profile default.
                             # Only the Exp Save menu item (`exp_save` below)
                             # commits a gain. Both the Camera Gain menu and the
                             # web LiveCam page read the applied gain back from

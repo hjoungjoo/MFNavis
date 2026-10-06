@@ -129,6 +129,10 @@ def stale_command(command, command_queue):
     if stamp is None:
         return False
     kind = command.get("type")
+    if kind == "toggle_guide_correction" and command.get("enabled") is False:
+        # A following GoTo or Stop must still turn off the previous target's
+        # guide loop. The mount executor guards optical ownership separately.
+        return False
     if kind in {
         "smooth_tracking_start",
         "smooth_tracking_calibrate",

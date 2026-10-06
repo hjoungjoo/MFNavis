@@ -1,0 +1,89 @@
+{
+  "profile_id": "deneb-loaded-north-dec-default-20261006",
+  "verified": true,
+  "equipment_verified": true,
+  "device": "LX200 OnStepX",
+  "driver": "indi_lx200_OnStepX:1.27",
+  "camera": "imx462_color",
+  "geometry": "50b7b4f6844566ed0a4f1e3c",
+  "mount_type": "Alt/Az",
+  "pier_side": "",
+  "guide_rate": [
+    1,
+    1
+  ],
+  "response": [
+    [
+      0.0036604632764694217,
+      0,
+      0,
+      0
+    ],
+    [
+      0.012924969544178627,
+      0,
+      0,
+      0
+    ]
+  ],
+  "response_fractional_bound": 0.65,
+  "model_target": [
+    310.35927748050915,
+    45.280250553760105
+  ],
+  "model_radius_deg": 0.5,
+  "min_pulse_ms": 100,
+  "max_pulse_ms": 1500,
+  "max_duty": 0.25,
+  "start_delay_bound_s": 0.5,
+  "settle_s": 1,
+  "stop_bound_s": 3.5,
+  "max_age_s": 3,
+  "max_timing_uncertainty_s": 0.012,
+  "max_error_bound_arcsec": 250,
+  "deadband_arcsec": 10.0,
+  "kp": 0.25,
+  "ramp_s": 3.0,
+  "prediction_horizon_s": 0.5,
+  "max_drift_arcsec_s": 20,
+  "reference_valid_s": 120,
+  "min_stars": 6,
+  "min_regions": 3,
+  "max_rmse_px": 1.0,
+  "max_condition": 100.0,
+  "roi_radius_px": 12,
+  "max_stars": 48,
+  "min_snr": 8.0,
+  "max_elongation": 2.5,
+  "max_width_px": 4.0,
+  "reference_bound_arcsec": 100,
+  "timing": {
+    "verified": true,
+    "camera": "imx462_color",
+    "backend": "PiFinder.camera_pi.CameraPI",
+    "clock": "boottime",
+    "timestamp_semantics": "first_row_readout",
+    "uncertainty_s": 0.003,
+    "rolling_skew_bound_s": 0.017
+  },
+  "axis": {},
+  "goto": {},
+  "recovery_count": 3,
+  "recovery_time_s": 60,
+  "recovery_travel_arcsec": 300,
+  "coast_verified": false,
+  "coast_max_s": 0.5,
+  "coast_error_bound_arcsec": 5.0,
+  "coast_travel_arcsec": 2.0,
+  "coast_external_rate_bound": 5.0,
+  "local_reference": {},
+  "robust_tracking": true,
+  "response_directions": [
+    "north"
+  ],
+  "response_axes": [
+    1
+  ],
+  "best_effort_s": 90,
+  "best_effort_travel_arcsec": 300
+}

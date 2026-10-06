@@ -103,12 +103,21 @@ class CalibrationController(TrackingController):
                 except ValueError as exc:
                     self.hold(str(exc))
                 return None
+        # Keep a time-spanning baseline even when video arrives faster than
+        # the bounded history can retain two seconds of consecutive frames.
+        if (
+            self.baseline
+            and m.timing.midpoint - self.baseline[-1].timing.midpoint < 0.5
+        ):
+            return None
         self.baseline.append(m)
         self.state, self.reason = "CALIBRATING", "measuring_uncommanded_drift"
         if len(self.baseline) < 4:
             return None
         first = self.baseline[0]
         if m.timing.midpoint - first.timing.midpoint < 2:
+            return None
+        if now < self.next_send:
             return None
         times = np.array([s.timing.midpoint for s in self.baseline])
         errors = np.array([s.error for s in self.baseline])

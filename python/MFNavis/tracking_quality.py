@@ -201,24 +201,33 @@ def extract_rois(raw, centers, radius):
     return patches
 
 
-def centroid(patch, profile, saturation):
+def centroid(patch, profile, saturation, *, counts=None):
+    """Measure a clean star and optionally count why a bounded ROI was rejected."""
+
+    def counted(reason, result=None):
+        if counts is not None:
+            counts[reason] = counts.get(reason, 0) + 1
+        return result
+
     if patch is None:
-        return None
+        return counted("outside_frame")
     image = np.asarray(patch["pixels"], dtype=float)
-    if not np.isfinite(image).all() or image.max() >= saturation:
-        return None
+    if not np.isfinite(image).all():
+        return counted("invalid_pixels")
+    if image.max() >= saturation:
+        return counted("saturated")
     edge = np.concatenate([image[0], image[-1], image[1:-1, 0], image[1:-1, -1]])
     background = np.median(edge)
     noise = max(1.0, 1.4826 * np.median(np.abs(edge - background)))
     peak = np.unravel_index(np.argmax(image), image.shape)
     if min(*peak, image.shape[0] - 1 - peak[0], image.shape[1] - 1 - peak[1]) < 3:
-        return None
+        return counted("edge_peak")
     yy, xx = np.indices(image.shape)
     region = (yy - peak[0]) ** 2 + (xx - peak[1]) ** 2 <= 16
     weight = np.where(region, np.maximum(image - background - 2 * noise, 0), 0)
     flux = weight.sum()
     if flux <= 0 or (image[peak] - background) / noise < profile.min_snr:
-        return None
+        return counted("low_signal")
     center = np.array([(weight * yy).sum(), (weight * xx).sum()]) / flux
     dy, dx = yy - center[0], xx - center[1]
     cov = (
@@ -236,14 +245,14 @@ def centroid(patch, profile, saturation):
         or values[-1] > profile.max_width_px**2
         or values[-1] / values[0] > profile.max_elongation**2
     ):
-        return None
+        return counted("invalid_shape")
     # Competing bright points elsewhere in the ROI invalidate identity.
     if np.any(
         (~region)
         & (image > background + max(6 * noise, (image[peak] - background) * 0.6))
     ):
-        return None
-    return center + patch["origin"]
+        return counted("competing_sources")
+    return counted("accepted", center + patch["origin"])
 
 
 class StarTracker:
@@ -262,9 +271,15 @@ class StarTracker:
         )
         self.last_sequence = -1
         self.last_exposure = None
+        self.local_world = None
+        self.local_indices = None
+        self.local_bound = None
 
     def roi_request(self):
-        corrected = self.geometry.project(self.reference["world"], self.pose)
+        corrected = self.geometry.project(
+            self.reference["world"] if self.local_world is None else self.local_world,
+            self.pose,
+        )
         centers = native_points(
             corrected,
             self.reference["raw_shape"],
@@ -334,13 +349,20 @@ class StarTracker:
         if frame.get("reference") != self.context.reference:
             return reject("roi_reference_changed")
         points, indices = [], []
+        counts = {}
         for i, patch in enumerate(frame["patches"]):
+            if self.local_indices is not None and i not in self.local_indices:
+                continue
             measured = centroid(
-                patch, self.profile, self.reference["info"]["saturation_level"]
+                patch,
+                self.profile,
+                self.reference["info"]["saturation_level"],
+                counts=counts,
             )
             if measured is not None:
                 points.append(measured)
                 indices.append(i)
+        base.update(stars=len(points), roi_counts=counts)
         if len(points) < self.profile.min_stars:
             return reject("stars_lost_or_ambiguous")
         points = corrected_points(
@@ -354,7 +376,9 @@ class StarTracker:
         )
         if reason:
             return reject(reason)
-        world = np.asarray(self.reference["world"])[indices]
+        world = np.asarray(
+            self.reference["world"] if self.local_world is None else self.local_world
+        )[indices]
         limits = TrackingLimits(
             search_px=self.profile.roi_radius_px, residual_px=self.profile.max_rmse_px
         )
@@ -380,16 +404,35 @@ class StarTracker:
         roll = math.degrees(
             math.atan2(float(pose[1] @ base_axes[2]), float(pose[1] @ base_axes[1]))
         )
+        scale = ARCSEC / self.geometry.focal
         bound = (
             self.reference["absolute_bound"]
-            + max(0.1, rmse) * ARCSEC / self.geometry.focal
-        )
+            if self.local_bound is None
+            else self.local_bound
+        ) + max(0.1, rmse) * scale
         if bound > self.profile.max_error_bound_arcsec:
             return reject("uncertainty_exceeds_budget")
         self.pose = pose
+        relative_bound = None
+        if self.profile.robust_tracking:
+            # Anchor only catalog-confirmed inliers, using the same RAW
+            # centroid method as subsequent video. Catalog/lens offsets stay
+            # in the absolute bound instead of changing with each star subset.
+            if self.local_world is None:
+                mask = residual <= self.profile.max_rmse_px
+                self.local_world = np.asarray(self.reference["world"]).copy()
+                selected = np.asarray(indices)[mask]
+                self.local_world[selected] = self.geometry.rays(points[mask]) @ pose
+                self.local_indices = set(selected.tolist())
+                self.local_bound = bound
+            relative_bound = max(0.5, 3 * max(0.05, rmse) * scale / math.sqrt(count))
+        expected_stars = (
+            len(self.local_indices)
+            if self.local_indices is not None
+            else len(self.reference["world"])
+        )
         degraded = (
-            count < len(self.reference["world"]) * 0.75
-            or rmse > self.profile.max_rmse_px * 0.7
+            count < expected_stars * 0.75 or rmse > self.profile.max_rmse_px * 0.7
         )
         return TrackingMeasurement(
             **{
@@ -403,5 +446,6 @@ class StarTracker:
                 "stars": count,
                 "rmse_px": rmse,
                 "exposure": exposure,
+                "relative_bound_arcsec": relative_bound,
             },
         )

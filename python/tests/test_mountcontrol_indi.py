@@ -275,6 +275,56 @@ def test_sync_goto_requires_new_mode_coordinate_and_slew_ack(monkeypatch):
     assert len(mount.moves) == 1
 
 
+def test_sync_goto_disables_old_guide_and_waits_for_inflight_pulse(monkeypatch):
+    mount, command = _verified_goto_test_mount(monkeypatch)
+    clock = [1000.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    mount._guide_correction_enabled = True
+    mount._guide_correction_target = (10.0, 20.0)
+    mount._guide_pulse_until = 1003.0
+    assert mount.begin_sync_and_goto(command)
+    assert mount._guide_correction_enabled is False
+    assert mount._sync_goto_status["state"] == "waiting_guide_idle"
+    assert mount.client.switches == []
+    _sync_ack(mount, "ON_COORD_SET", {"SYNC": True})
+    assert mount.client.numbers == []
+    clock[0] = 1003.1
+    mount._check_pending_sync_goto()
+    assert mount._sync_goto_status["state"] == "waiting_sync_mode"
+    assert mount.client.switches[-1][1:] == ("ON_COORD_SET", "SYNC")
+    mount._check_pending_sync_goto()
+    assert mount.client.numbers == []  # The pre-drain mode ACK is stale.
+    _sync_ack(mount, "ON_COORD_SET", {"SYNC": True})
+    _sync_ack(mount, "EQUATORIAL_EOD_COORD", {"RA": 8.8, "DEC": 49.5})
+    _sync_ack(mount, "ON_COORD_SET", {"SLEW": True})
+    assert mount.moves == [(140.0, 45.0)]
+    assert mount._guide_correction_enabled is False
+
+
+@pytest.mark.parametrize("cancel", ["stop", "timeout", "disconnect"])
+def test_sync_goto_pulse_wait_can_be_canceled(monkeypatch, cancel):
+    mount, command = _verified_goto_test_mount(monkeypatch)
+    clock = [1000.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    mount._guide_pulse_until = 1003.0
+    assert mount.begin_sync_and_goto(command)
+    assert mount._sync_goto_status["state"] == "waiting_guide_idle"
+    if cancel == "stop":
+        monkeypatch.setattr(mount, "_apply_indi_properties", lambda *args: True)
+        mount.stop_mount()
+    elif cancel == "disconnect":
+        mount.mark_disconnected("test")
+    else:
+        clock[0] = mount._pending_sync_goto["deadline"]
+        mount._check_pending_sync_goto()
+    clock[0] = 1010.0
+    _sync_ack(mount, "ON_COORD_SET", {"SYNC": True})
+    assert mount._pending_sync_goto is None
+    assert mount._sync_goto_status["state"] == "failed"
+    assert mount.client.switches == []
+    assert mount.moves == []
+
+
 @pytest.mark.parametrize(
     "failure", ["alert", "timeout", "disconnect", "stop", "manual", "exception"]
 )

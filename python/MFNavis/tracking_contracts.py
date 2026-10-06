@@ -101,6 +101,9 @@ class TrackingMeasurement:
     degrees_of_freedom: int = 3
     model_pointing: tuple[float, float] | None = None
     target_radec: tuple[float, float] | None = None
+    roi_counts: dict[str, int] = field(default_factory=dict)
+    # Statistical video precision estimate; never replaces the absolute bound.
+    relative_bound_arcsec: float | None = None
 
     @property
     def key(self):
@@ -115,6 +118,13 @@ class TrackingMeasurement:
             and all(math.isfinite(v) for v in self.error)
             and math.isfinite(self.bound_arcsec)
             and self.bound_arcsec >= 0
+            and (
+                self.relative_bound_arcsec is None
+                or (
+                    math.isfinite(self.relative_bound_arcsec)
+                    and self.relative_bound_arcsec >= 0
+                )
+            )
         )
 
 
@@ -160,6 +170,7 @@ class TrackingProfile:
 
     Response columns are N,S,E,W in the fixed TARGET tangent plane, arcsec/ms.
     A measured model has an explicit sky-position validity radius.
+    Partial profiles certify only the selected response axes/directions.
     """
 
     profile_id: str = "unverified"
@@ -213,8 +224,35 @@ class TrackingProfile:
     coast_travel_arcsec: float = 2.0
     coast_external_rate_bound: float = 5.0
     local_reference: dict = field(default_factory=dict)
+    # Field-validated video anchors, jitter filtering and response feedback.
+    # Explicit False keeps the legacy estimator available for comparison.
+    robust_tracking: bool = True
+    response_directions: tuple[str, ...] = ("north", "south", "east", "west")
+    response_axes: tuple[int, ...] = (0, 1)  # East/RA and North/Dec tangent axes.
+    best_effort_s: float = 0.0
+    # Reserved command travel includes response uncertainty, excludes native drift.
+    best_effort_travel_arcsec: float = 300.0
 
     def __post_init__(self):
+        if type(self.robust_tracking) is not bool:
+            raise ValueError("robust tracking must be a boolean")
+        directions = tuple(self.response_directions)
+        axes = tuple(self.response_axes)
+        if (
+            not directions
+            or len(set(directions)) != len(directions)
+            or any(d not in {"north", "south", "east", "west"} for d in directions)
+        ):
+            raise ValueError("invalid response directions")
+        if (
+            not axes
+            or len(set(axes)) != len(axes)
+            or any(type(a) is not int or a not in (0, 1) for a in axes)
+        ):
+            raise ValueError("invalid response axes")
+        if not 0 <= finite(self.best_effort_s) <= 600:
+            raise ValueError("invalid best effort time limit")
+        finite(self.best_effort_travel_arcsec, positive=True)
         for name in (
             "min_pulse_ms",
             "max_pulse_ms",
@@ -316,10 +354,24 @@ class TrackingProfile:
             ):
                 raise ValueError("sensor timing exceeds observation uncertainty budget")
         if self.verified:
-            if np.linalg.matrix_rank(b) != 2 or np.linalg.cond(b) > self.max_condition:
+            columns = [("north", "south", "east", "west").index(d) for d in directions]
+            controlled = b[np.ix_(axes, columns)]
+            if (
+                np.linalg.matrix_rank(controlled) != len(axes)
+                or np.linalg.cond(controlled) > self.max_condition
+            ):
                 raise ValueError("unobservable pulse response")
-            if any(np.dot(b[:, a], b[:, a + 1]) >= 0 for a in (0, 2)):
+            if any(
+                a in columns
+                and a + 1 in columns
+                and np.dot(b[list(axes), a], b[list(axes), a + 1]) >= 0
+                for a in (0, 2)
+            ):
                 raise ValueError("opposing responses must oppose")
+        if self.coast_verified and (
+            axes != (0, 1) or len(directions) != 4 or self.best_effort_s
+        ):
+            raise ValueError("partial/best effort tracking cannot coast")
         local = self.local_reference
         if local:
             if type(local.get("verified")) is not bool:
