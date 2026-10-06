@@ -63,7 +63,7 @@ a shipping manual whose physical-device restoration testing is complete.
 
 ## Image-specific pinning and shipment checks
 
-`deployment/mfds.lock.json` pins the general MFDS 0.4.2 distribution. Its binary
+`deployment/mfds.lock.json` pins the general MFDS 0.4.3 distribution. Its binary
 is a development package that includes ctypes support; it is not itself a
 commercial product image. A new package built with `make commercial` has different
 hashes. The commercial lock must require `profile: commercial-process-only` and
@@ -95,7 +95,7 @@ python3 scripts/install_mfds.py --commercial --lock deployment/mfds-commercial.l
 python/.venv/bin/python scripts/collect_product_licenses.py --output OPEN_SOURCE_LICENSES
 ```
 
-`deployment/mfds-commercial.lock.json` pins the official MFDS v0.4.2 commercial
+`deployment/mfds-commercial.lock.json` pins the official MFDS v0.4.3 commercial
 packages and actual hashes for both architectures. It adds
 `"profile": "commercial-process-only"` to the existing lock's schema, version,
 source_commit and assets structure; the URLs and both SHA256 values refer to

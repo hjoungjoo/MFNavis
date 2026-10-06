@@ -1,17 +1,17 @@
 {
   "schema": 1,
-  "version": "0.4.2",
-  "source_commit": "fb38aa73154c8977e0903cb8c6f3d70f1810e57c",
+  "version": "0.4.3",
+  "source_commit": "de25af69d3c4a8450af0b2a7479db6d2e5675b14",
   "assets": {
     "linux-aarch64": {
-      "url": "https://github.com/hjoungjoo/MFDS/releases/download/v0.4.2/MFDS-0.4.2-linux-aarch64-commercial.tar.gz",
-      "sha256": "fb87d8e497a8b2288bf7f94681b3ffd134e2db33e7f1b77c1f11690252b2501e",
-      "manifest_sha256": "bb78834142e15c77da3bfc8e61e073defd4cc2f8d727dc392e6e516b2da7ea9d"
+      "url": "https://github.com/hjoungjoo/MFDS/releases/download/v0.4.3/MFDS-0.4.3-linux-aarch64-commercial.tar.gz",
+      "sha256": "5c8f1bbab06cf8619523d9462a2e168be7cd84a8e80b29730a7d06818abccc63",
+      "manifest_sha256": "098c703dd371e4311f5de99d98fa2b9ec9377c674d26f64eb68fdd0c9fcac08f"
     },
     "linux-x86_64": {
-      "url": "https://github.com/hjoungjoo/MFDS/releases/download/v0.4.2/MFDS-0.4.2-linux-x86_64-commercial.tar.gz",
-      "sha256": "ee4e3150cfbdade165c4437fbc217135281873dc87d366b8e0e75235c41aef25",
-      "manifest_sha256": "cae71a0fa44b4eee44b360ba3d55f8082786b4fd79c5324cae5527718b667baa"
+      "url": "https://github.com/hjoungjoo/MFDS/releases/download/v0.4.3/MFDS-0.4.3-linux-x86_64-commercial.tar.gz",
+      "sha256": "5ba52a2618f17761b1b1abf7c527db97ecf0115fc885f74742feeda9144e4139",
+      "manifest_sha256": "7224a461c2d78a38d9d7267e40fe569854dc1b8fab8b53aecfc10c197629476d"
     }
   },
   "profile": "commercial-process-only"
