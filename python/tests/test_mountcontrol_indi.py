@@ -361,6 +361,18 @@ def test_pending_sync_failure_or_cancel_never_sends_target(monkeypatch, failure)
     assert mount.moves == []
 
 
+def test_sync_goto_disconnect_before_sync_mode_cancels_move(monkeypatch):
+    mount, command = _verified_goto_test_mount(monkeypatch)
+    mount._pending_sync_goto = command
+    mount.client = None
+
+    assert not mount._request_sync_goto_mode(command)
+    assert mount._pending_sync_goto is None
+    assert mount._sync_goto_status["state"] == "failed"
+    assert "disconnected" in mount._sync_goto_status["reason"]
+    assert mount.moves == []
+
+
 def test_sync_goto_initial_send_exception_cancels_late_ack(monkeypatch):
     mount, command = _verified_goto_test_mount(monkeypatch)
 

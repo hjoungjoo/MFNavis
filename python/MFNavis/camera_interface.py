@@ -214,7 +214,7 @@ class CameraInterface:
         except (TypeError, ValueError):
             logger.warning("Ignoring invalid saved camera gain")
             return
-        gain = self.get_default_gain() if selection == "profile" else selection
+        gain = self.get_default_gain() if selection == "profile" else float(selection)
         self.exposure_time, self.gain = self.set_camera_config(self.exposure_time, gain)
         self._gain_mode = "profile" if selection == "profile" else "manual"
         self.reset_framewise_auto_star(gain_locked=(self._gain_mode == "manual"))

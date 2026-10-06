@@ -6841,3 +6841,21 @@ msgstr "보정 축"
 
 msgid "Video motion uncertainty estimate"
 msgstr "영상 이동 오차 추정"
+
+msgid "Align / confirm target centre"
+msgstr "정렬 / 목표 중심 확인"
+
+msgid "Automatic"
+msgstr "자동"
+
+msgid "Download local optical model for review"
+msgstr "검토용 현장 광학 모델 다운로드"
+
+msgid "Moon, planet and manual alignment tracking"
+msgstr "달·행성 및 수동 정렬 추적"
+
+msgid "Star / deep sky"
+msgstr "별 / 심원 천체"
+
+msgid "Target type"
+msgstr "목표 유형"

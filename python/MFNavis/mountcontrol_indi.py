@@ -4555,9 +4555,13 @@ class MountControlIndi(BacklashCalibrationMixin):
         return self._request_sync_goto_mode(transaction)
 
     def _request_sync_goto_mode(self, transaction: dict[str, Any]) -> bool:
+        client = self.client
+        if client is None:
+            self._cancel_sync_goto("Mount disconnected before requesting SYNC mode")
+            return False
         self._arm_sync_goto_stage(transaction, "waiting_sync_mode")
         try:
-            requested = self.client.set_switch(self.device, "ON_COORD_SET", "SYNC")
+            requested = client.set_switch(self.device, "ON_COORD_SET", "SYNC")
         except Exception as exc:
             logger.exception("Could not request verified SYNC mode")
             self._cancel_sync_goto(f"Could not request SYNC mode: {exc}")
