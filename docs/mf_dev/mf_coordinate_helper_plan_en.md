@@ -135,10 +135,22 @@ IMU smoothing:
 - Large movement is treated as real telescope motion and followed quickly.
 - Both raw and smoothed values are written to the status JSON.
 
-Selection as an absolute coordinate requires either NDOF magnetometer heading
-or a session-only SkySafari alignment. An unaligned IMUPLUS quaternion is not
-an absolute heading; it is used only as a relative delta from a trusted plate
-solve or aligned mount anchor.
+Before the first solve or mount alignment, every usable IMU sample supplies a
+live fallback coordinate, including IMUPLUS without a magnetometer. This lets
+SkySafari follow physical and manual movement immediately after boot without
+requiring a GoTo first. An unaligned IMUPLUS heading is provisional, with low
+quality and a health warning; it is not an absolute sky reference for mount
+control. NDOF magnetometer heading or a session-only SkySafari alignment gives
+it an absolute reference. Plate-solve-anchored estimates and aligned mount
+coordinates retain priority, so they never revert to the startup IMU heading.
+
+Observer location priority is a live locked location, then the configured
+default, then the last site successfully sent to OnStep (the persisted
+`onstep_location_cache.json`). The cached site keeps IMU Alt/Az-to-RA/Dec
+conversion available before GPS lock even when no default location is saved.
+Its source is `CACHE: last OnStep site` and the health status marks it as
+provisional. This fallback does not change shared-state GPS lock or trigger a
+mount site/time sync; a new GPS fix or configured default replaces it.
 
 Relevant metadata:
 

@@ -21,7 +21,7 @@ import os
 import threading
 from multiprocessing import Queue
 from typing import Any, Optional, Tuple, Union
-from PiFinder import config, gps_time_sync, utils
+from PiFinder import config, gps_time_sync, sys_utils, utils
 from PiFinder.alignment_projection import cached_target_pixel, projection_context
 from PiFinder.calc_utils import (
     FastAltAz,
@@ -368,11 +368,47 @@ def _configured_default_location() -> Optional[StateLocation]:
     )
 
 
+def _fallback_observer_location() -> Optional[StateLocation]:
+    """Use the saved default, else the last site successfully sent to OnStep.
+
+    The cached site supplies a provisional frame for pointing before a GPS
+    fix. It never sets shared-state GPS lock or sends a mount site/time sync.
+    A live locked location takes priority in the coordinate service.
+    """
+    configured = _configured_default_location()
+    if configured is not None:
+        return configured
+    try:
+        cached = sys_utils.read_onstep_location_cache()
+        lat = float(cached["latitude"])
+        lon = float(cached["longitude"])
+        altitude = float(cached.get("elevation") or 0.0)
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not (
+        math.isfinite(lat)
+        and math.isfinite(lon)
+        and math.isfinite(altitude)
+        and -90 <= lat <= 90
+        and -180 <= lon <= 180
+    ):
+        return None
+    return StateLocation(
+        lat=lat,
+        lon=lon,
+        altitude=altitude,
+        source="CACHE: last OnStep site",
+        lock=True,
+        lock_type=2,
+        error_in_m=1000.0,
+    )
+
+
 def _observer_location(shared_state) -> Optional[StateLocation]:
     location = shared_state.location()
     if location and location.lock:
         return location
-    configured = _configured_default_location()
+    configured = _fallback_observer_location()
     if configured:
         return configured
     return location
@@ -399,7 +435,7 @@ def _imu_fallback_pointing(
         shared_state,
         dt,
         config_get=_get_config_option,
-        default_location_provider=_configured_default_location,
+        default_location_provider=_fallback_observer_location,
         imu_alignment_correction=_imu_alignment_correction,
         apply_alignment=apply_alignment,
     )
@@ -422,7 +458,7 @@ def _update_coordinate_service_state(shared_state):
         shared_state,
         dt,
         config_get=_get_config_option,
-        default_location_provider=_configured_default_location,
+        default_location_provider=_fallback_observer_location,
         mount_status_provider=_mount_control_status,
         imu_alignment_correction=_imu_alignment_correction,
     )

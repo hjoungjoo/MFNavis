@@ -135,10 +135,20 @@ IMU smoothing:
 - 큰 변화는 사용자가 실제로 망원경을 움직인 것으로 보고 빠르게 반영한다.
 - smoothing 전후 값은 모두 status JSON에 기록한다.
 
-절대 좌표 후보로 선택하려면 NDOF magnetometer 방위 또는 session-only SkySafari
-alignment가 필요하다. 정렬되지 않은 IMUPLUS quaternion은 절대 방위가 아니므로
-단독 fallback에는 쓰지 않고, 정상 plate solve 또는 정렬된 mount 기준의 상대 이동에만
-사용한다.
+첫 솔빙 또는 마운트 정렬 전에는 유효한 IMU 샘플을 실시간 fallback 좌표로
+사용한다. 자기센서가 없는 IMUPLUS도 포함하므로, 부팅 직후 GOTO 없이 기구를
+직접 움직이거나 수동 이동해도 SkySafari 좌표가 갱신된다. 정렬 전 IMUPLUS 방위는
+초기 기준의 임시 좌표이며 낮은 품질과 health 경고를 표시한다. 마운트 제어의 절대
+하늘 기준으로 취급하지 않는다. NDOF magnetometer 방위 또는 session-only
+SkySafari alignment가 있으면 절대 기준을 갖는다. 솔빙 기준 추정값과 정렬된
+마운트 좌표는 계속 우선하므로, 정상 기준이 생긴 뒤 초기 IMU 방위로 돌아가지 않는다.
+
+관측지 위치는 현재 lock된 위치, 설정된 기본 관측지, 마지막으로 OnStep에 성공적으로
+전송한 위치(`onstep_location_cache.json`) 순으로 선택한다. 기본 관측지가 없어도
+마지막 위치가 저장되어 있으면 GPS lock 전 IMU Alt/Az→RA/Dec 변환이 가능하다.
+이 위치의 source는 `CACHE: last OnStep site`이며 health에는 임시 관측지 사용을
+표시한다. shared state의 GPS lock이나 마운트 위치·시간 동기화 상태를 변경하지
+않으며, 새로운 GPS 위치 또는 기본 관측지가 생기면 이를 우선한다.
 
 관련 status metadata:
 

@@ -379,7 +379,7 @@ def test_unanchored_failed_solve_is_not_trusted():
     assert state.current.source == SOURCE_UNAVAILABLE
 
 
-def test_unaligned_imuplus_is_not_used_as_absolute_fallback():
+def test_unaligned_imuplus_supplies_provisional_pointing_before_first_solve():
     service = PointingCoordinateService()
     solved = CoordinateSample.invalid(SOURCE_SOLVE, "test")
     mount = CoordinateSample.invalid(SOURCE_MOUNT, "test")
@@ -387,6 +387,7 @@ def test_unaligned_imuplus_is_not_used_as_absolute_fallback():
         ra_deg=250.0,
         dec_deg=35.0,
         source=SOURCE_IMU,
+        quality="low",
         valid=True,
         metadata={"uses_magnetometer": False, "alignment_applied": False},
     )
@@ -394,8 +395,10 @@ def test_unaligned_imuplus_is_not_used_as_absolute_fallback():
 
     current = service._select_current(solved, imu, mount, health)
 
-    assert current.source == SOURCE_UNAVAILABLE
-    assert any("absolute IMU fallback unavailable" in item for item in health.warnings)
+    assert current.source == SOURCE_IMU
+    assert current.radec() == pytest.approx((250.0, 35.0))
+    assert current.quality == "low"
+    assert any("unaligned IMU heading" in item for item in health.warnings)
 
 
 @pytest.mark.parametrize(

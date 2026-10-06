@@ -10,6 +10,11 @@ import quaternion
 from PiFinder import nonsidereal, pos_server, track_freq_policy
 from PiFinder.types.positioning import (
     ImuSample,
+    Pointing,
+    PointingAxis,
+    PointingEstimate,
+    PointingMatrix,
+    SolveSource,
 )
 
 
@@ -91,6 +96,7 @@ def sidereal_mount_status(monkeypatch):
     that exercise the reset override it.
     """
     monkeypatch.setattr(track_freq_policy, "_mount_status", lambda: {})
+    monkeypatch.setattr(pos_server.sys_utils, "read_onstep_location_cache", lambda: {})
     monkeypatch.setattr(pos_server, "ui_queue", queue.Queue(), raising=False)
     # These routing tests use abstract coordinates. Real epoch conversion and
     # its end-to-end alignment/display contract are tested separately.
@@ -237,6 +243,129 @@ class DummyConfig:
 
     def set_option(self, option, value):
         self.options[option] = value
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("motion", ["no_mount", "physical", "manual"])
+@pytest.mark.parametrize("location_source", ["gps", "cached_site"])
+def test_boot_pointing_follows_imu_before_any_goto(
+    monkeypatch, motion, location_source
+):
+    monkeypatch.setattr(pos_server.time, "time", lambda: 1000.0)
+    monkeypatch.setattr(pos_server, "is_stellarium", False)
+    monkeypatch.setattr(
+        pos_server,
+        "pos_server_config",
+        DummyConfig({"mount_control": motion != "no_mount"}),
+    )
+    # The freshly connected mount has an unrelated, unsynced coordinate.
+    status = {"ra": 50.0, "dec": 10.0, "updated": 1000.0}
+    if motion == "manual":
+        status.update(mount_motion_active=True, manual_motion_direction="e")
+    monkeypatch.setattr(pos_server, "_mount_control_status", lambda: status)
+    monkeypatch.setattr(pos_server, "_log_pointing_state", lambda _state: None)
+    state = DummyState(
+        ImuSample(quaternion.quaternion(1, 0, 0, 0), 999.8, status=3, moving=False),
+        location=DummyUnlockedLocation() if location_source == "cached_site" else None,
+    )
+    if location_source == "cached_site":
+        monkeypatch.setattr(
+            pos_server.sys_utils,
+            "read_onstep_location_cache",
+            lambda: {"latitude": 37.5, "longitude": 127.0, "elevation": 30.0},
+        )
+
+    initial = pos_server._update_coordinate_service_state(state)
+    assert initial.current.source == "imu_fallback"
+    assert initial.mode == "IMU_PRIMARY_UNSOLVED"
+    if location_source == "cached_site":
+        assert initial.imu.metadata["location_source"] == "CACHE: last OnStep site"
+        assert state.location().lock is False
+    initial_response = (
+        pos_server.get_telescope_ra(state, ":GR#"),
+        pos_server.get_telescope_dec(state, ":GD#"),
+    )
+
+    # Even below the moving detector's threshold, a fresh quaternion matters.
+    state._imu_sample = ImuSample(
+        quaternion.from_rotation_vector((0.2, 0.3, 0.4)),
+        1000.0,
+        status=3,
+        moving=False,
+    )
+    moved = pos_server._update_coordinate_service_state(state)
+    assert moved.current.source == "imu_fallback"
+    assert moved.radec() != pytest.approx(initial.radec())
+    assert pos_server._current_pointing(state) == pytest.approx(moved.imu.radec())
+    assert (
+        pos_server.get_telescope_ra(state, ":GR#"),
+        pos_server.get_telescope_dec(state, ":GD#"),
+    ) != initial_response
+
+    # First solve replaces the provisional frame; later IMU estimates and
+    # failed solve attempts keep that same plate-solve anchor authoritative.
+    plate = Pointing(RA=120.0, Dec=20.0, Roll=0.0)
+    state._solution = PointingEstimate(
+        pointing=PointingMatrix(
+            camera=PointingAxis(solve=plate, estimate=plate),
+            aligned=PointingAxis(solve=plate, estimate=plate),
+        ),
+        imu_anchor=state._imu_sample.quat,
+        estimate_time=1000.0,
+        last_solve_success=1000.0,
+        solve_source=SolveSource.CAMERA,
+    )
+    for source, ra, dec in (
+        (SolveSource.CAMERA, 120.0, 20.0),
+        (SolveSource.IMU, 121.0, 21.0),
+        (SolveSource.CAMERA_FAILED, 121.0, 21.0),
+    ):
+        state._solution.solve_source = source
+        state._solution.pointing.aligned.estimate = Pointing(ra, dec, 0.0)
+        solved = pos_server._update_coordinate_service_state(state)
+        assert solved.mode == "SOLVED_PRIMARY"
+        assert pos_server._current_pointing(state) == pytest.approx((ra, dec))
+
+
+@pytest.mark.unit
+def test_default_and_live_location_take_priority_over_cached_site(monkeypatch):
+    monkeypatch.setattr(
+        pos_server.sys_utils,
+        "read_onstep_location_cache",
+        lambda: {"latitude": 10.0, "longitude": 20.0, "elevation": 0.0},
+    )
+    monkeypatch.setattr(
+        pos_server,
+        "pos_server_config",
+        DummyConfig({"locations.default": DummyConfigLocation()}),
+    )
+    configured = pos_server._observer_location(
+        DummyState(None, location=DummyUnlockedLocation())
+    )
+    assert configured.lat == pytest.approx(DummyConfigLocation.latitude)
+    assert configured.source == "CONFIG: Pungnap-dong"
+    live = DummyLocation()
+    assert pos_server._observer_location(DummyState(None, location=live)) is live
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "cache",
+    [
+        {},
+        {"latitude": 91, "longitude": 127},
+        {"latitude": 37, "longitude": 181},
+        {"latitude": float("nan"), "longitude": 127},
+        {"latitude": 37, "longitude": 127, "elevation": float("inf")},
+        {"latitude": "invalid", "longitude": 127},
+    ],
+)
+def test_unusable_cached_site_does_not_supply_observer_location(monkeypatch, cache):
+    monkeypatch.setattr(pos_server, "pos_server_config", DummyConfig({}))
+    monkeypatch.setattr(
+        pos_server.sys_utils, "read_onstep_location_cache", lambda: cache
+    )
+    assert pos_server._fallback_observer_location() is None
 
 
 @pytest.mark.unit

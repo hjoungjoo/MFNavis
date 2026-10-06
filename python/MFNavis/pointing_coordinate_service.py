@@ -1117,22 +1117,21 @@ class PointingCoordinateService:
                     return fused
             return self._mount_readback_sample(mount)
 
-        if imu.valid and self._imu_can_supply_absolute_coordinate(imu):
+        if imu.valid:
+            # Before the first solve/sync, IMUPLUS still supplies a live
+            # provisional pointing in its startup heading frame. Withholding
+            # it freezes LX200 at the default RA/Dec until a GoTo establishes
+            # an anchor. Solved and aligned-mount candidates above retain
+            # priority so a trusted frame never falls back to that heading.
             self._mount_imu_anchor = None
             if mount.valid and not mount.aligned:
                 health.mount_pre_alignment_only = True
                 health.warnings.append("mount readback ignored before sync/alignment")
+            if not self._imu_can_supply_absolute_coordinate(imu):
+                health.warnings.append(
+                    "unaligned IMU heading; provisional pointing until solve/alignment"
+                )
             return imu
-
-        if imu.valid:
-            # IMUPLUS has no absolute heading. It remains useful as a relative
-            # delta after a plate solve (handled by the integrator) or after an
-            # aligned mount anchor (handled above), but selecting it directly
-            # here can put SkySafari tens of degrees away from the last solve.
-            self._mount_imu_anchor = None
-            health.warnings.append(
-                "absolute IMU fallback unavailable without magnetometer or alignment"
-            )
 
         if mount.valid and not mount.aligned:
             self._mount_imu_anchor = None
@@ -1149,8 +1148,9 @@ class PointingCoordinateService:
 
         A magnetometer-backed sample has an absolute azimuth.  A session
         alignment also turns the otherwise relative IMUPLUS heading into an
-        absolute direction.  Without either, the quaternion may only be used
-        as a delta from a trusted plate-solve or mount anchor.
+        absolute direction. Without either, its startup heading is only a
+        provisional display coordinate until a solve or sync supplies an
+        anchor; it must not be treated as an absolute direction for control.
         """
         metadata = imu.metadata or {}
         return bool(
@@ -2027,6 +2027,10 @@ class PointingCoordinateService:
         mount: CoordinateSample,
         health: CoordinateHealth,
     ) -> None:
+        if imu.valid and str(imu.metadata.get("location_source", "")).startswith(
+            "CACHE:"
+        ):
+            health.warnings.append("using last saved observing site until GPS/default")
         current_radec = current.radec()
         mount_radec = mount.radec()
         if current_radec is not None and mount_radec is not None:
