@@ -133,6 +133,9 @@ DEFAULT_GOTO_REFINE_ACCURACY_ARCMIN = 1.0
 # post-pulse solve drive the next correction without overlapping a pulse.
 # Inter-solve predictive guiding was removed; only observed errors drive this loop.
 GUIDE_CORRECTION_INTERVAL_SECONDS = 3.0
+# Tracking hold remeasures after each completed pulse without an extra idle poll.
+# The pulse deadline + settling gate still takes precedence over this cadence.
+GUIDE_TRACKING_INTERVAL_SECONDS = 1.0
 GUIDE_CORRECTION_MAX_SOLVE_AGE_SECONDS = 12.0
 SYNC_GOTO_STAGE_TIMEOUT_SECONDS = 5.0
 SYNC_GOTO_COORD_TOLERANCE_ARCMIN = 0.5
@@ -140,11 +143,12 @@ SYNC_GOTO_COORD_TOLERANCE_ARCMIN = 0.5
 # timed guide-pulse interface.
 GUIDE_CORRECTION_PULSE_SECONDS = 0.4
 # OnStep manual approach uses physical Alt/Az axes above the pulse band.
-# Keep each move short, then remeasure from a post-stop camera exposure.
+# Legacy approach uses short steps; fallback can bridge camera latency at the
+# same speed while inspecting fresh solves for arrival or target crossing.
 GOTO_APPROACH_PULSE_BAND_ARCMIN = 2.0
 GOTO_APPROACH_MAX_SECONDS = 1.0
-GOTO_APPROACH_SETTLE_SECONDS = 0.5
 GOTO_APPROACH_GAIN = 0.5
+MANUAL_CORRECTION_EXTENSIONS = (0.5, 1.0, 2.0, 4.0)
 # Real INDI timed guide pulse (TELESCOPE_TIMED_GUIDE_*): the pulse duration is
 # computed from the axis error and the mount's guide rate, so the mount moves
 # exactly the time proportional to the correction angle.
@@ -639,7 +643,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._client_generation = 0
         self.device = None
         # Start at 48x; subsequent manual speed changes live only in RAM.
-        self.slew_rate = 7
+        self.user_manual_slew_rate = 7
         self.guide_rate_we = GUIDE_RATE_FINE_X
         self.guide_rate_ns = GUIDE_RATE_FINE_X
         self._load_motion_rates()
@@ -660,6 +664,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._manual_motion_origin: Optional[str] = None
         self._last_user_motion_started_wall = 0.0
         self._last_user_motion_stopped_wall = 0.0
+        self._last_user_tracking_stopped_wall = 0.0
         self._manual_motion_deadline: Optional[float] = None
         self._manual_motion_started_at: Optional[float] = None
         self._manual_motion_refreshed_at = 0.0
@@ -668,6 +673,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._last_goto_target: Optional[tuple[float, float]] = None
         self._goto_motion: Optional[dict[str, Any]] = None
         self._guide_correction_enabled = False
+        self._guide_control_epoch = 0
         self._guide_predictive_tracking = False
         self._guide_correction_target: Optional[tuple[float, float]] = None
         self._guide_correction_accuracy_arcmin = DEFAULT_GOTO_REFINE_ACCURACY_ARCMIN
@@ -678,13 +684,24 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._guide_correction_last_solve_time = 0.0
         self._guide_pulse_best_error: Optional[float] = None
         self._guide_pulse_worsening = 0
+        self._guide_pulse_no_progress = 0
+        self._guide_pulse_previous_error: Optional[float] = None
         self._guide_progress_solve_time = 0.0
         self._guide_manual_approach = False
+        self._guide_manual_fallback = False
         self._guide_correction_mode = "off"
         self._guide_observation_after_wall = 0.0
         self._approach_rate_request: Optional[dict[str, Any]] = None
         self._approach_previous_error: Optional[float] = None
         self._approach_no_progress = 0
+        self._approach_duration_scale = {"az": 1.0, "alt": 1.0}
+        self._approach_last_step: Optional[dict[str, Any]] = None
+        self._approach_response_samples: dict[
+            tuple[str, int, int], deque[tuple[float, float, float]]
+        ] = {}
+        self._approach_rate_ceiling = {"az": 6, "alt": 6}
+        self._approach_axis_steps: dict[str, dict[str, Any]] = {}
+        self._approach_axis_progress: dict[str, dict[str, float]] = {}
         # Cached result of INDI timed-guide-pulse capability detection (None =
         # not yet probed). When False, guide correction uses the manual-move
         # fallback.
@@ -736,6 +753,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         # True from a successful GUIDE_RATE write until the user's slew rate
         # has been re-applied (keeps idle guide cycles from re-writing).
         self._slew_rate_polluted = False
+        self._selector_invalidated_after_sequence = -1
         self._connection_config_ready = True
         self._connection_config_status: dict[str, Any] = {}
         self._position_update_generation = 0
@@ -758,6 +776,15 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._serial_discovery_status: dict[str, Any] = {
             "serial_discovery_state": "idle",
         }
+
+    @property
+    def slew_rate(self) -> int:
+        """Compatibility name for the user's RAM-only speed, never driver readback."""
+        return self.user_manual_slew_rate
+
+    @slew_rate.setter
+    def slew_rate(self, value: int) -> None:
+        self.user_manual_slew_rate = int(value)
 
     def _console(self, message: str) -> None:
         self.console_queue.put(message)
@@ -864,6 +891,7 @@ class MountControlIndi(BacklashCalibrationMixin):
             "tracking_enabled": self._cached_tracking_enabled(),
             "slew_rate": self.slew_rate,
             "manual_slew_rate": self.slew_rate,
+            "manual_motion_owner": self._manual_motion_origin,
             "pulse_guide_rate": self.guide_rate_we,
             "pulse_guide_rate_active": (
                 self._confirmed_guide_rates[0]
@@ -917,6 +945,9 @@ class MountControlIndi(BacklashCalibrationMixin):
         payload["guide_drift_arcsec_per_sec"] = (0.0, 0.0)
         payload["last_user_motion_started_wall"] = self._last_user_motion_started_wall
         payload["last_user_motion_stopped_wall"] = self._last_user_motion_stopped_wall
+        payload["last_user_tracking_stopped_wall"] = (
+            self._last_user_tracking_stopped_wall
+        )
         payload["guide_correction_mode"] = self._guide_correction_mode
         payload["guide_observation_after_wall"] = self._guide_observation_after_wall
         payload["guide_pulse_until_wall"] = (
@@ -1399,6 +1430,15 @@ class MountControlIndi(BacklashCalibrationMixin):
             # A delayed keepalive must not restart motion after input was lost.
             return False
 
+        if not self._refresh_manual_motion(now):
+            return False
+        self._manual_motion_deadline = now + self._manual_motion_lease(lease_seconds)
+        return True
+
+    def _refresh_manual_motion(self, now: float) -> bool:
+        direction = self._manual_motion_direction
+        if direction is None:
+            return False
         if now - self._manual_motion_refreshed_at >= MANUAL_MOTION_REFRESH_SECONDS:
             # OnStep has a separate firmware motion timeout (5 seconds while
             # soft limits are unavailable). Renew it as well as our input lease.
@@ -1419,7 +1459,6 @@ class MountControlIndi(BacklashCalibrationMixin):
                 return False
             self._manual_motion_refreshed_at = time.monotonic()
 
-        self._manual_motion_deadline = now + self._manual_motion_lease(lease_seconds)
         return True
 
     def _manual_motion_queue_timeout(self) -> float:
@@ -1432,6 +1471,11 @@ class MountControlIndi(BacklashCalibrationMixin):
         ):
             return MANUAL_MOTION_POLL_SECONDS
         timeout = 1.0
+        if self._guide_correction_enabled:
+            # Avoid adding up to a second after a settled, fresh solve. The
+            # pulse deadline, fresh-frame and control cadence checks still
+            # decide whether an actual correction is allowed.
+            timeout = 0.1
         if self._manual_motion_deadline is None:
             return timeout
         return max(
@@ -1444,6 +1488,8 @@ class MountControlIndi(BacklashCalibrationMixin):
             return
 
         now = time.monotonic()
+        if self._continue_manual_correction(now):
+            return
         if (
             now < self._manual_motion_deadline
             or now < self._manual_motion_stop_retry_at
@@ -1455,6 +1501,101 @@ class MountControlIndi(BacklashCalibrationMixin):
             return
 
         self._manual_motion_stop_retry_at = now + MANUAL_MOTION_STOP_RETRY_SECONDS
+
+    def _continue_manual_correction(self, now: float) -> bool:
+        """Bridge solve latency with bounded same-speed motion, checking in flight."""
+        step = self._approach_last_step
+        if not (
+            self._guide_manual_fallback
+            and self._guide_correction_enabled
+            and self._manual_motion_origin == "guide_correction"
+            and self._guide_correction_target is not None
+            and step
+            and not step["assessed"]
+            and not step.get("ending")
+            and self._manual_motion_started_at is not None
+            and self._manual_motion_deadline is not None
+        ):
+            return False
+
+        from PiFinder.tracking_commands import control_epoch
+
+        if control_epoch(self.mount_queue) != self._guide_control_epoch:
+            # User input is published before FIFO dispatch. Do not extend a
+            # correction while the takeover command is waiting in the queue.
+            step["ending"] = True
+            self._manual_motion_deadline = now
+            return False
+
+        solved = self._current_plate_solve()
+        if solved is not None:
+            ra, dec, stamp = solved
+            if (
+                stamp is not None
+                and all(math.isfinite(v) for v in (ra, dec, stamp))
+                and stamp > step.get("last_live_solve", step["solve_time"])
+                and stamp > step["started_wall"]
+                and 0 <= time.time() - stamp <= 2.0
+            ):
+                errors = calc_utils.pointing_axis_errors(
+                    ra,
+                    dec,
+                    *self._guide_correction_target,
+                    "Alt/Az",
+                    self.shared_state.location(),
+                    self.shared_state.datetime(),
+                )
+                if errors is not None and all(math.isfinite(v) for v in errors):
+                    measured = errors[0 if step["axis"] == "az" else 1] * 60.0
+                    step["last_live_solve"] = stamp
+                    crossed = measured * step["error"] < 0
+                    arrived = abs(measured) <= self._guide_correction_accuracy_arcmin
+                    if crossed or arrived:
+                        step["ending"] = True
+                        self._manual_motion_deadline = now
+                        self._approach_rate_ceiling[step["axis"]] = max(
+                            4, step["rate"] - 1
+                        )
+                        logger.info(
+                            "Manual continuous approach stopping: axis=%s error=%.3f "
+                            "arcmin crossed=%s next_rate=%s",
+                            step["axis"],
+                            measured,
+                            crossed,
+                            self._approach_rate_ceiling[step["axis"]],
+                        )
+                        return False
+
+        hard_end = (
+            self._manual_motion_started_at
+            + step["duration"]
+            + sum(MANUAL_CORRECTION_EXTENSIONS)
+        )
+        if now >= hard_end:
+            step["ending"] = True
+            self._manual_motion_deadline = now
+            return False
+        if now >= self._manual_motion_deadline:
+            index = step.get("extension_index", 0)
+            if index >= len(MANUAL_CORRECTION_EXTENSIONS):
+                step["ending"] = True
+                return False
+            extension = MANUAL_CORRECTION_EXTENSIONS[index]
+            extended_deadline = min(now + extension, hard_end)
+            self._manual_motion_deadline = extended_deadline
+            step["extension_index"] = index + 1
+            logger.info(
+                "Manual continuous extension: axis=%s rate=%s add=%.1fs total=%.3fs",
+                step["axis"],
+                step["rate"],
+                extension,
+                extended_deadline - self._manual_motion_started_at,
+            )
+        if not self._refresh_manual_motion(now):
+            step["ending"] = True
+            self._manual_motion_deadline = now
+            return False
+        return True
 
     def _read_manual_motion_progress_position(
         self,
@@ -1748,6 +1889,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._pending_guide_rate = None
         self._confirmed_guide_rates = None
         self._slew_rate_polluted = True
+        self._selector_invalidated_after_sequence = self._sync_property_sequence
         self._guide_pulse_until = 0.0
         self._coordinate_sync = None
         self._approach_rate_request = None
@@ -3531,6 +3673,23 @@ class MountControlIndi(BacklashCalibrationMixin):
             )
         self._goto_motion = None
         self._read_current_position()
+        # A completed slew establishes a new correction baseline. A solve
+        # outage alone never clears these counters (toggle below preserves them).
+        self._guide_pulse_best_error = None
+        self._guide_pulse_previous_error = None
+        self._guide_pulse_worsening = 0
+        self._guide_pulse_no_progress = 0
+        self._approach_previous_error = None
+        self._approach_no_progress = 0
+        self._approach_duration_scale = {"az": 1.0, "alt": 1.0}
+        self._approach_last_step = None
+        self._approach_response_samples = {}
+        self._approach_rate_ceiling = {"az": 6, "alt": 6}
+        self._approach_axis_steps = {}
+        self._approach_axis_progress = {}
+        self._guide_observation_after_wall = max(
+            self._guide_observation_after_wall, time.time()
+        )
         self._write_controller_status(
             "connected",
             message,
@@ -3670,6 +3829,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         manual_approach: bool = False,
         predictive_tracking: bool = False,
         observation_after_wall: float = 0.0,
+        manual_fallback: bool = False,
+        reset_manual_progress: bool = False,
     ) -> bool:
         if self._smooth_runtime is not None and self._smooth_runtime.claimed:
             # A delayed legacy disable also changes the guide rate. Handover
@@ -3683,6 +3844,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         if not enabled:
             self._guide_correction_enabled = False
             self._guide_manual_approach = False
+            self._guide_manual_fallback = False
             self._approach_rate_request = None
             self._guide_correction_mode = "off"
             if self._manual_motion_origin == "guide_correction":
@@ -3694,6 +3856,9 @@ class MountControlIndi(BacklashCalibrationMixin):
             self._write_controller_status("connected", "Guide correction disabled")
             self._console("Guide corr\nOff")
             return True
+
+        if self._manual_motion_origin == "user":
+            return False
 
         target: Optional[tuple[float, float]]
         try:
@@ -3719,6 +3884,9 @@ class MountControlIndi(BacklashCalibrationMixin):
 
         target_changed = target != self._guide_correction_target
         self._guide_correction_enabled = True
+        from PiFinder.tracking_commands import control_epoch
+
+        self._guide_control_epoch = control_epoch(self.mount_queue)
         self._guide_correction_target = target
         self._guide_correction_accuracy_arcmin = max(0.1, accuracy)
         self._guide_mount_type = config.Config().get_option("mount_type", "Alt/Az")
@@ -3730,21 +3898,42 @@ class MountControlIndi(BacklashCalibrationMixin):
             self._guide_correction_last_solve_time = 0.0
             self._guide_pulse_best_error = None
             self._guide_pulse_worsening = 0
+            self._guide_pulse_no_progress = 0
+            self._guide_pulse_previous_error = None
             self._guide_progress_solve_time = 0.0
         self._guide_manual_approach = bool(
-            manual_approach
+            (manual_approach or manual_fallback)
             and self._guide_mount_type == "Alt/Az"
             and "onstep" in self._indi_device_name().lower()
         )
+        self._guide_manual_fallback = bool(
+            manual_fallback and self._guide_manual_approach
+        )
+        if manual_fallback and not self._guide_manual_fallback:
+            self._fail_manual_approach(
+                "Physical-axis correction unsupported for this mount"
+            )
+            return False
         self._guide_correction_mode = "waiting_solve"
         self._guide_observation_after_wall = max(
             0.0 if target_changed else self._guide_observation_after_wall,
             observation_after_wall,
         )
         self._approach_rate_request = None
-        if target_changed:
+        if target_changed or reset_manual_progress:
             self._approach_previous_error = None
             self._approach_no_progress = 0
+            self._approach_axis_progress = {}
+        if target_changed:
+            self._approach_duration_scale = {"az": 1.0, "alt": 1.0}
+            self._approach_last_step = None
+            self._approach_response_samples = {}
+            self._approach_rate_ceiling = {"az": 6, "alt": 6}
+            self._approach_axis_steps = {}
+        if reset_manual_progress:
+            self._guide_observation_after_wall = max(
+                self._guide_observation_after_wall, time.time()
+            )
         self._write_controller_status(
             "guide_correction",
             "Guide correction enabled",
@@ -3767,12 +3956,25 @@ class MountControlIndi(BacklashCalibrationMixin):
             return
         if not self._guide_correction_enabled or self._guide_correction_target is None:
             return
+        from PiFinder.tracking_commands import control_epoch
+
+        if control_epoch(self.mount_queue) != self._guide_control_epoch:
+            self._guide_correction_enabled = False
+            self._pending_guide_rate = None
+            self._approach_rate_request = None
+            self._guide_correction_mode = "off"
+            return
         if self._manual_motion_direction is not None:
             return
 
         now = time.monotonic()
         if now < self._guide_correction_next_at:
             return
+        interval = (
+            GUIDE_CORRECTION_INTERVAL_SECONDS
+            if self._guide_manual_approach
+            else GUIDE_TRACKING_INTERVAL_SECONDS
+        )
 
         solved = self._current_plate_solve()
         if solved is None:
@@ -3808,9 +4010,18 @@ class MountControlIndi(BacklashCalibrationMixin):
         error = max(separation, axis_error)
         # Judge progress from distinct post-pulse camera observations, not
         # command submission. A functioning transport can still guide away.
-        if self._guide_pulse_best_error is not None:
+        if self._guide_pulse_best_error is not None and not self._guide_manual_fallback:
             if solve_time > self._guide_progress_solve_time:
                 self._guide_progress_solve_time = solve_time
+                if (
+                    self._guide_pulse_previous_error is not None
+                    and error > self._guide_correction_accuracy_arcmin
+                    and error >= self._guide_pulse_previous_error - 0.1
+                ):
+                    self._guide_pulse_no_progress += 1
+                else:
+                    self._guide_pulse_no_progress = 0
+                    self._guide_pulse_previous_error = error
                 best_error = min(self._guide_pulse_best_error, float(error))
                 self._guide_pulse_best_error = best_error
                 tolerance = max(2.0, self._guide_correction_accuracy_arcmin)
@@ -3818,17 +4029,17 @@ class MountControlIndi(BacklashCalibrationMixin):
                     self._guide_pulse_worsening += 1
                 else:
                     self._guide_pulse_worsening = 0
-            if self._guide_pulse_worsening >= 3:
+            if self._guide_pulse_worsening >= 3 or self._guide_pulse_no_progress >= 5:
                 self._guide_correction_enabled = False
                 self._guide_correction_mode = "reacquire"
                 self._write_controller_status(
                     "guide_correction",
-                    "Pulse correction diverged; waiting for GoTo recovery",
+                    "Pulse correction not converging; requesting staged recovery",
                     guide_error_arcmin=error,
                 )
                 logger.warning(
-                    "Pulse correction diverged: best %.2f, now %.2f arcmin; "
-                    "requesting GoTo recovery",
+                    "Pulse correction not converging: best %.2f, now %.2f arcmin; "
+                    "requesting staged recovery",
                     self._guide_pulse_best_error,
                     error,
                 )
@@ -3839,7 +4050,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         if error <= self._guide_correction_accuracy_arcmin:
             self._guide_correction_mode = "complete"
             self._guide_correction_last_solve_time = solve_time
-            self._guide_correction_next_at = now + GUIDE_CORRECTION_INTERVAL_SECONDS
+            self._guide_correction_next_at = now + interval
             self._restore_fine_guide_rate()
             self._write_controller_status(
                 "guide_correction",
@@ -3852,7 +4063,17 @@ class MountControlIndi(BacklashCalibrationMixin):
             GOTO_APPROACH_PULSE_BAND_ARCMIN,
             1.25 * self._guide_correction_accuracy_arcmin,
         )
-        if self._guide_manual_approach and error > pulse_band:
+        if (
+            not self._guide_pulse_supported()
+            and self.client is not None
+            and self._guide_mount_type == "Alt/Az"
+            and "onstep" in self._indi_device_name().lower()
+        ):
+            self._guide_manual_approach = True
+            self._guide_manual_fallback = True
+        if self._guide_manual_approach and (
+            self._guide_manual_fallback or error > pulse_band
+        ):
             self._apply_manual_approach(
                 current_ra, current_dec, target_ra, target_dec, error, solve_time
             )
@@ -3865,11 +4086,19 @@ class MountControlIndi(BacklashCalibrationMixin):
         # does not show up as manual_motion in status).
         if self._guide_pulse_supported():
             if not self._select_guide_rate_for_error(separation):
+                if self._guide_rate_writable is False:
+                    self._guide_correction_enabled = False
+                    self._guide_correction_mode = "reacquire"
+                    self._write_controller_status(
+                        "guide_correction",
+                        "Pulse speed unavailable; requesting staged recovery",
+                    )
                 return
             self._guide_correction_last_solve_time = solve_time
-            self._guide_correction_next_at = now + GUIDE_CORRECTION_INTERVAL_SECONDS
+            self._guide_correction_next_at = now + interval
             if self._guide_pulse_best_error is None:
                 self._guide_pulse_best_error = error
+                self._guide_pulse_previous_error = error
                 self._guide_progress_solve_time = solve_time
             self._apply_guide_pulse(
                 current_ra, current_dec, target_ra, target_dec, separation
@@ -3895,7 +4124,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         if not self._select_guide_rate_for_error(0.0):
             return
         self._guide_correction_last_solve_time = solve_time
-        self._guide_correction_next_at = now + GUIDE_CORRECTION_INTERVAL_SECONDS
+        self._guide_correction_next_at = now + interval
 
         if self.manual_move(
             direction,
@@ -3936,6 +4165,7 @@ class MountControlIndi(BacklashCalibrationMixin):
             self._confirmed_guide_rates = None
             self._pending_guide_rate = None
             self._slew_rate_polluted = True
+            self._selector_invalidated_after_sequence = pending["after_sequence"]
             self._slew_rate_reassert_at = None
             if not self.client.set_switch(
                 self.device, "TELESCOPE_SLEW_RATE", str(rate)
@@ -3953,6 +4183,70 @@ class MountControlIndi(BacklashCalibrationMixin):
         ) or time.monotonic() >= pending["deadline"]:
             self._fail_manual_approach("Manual approach speed not confirmed")
         return False
+
+    def _record_manual_response(self, step, measured, solve_time):
+        """Accumulate signed optical convergence, not mount step counters.
+
+        This is the effective response with native tracking running, including
+        drift during the short settle interval, not a motor calibration.
+        Separate speed/direction histories prevent backlash or a speed change
+        from contaminating the estimate. Never learn across a solve outage.
+        """
+        key = (step["axis"], step["rate"], 1 if step["error"] > 0 else -1)
+        samples = self._approach_response_samples.setdefault(key, deque(maxlen=6))
+        if not 0 < solve_time - step["solve_time"] <= 15.0:
+            samples.clear()
+            return
+        progress = (step["error"] - measured) * key[2]
+        duration = step.get("elapsed", step["duration"])
+        if not math.isfinite(duration) or duration <= 0:
+            return
+        samples.append((solve_time, duration, progress))
+        logger.info(
+            "Manual measured movement: axis=%s rate=%s direction=%s "
+            "samples=%d elapsed=%.3fs net_progress=%.3f arcmin",
+            key[0],
+            key[1],
+            key[2],
+            len(samples),
+            sum(sample[1] for sample in samples),
+            sum(sample[2] for sample in samples),
+        )
+
+    def _predict_manual_duration(self, axis, rate, axis_error, solve_time):
+        key = (axis, rate, 1 if axis_error > 0 else -1)
+        samples = self._approach_response_samples.get(key, ())
+        recent = [sample for sample in samples if 0 <= solve_time - sample[0] <= 60]
+        elapsed = sum(sample[1] for sample in recent)
+        progress = sum(sample[2] for sample in recent)
+        variation = sum(abs(sample[2]) for sample in recent)
+        # A positive noise excursion must not masquerade as a measured speed.
+        if (
+            len(recent) < 3
+            or elapsed <= 0
+            or progress < 0.3
+            or progress < 0.6 * variation
+            or sum(sample[2] > 0.05 for sample in recent) < 2
+        ):
+            return None
+        speed = progress / elapsed  # arcmin per commanded second
+        remaining = abs(axis_error) / speed
+        logger.info(
+            "Manual cumulative response: axis=%s rate=%s direction=%s "
+            "samples=%d elapsed=%.3fs progress=%.3f arcmin "
+            "speed=%.3f arcmin/s remaining=%.3fs",
+            axis,
+            rate,
+            key[2],
+            len(recent),
+            elapsed,
+            progress,
+            speed,
+            remaining,
+        )
+        # Reobserve after a fraction of the predicted trip. It is never safe
+        # to issue the entire extrapolated movement from a noisy estimate.
+        return remaining * 0.35
 
     def _apply_manual_approach(
         self, ra, dec, target_ra, target_dec, error, solve_time
@@ -3973,12 +4267,84 @@ class MountControlIndi(BacklashCalibrationMixin):
         if errors is None or not all(math.isfinite(v) for v in errors):
             return
         az_error, alt_error = (v * 60.0 for v in errors)
-        if abs(az_error) >= abs(alt_error):
-            axis_error = az_error
-            direction = "east" if az_error > 0 else "west"
-        else:
-            axis_error = alt_error
-            direction = "north" if alt_error > 0 else "south"
+        step = self._approach_last_step
+        if self._guide_manual_fallback and step and not step["assessed"]:
+            # Assess a command once, using the first eligible post-stop solve.
+            # Weak response lengthens the next step within the hard bound;
+            # crossing the target or an excessive response damps it instead.
+            measured = az_error if step["axis"] == "az" else alt_error
+            self._record_manual_response(step, measured, solve_time)
+            progress = abs(step["error"]) - abs(measured)
+            scale = self._approach_duration_scale[step["axis"]]
+            if measured * step["error"] < 0 or progress > abs(step["error"]) * 0.6:
+                scale = max(0.25, scale * 0.5)
+            elif progress <= 0.05:
+                scale = min(2.0, scale * 1.35)
+            elif progress > abs(step["error"]) * 0.25:
+                scale = max(0.5, scale * 0.85)
+            self._approach_duration_scale[step["axis"]] = scale
+            step["assessed"] = True
+            state = self._approach_axis_progress.setdefault(
+                step["axis"],
+                {"best": abs(step["error"]), "stalled": 0, "retry_at": 0.0},
+            )
+            if abs(measured) < state["best"] - 0.05:
+                state["best"] = abs(measured)
+                state["stalled"] = 0
+            else:
+                state["stalled"] += 1
+            if state["stalled"] >= 5:
+                state["retry_at"] = time.monotonic() + 10.0
+            logger.info(
+                "Manual correction response: axis=%s progress=%.3f arcmin next_scale=%.2f",
+                step["axis"],
+                progress,
+                scale,
+            )
+        axis_errors = {"az": az_error, "alt": alt_error}
+        axis = max(axis_errors, key=lambda key: abs(axis_errors[key]))
+        if self._guide_manual_fallback:
+            now = time.monotonic()
+            eligible = []
+            for candidate, residual in axis_errors.items():
+                candidate_state = self._approach_axis_progress.get(candidate)
+                if candidate_state and candidate_state["retry_at"]:
+                    if now < candidate_state["retry_at"]:
+                        continue
+                    self._approach_axis_progress.pop(candidate)
+                if abs(residual) > self._guide_correction_accuracy_arcmin:
+                    eligible.append(candidate)
+            if not eligible:
+                # A stalled axis cannot monopolize the other axis. Only pause
+                # the whole controller when no axis needing work is available.
+                if any(
+                    s["retry_at"] > now for s in self._approach_axis_progress.values()
+                ):
+                    self._guide_correction_enabled = False
+                    self._guide_correction_mode = "approach_reacquire"
+                    self._guide_correction_last_solve_time = solve_time
+                    self._approach_rate_request = None
+                    self._write_controller_status(
+                        "guide_correction", "Manual axes awaiting retry"
+                    )
+                    return
+                eligible = [axis]  # Small diagonal error can exceed radial accuracy.
+            if len(eligible) == 2 and step:
+                axis = next(
+                    candidate for candidate in eligible if candidate != step["axis"]
+                )
+            else:
+                axis = max(eligible, key=lambda key: abs(axis_errors[key]))
+            # The INDI rate selector is shared. Schedule independent axis
+            # commands in turn; never borrow the other axis's previous rate,
+            # duration or convergence checkpoint.
+            step = self._approach_axis_steps.get(axis)
+        axis_error = axis_errors[axis]
+        direction = (
+            ("east" if axis_error > 0 else "west")
+            if axis == "az"
+            else ("north" if axis_error > 0 else "south")
+        )
         # Slow down before the pulse band to allow a bounded final approach.
         # One axis per move avoids over-correcting the smaller component.
         if abs(axis_error) > 10.0:
@@ -3987,37 +4353,81 @@ class MountControlIndi(BacklashCalibrationMixin):
             rate, multiplier = 5, 8.0
         else:
             rate, multiplier = 4, 4.0
+        if self._guide_manual_fallback and step:
+            # Avoid switching speed back and forth around a noisy boundary.
+            if step["rate"] == 4 and abs(axis_error) <= 3.5:
+                rate, multiplier = 4, 4.0
+            elif step["rate"] == 5 and 2.5 <= abs(axis_error) <= 10.5:
+                rate, multiplier = 5, 8.0
+        if self._guide_manual_fallback:
+            rate = min(rate, self._approach_rate_ceiling[axis])
+            multiplier = {4: 4.0, 5: 8.0, 6: 20.0}[rate]
         self._guide_correction_mode = "manual_approach"
         if not self._select_approach_rate(rate):
             return
-        if self._approach_previous_error is not None:
-            if error >= self._approach_previous_error - 0.2:
+        if (
+            not self._guide_manual_fallback
+            and self._approach_previous_error is not None
+        ):
+            improvement = 0.05 if self._guide_manual_fallback else 0.2
+            if error >= self._approach_previous_error - improvement:
                 self._approach_no_progress += 1
             else:
                 self._approach_no_progress = 0
-            if self._approach_no_progress >= 3:
-                # Do not hand an unconverged physical-axis correction to
-                # unverified pulses. Ask the service to reacquire this target.
+                self._approach_previous_error = error
+            if self._approach_no_progress >= (5 if self._guide_manual_fallback else 3):
+                # Physical-axis approach and equatorial guide pulses are
+                # different actuators. Reacquire the target without declaring
+                # pulses divergent when none have been measured yet.
                 self._guide_manual_approach = False
                 self._guide_correction_enabled = False
                 self._approach_rate_request = None
                 self._guide_correction_last_solve_time = solve_time
-                self._guide_correction_mode = "reacquire"
+                self._guide_correction_mode = "approach_reacquire"
                 self._write_controller_status(
                     "guide_correction",
-                    "Manual approach stalled; requesting GoTo recovery",
+                    "Manual approach stalled; requesting correction pause",
                 )
-                logger.info("Manual approach stalled; requesting GoTo recovery")
+                logger.info("Manual approach stalled; requesting correction pause")
                 return
+        scale = (
+            self._approach_duration_scale[axis] if self._guide_manual_fallback else 1.0
+        )
+        if abs(axis_error) <= 2.0:
+            step_limit = 0.35
+        elif abs(axis_error) <= 5.0:
+            step_limit = 0.75
+        else:
+            step_limit = 1.0
         duration = min(
-            GOTO_APPROACH_MAX_SECONDS,
+            min(1.5, step_limit * scale)
+            if self._guide_manual_fallback
+            else GOTO_APPROACH_MAX_SECONDS,
             abs(axis_error)
             * 60.0
-            * GOTO_APPROACH_GAIN
+            * (0.25 if self._guide_manual_fallback else GOTO_APPROACH_GAIN)
+            * scale
             / (multiplier * SIDEREAL_ARCSEC_PER_SEC),
         )
+        if self._guide_manual_fallback:
+            predicted = self._predict_manual_duration(
+                axis, rate, axis_error, solve_time
+            )
+            if predicted is not None:
+                duration = min(predicted, 1.5, step_limit * scale)
+                if (
+                    step
+                    and step["axis"] == axis
+                    and step["rate"] == rate
+                    and step["error"] * axis_error > 0
+                ):
+                    duration = min(duration, step["duration"] * 1.35)
         self._guide_correction_last_solve_time = solve_time
-        self._approach_previous_error = error
+        # Keep the best meaningful progress checkpoint. Comparing only with
+        # the immediately previous frame lets jitter reset the stall counter
+        # forever even though the target never gets closer.
+        if self._approach_previous_error is None:
+            self._approach_previous_error = error
         self._approach_rate_request = None
         if not self.manual_move(
             direction,
@@ -4027,6 +4437,20 @@ class MountControlIndi(BacklashCalibrationMixin):
         ):
             self._fail_manual_approach("Manual approach movement failed")
             return
+        self._approach_last_step = {
+            "axis": axis,
+            "error": axis_error,
+            "duration": duration,
+            "solve_time": solve_time,
+            "started_wall": time.time(),
+            "rate": rate,
+            "assessed": False,
+        }
+        if self._guide_manual_fallback:
+            self._approach_axis_steps[axis] = self._approach_last_step
+            self._approach_axis_progress.setdefault(
+                axis, {"best": abs(axis_error), "stalled": 0, "retry_at": 0.0}
+            )
         self._guide_correction_next_at = time.monotonic()
         logger.info(
             "GoTo manual approach: %s rate=%dx duration=%.3fs error=%.2f arcmin",
@@ -4172,6 +4596,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         }
         self._guide_rate_needs_reassert = True
         self._slew_rate_polluted = True
+        self._selector_invalidated_after_sequence = sequence
         try:
             accepted = self._set_guide_rate(desired)
         except Exception:
@@ -4220,12 +4645,35 @@ class MountControlIndi(BacklashCalibrationMixin):
             return
         if self._manual_motion_origin == "guide_correction":
             return
+        if self._manual_motion_origin != "user":
+            self._slew_rate_reassert_at = None
+            return
         if self._reassert_slew_rate():
             self._slew_rate_reassert_at = None
         else:
             self._slew_rate_reassert_at = time.monotonic() + 1.0
 
+    def _user_rate_is_selected(self) -> bool:
+        with self._sync_property_lock:
+            receipt = self._sync_property_receipts.get("TELESCOPE_SLEW_RATE")
+        if receipt is not None:
+            return (
+                receipt["state"] in {"ok", "idle"}
+                and receipt["sequence"] > self._selector_invalidated_after_sequence
+                and bool(receipt["values"].get(str(self.user_manual_slew_rate)))
+            )
+        return (
+            not self._slew_rate_polluted
+            and self._cached_slew_rate() == self.user_manual_slew_rate
+        )
+
     def _reassert_slew_rate(self) -> bool:
+        if self._user_rate_is_selected():
+            self._guide_rate_needs_reassert = True
+            self._pending_guide_rate = None
+            self._confirmed_guide_rates = None
+            self._slew_rate_polluted = False
+            return True
         if self.client is not None and self.device is not None:
             accepted = self.client.set_switch(
                 self.device, "TELESCOPE_SLEW_RATE", str(self.slew_rate)
@@ -4885,13 +5333,19 @@ class MountControlIndi(BacklashCalibrationMixin):
             elif ledger["correction_moving"]:
                 self._alignment_stop_pending = "correction"
         if self._manual_motion_origin == "guide_correction" and not stop_tracking:
-            self._guide_observation_after_wall = (
-                time.time() + GOTO_APPROACH_SETTLE_SECONDS
-            )
-            self._guide_correction_next_at = (
-                time.monotonic() + GOTO_APPROACH_SETTLE_SECONDS
-            )
-            self._guide_correction_mode = "settling"
+            if (
+                self._approach_last_step is not None
+                and not self._approach_last_step["assessed"]
+                and self._manual_motion_started_at is not None
+            ):
+                self._approach_last_step["elapsed"] = (
+                    time.monotonic() - self._manual_motion_started_at
+                )
+            # Continue on the first post-stop solve without a fixed settling
+            # delay. Retain the observation boundary to reject in-motion data.
+            self._guide_observation_after_wall = time.time()
+            self._guide_correction_next_at = time.monotonic()
+            self._guide_correction_mode = "waiting_solve"
         self._clear_manual_motion_deadline()
         self._goto_motion = None
         self._guide_pulse_until = 0.0
@@ -4914,6 +5368,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         if direction not in MANUAL_MOTION_PROPERTIES:
             logger.warning("Unknown manual mount direction: %s", direction)
             return False
+        if origin == "guide_correction" and self._manual_motion_origin == "user":
+            return False
         if (
             origin == "user"
             and self._manual_motion_origin == "user"
@@ -4925,15 +5381,30 @@ class MountControlIndi(BacklashCalibrationMixin):
             # as a keepalive so long holds do not rewrite speed or reset status.
             return self.manual_motion_keepalive(direction, lease_seconds)
         self._cancel_sync_goto("manual movement requested")
-        if origin == "user" and self._goto_motion is not None:
-            if not self.stop_mount(preserve_tracking=True):
-                return False
-        # Stop the correction loop immediately, including normal tracking.
-        # A short key tap can end before the guide service sees motion; leaving
-        # this armed would resume pulses toward the old target after release.
-        if origin == "user" and self._guide_correction_enabled:
-            if not self.toggle_guide_correction(enabled=False):
-                return False
+        if origin == "user":
+            self._guide_correction_enabled = False
+            self._guide_manual_approach = False
+            self._guide_manual_fallback = False
+            self._guide_correction_mode = "off"
+            self._pending_goto_refine = None
+            self._pending_guide_rate = None
+            self._approach_rate_request = None
+            self._slew_rate_reassert_at = None
+            self._approach_last_step = None
+            self._approach_axis_steps = {}
+            self._approach_axis_progress = {}
+            self._approach_response_samples = {}
+            self._approach_duration_scale = {"az": 1.0, "alt": 1.0}
+            self._approach_rate_ceiling = {"az": 6, "alt": 6}
+            if (
+                self._goto_motion is not None
+                or self._manual_motion_direction is not None
+                or time.monotonic() < self._guide_pulse_until
+            ):
+                if not self.stop_mount(preserve_tracking=True):
+                    if self._manual_motion_deadline is not None:
+                        self._manual_motion_deadline = time.monotonic()
+                    return False
         # A guide-rate write may have just dragged the shared :R<n># selector
         # down to 0.5x/1x; put the user's rate back before the move starts.
         # The guide-correction manual fallback opts out (it wants the slow
@@ -5032,20 +5503,20 @@ class MountControlIndi(BacklashCalibrationMixin):
     def set_slew_rate(self, rate: int) -> bool:
         rate = max(0, min(9, int(rate)))
         self.slew_rate = rate
-        # Retain a change in RAM during a pulse, then apply after its time window.
-        if (
-            time.monotonic() < self._guide_pulse_until
-            or self._manual_motion_origin == "guide_correction"
-        ):
-            self._schedule_slew_rate_reassert(0.0)
-            self._write_controller_status(
-                "connected", f"Manual speed {rate} selected; waiting for guide motion"
-            )
-            return True
-        if not self._reassert_slew_rate():
-            self._console("INDI speed\nfailed")
-            return False
         self._slew_rate_reassert_at = None
+        if self._manual_motion_origin == "user" and self._manual_motion_direction:
+            if self._user_rate_is_selected():
+                return True
+            direction = self._manual_motion_direction
+            deadline = self._manual_motion_deadline
+            if not self.stop_mount(preserve_tracking=True):
+                return False
+            # Reapply and restart only for the remaining held-input lease.
+            # Changing speed must not manufacture a new, longer button hold.
+            remaining = (deadline or 0.0) - time.monotonic()
+            if remaining >= MANUAL_MOTION_MIN_LEASE_SECONDS:
+                if not self.manual_move(direction, remaining, origin="user"):
+                    return False
         self._write_controller_status(
             "connected" if self.connected else "idle", f"Manual speed {rate}"
         )
@@ -6110,6 +6581,8 @@ class MountControlIndi(BacklashCalibrationMixin):
                 command.get("target_dec"),
                 command.get("accuracy_arcmin"),
                 manual_approach=bool(command.get("manual_approach", False)),
+                manual_fallback=bool(command.get("manual_fallback", False)),
+                reset_manual_progress=bool(command.get("reset_manual_progress", False)),
                 predictive_tracking=bool(command.get("predictive_tracking", False)),
                 observation_after_wall=float(
                     command.get("observation_after_wall", 0.0)
@@ -6117,6 +6590,7 @@ class MountControlIndi(BacklashCalibrationMixin):
             )
         elif command_type == "stop_movement":
             if command.get("stop_tracking"):
+                self._last_user_tracking_stopped_wall = time.time()
                 self.stop_mount(stop_tracking=True)
             else:
                 self.stop_mount()
@@ -6124,7 +6598,13 @@ class MountControlIndi(BacklashCalibrationMixin):
             # Joystick "Tracking Off" button. GoTo/sync paths re-enable
             # tracking themselves, so an off state lasts until the next GoTo
             # or an explicit on.
-            self.set_tracking(bool(command.get("enabled", True)))
+            if command.get("enabled") is False:
+                self._last_user_tracking_stopped_wall = time.time()
+                self._guide_correction_enabled = False
+                self._pending_goto_refine = None
+                self.stop_mount(stop_tracking=True)
+            else:
+                self.set_tracking(True)
         elif command_type == "manual_movement":
             self.manual_move(
                 str(command.get("direction", "")),

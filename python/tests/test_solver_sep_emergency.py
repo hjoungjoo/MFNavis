@@ -140,6 +140,34 @@ def test_preprocessed_emergency_success_skips_raw_sep(setup, monkeypatch):
     assert run.detection.backend == "mf"
 
 
+def test_preprocessing_and_emergency_keep_the_same_original_context(setup, monkeypatch):
+    runner, _, entry, _ = setup
+    original = entry["frame"]
+    synthesized = np.ones_like(original)
+    monkeypatch.setattr(
+        runner._star_only,
+        "add",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            frame=synthesized,
+            diagnostics=SimpleNamespace(frame_count=2, reset_reason=None),
+        ),
+    )
+    contexts = []
+
+    def detect(frame, **kwargs):
+        assert frame is synthesized
+        contexts.append(kwargs["context_frame"])
+        return detection()
+
+    monkeypatch.setattr(star_detect, "_detect_native", detect)
+    monkeypatch.setattr(sep_detect, "detect_stars", detect)
+    run = runner.preprocess_frame(original, fingerprint=(), frame_id=10)
+    assert run.context_frame is original
+    rescued = runner.detect_emergency_preprocessed(run)
+    assert rescued.context_frame is original
+    assert len(contexts) == 2 and all(frame is original for frame in contexts)
+
+
 def test_preprocessed_failure_tries_raw_from_same_exposure(setup, monkeypatch):
     runner, _, entry, calls = setup
     frame = np.ones_like(entry["frame"])

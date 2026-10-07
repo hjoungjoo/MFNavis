@@ -195,7 +195,7 @@ def test_handover_waits_for_legacy_pulse_and_settle(mount, monkeypatch):
     assert runtime.drain_until >= 100.8
 
 
-@pytest.mark.parametrize("kind", ["goto_target", "sync", "set_slew_rate"])
+@pytest.mark.parametrize("kind", ["goto_target", "sync"])
 def test_old_queued_motion_cannot_cross_optical_handover(mount, kind):
     runtime = mount._smooth_runtime
     runtime.claimed = True
@@ -418,3 +418,13 @@ def test_prediction_and_position_correction_share_one_pending_packet():
     )
     newer = snapshot(measurement(seq + 1, now + 0.05, (150, 0)), now + 0.05)
     assert controller.tick(newer, now + 0.05, 2) is None
+
+
+def test_user_ram_speed_change_does_not_take_optical_ownership(mount):
+    mount._smooth_runtime.claimed = True
+    mount._smooth_runtime.ownership_epoch = 2
+    mount.handle_command({"type": "set_slew_rate", "_control_epoch": 1, "rate": 6})
+    assert mount.user_manual_slew_rate == 6
+    assert mount._smooth_runtime.claimed
+    assert not mount._smooth_runtime.canceled
+    assert not mount.goto_calls and not mount.sync_calls

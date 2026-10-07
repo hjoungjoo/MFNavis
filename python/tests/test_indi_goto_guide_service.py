@@ -138,11 +138,12 @@ def test_lower_configured_pulse_align_threshold_is_preserved(monkeypatch):
     assert service._pulse_align_threshold_arcmin() == pytest.approx(12.0)
 
 
-def test_goto_near_stage_requests_hybrid_approach(monkeypatch):
+def test_goto_near_stage_tries_pulses_before_manual_steps(monkeypatch):
     service = _make_service(monkeypatch, [1000.0])
     service.active_target_ra, service.active_target_dec = 100.0, 20.0
     service._begin_pulse_align()
-    assert service.mountcontrol_queue.commands[-1]["manual_approach"] is True
+    assert service.mountcontrol_queue.commands[-1]["manual_approach"] is False
+    assert service.mountcontrol_queue.commands[-1]["manual_fallback"] is False
 
 
 def test_goto_waits_during_manual_approach_and_for_post_stop_solve(monkeypatch):
@@ -421,6 +422,8 @@ def test_recovery_waits_for_post_arrival_solve_before_rearming(monkeypatch, stal
             "accuracy_arcmin": 3.0,
             "predictive_tracking": False,
             "observation_after_wall": 1001.1,
+            "manual_fallback": False,
+            "reset_manual_progress": False,
         }
     ]
 
@@ -1084,7 +1087,7 @@ def test_cloudy_goto_waits_without_alert_and_resumes(monkeypatch, phase):
 def test_active_correction_survives_pulse_align_timeout(monkeypatch, motion):
     clock = [1000.0]
     service = _make_service(monkeypatch, clock)
-    service.active_target_ra, service.active_target_dec = 100.0, 20.0
+    service.active_target_ra, service.active_target_dec = 100.0, 21.9
     service._begin_pulse_align()
     clock[0] += iggs.MFNAVIS_PULSE_ALIGN_TIMEOUT_SECONDS + 1
     status = {"available": True}
@@ -1182,7 +1185,52 @@ def test_tracking_recovery_retries_after_batch_without_losing_target(monkeypatch
     assert service.mountcontrol_queue.commands[-1]["type"] == "sync_and_goto"
 
 
-def test_divergent_pulse_alignment_recovers_without_reentering_pulse_stage(monkeypatch):
+@pytest.mark.parametrize("error_arcmin", [6.0, 1.9])
+def test_stalled_manual_approach_preserves_fine_pulse_path(monkeypatch, error_arcmin):
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    service.config_values["indi_goto_refine_accuracy_arcmin"] = 1.0
+    service.active_target_ra, service.active_target_dec = 100.0, 21.9
+    service._begin_pulse_align()
+    status = {"available": True, "guide_correction_mode": "approach_reacquire"}
+    monkeypatch.setattr(service, "_mount_status_summary", lambda: status)
+    service._tick_pulse_align()
+    assert service.manual_approach_unreliable
+    assert not service.pulse_alignment_unreliable
+    assert service.phase == "pifinder_pulse_align"
+
+    # Both errors are inside the supported near threshold. Try timed pulses
+    # without retrying the failed physical move or forcing repeated GoTos.
+    clock[0] += iggs.MFNAVIS_CORRECTION_RETRY_SECONDS + 1
+    service._pointing["current"]["dec"] = 21.9 + error_arcmin / 60
+    status["guide_correction_mode"] = "off"
+    service._evaluate_goto_arrival(service._refresh_pointing_status()["current"])
+    command = service.mountcontrol_queue.commands[-1]
+    assert command["type"] == "toggle_guide_correction"
+    assert command["enabled"] and not command["manual_approach"]
+    assert service.phase == "pifinder_pulse_align"
+
+
+def test_manual_approach_failure_does_not_force_small_tracking_errors_to_goto(
+    monkeypatch,
+):
+    service = _make_service(monkeypatch, [1000.0])
+    service.manual_approach_unreliable = True
+    service.config_values["indi_goto_refine_accuracy_arcmin"] = 1.0
+    service._pointing["current"]["dec"] = 20.0 + 1.9 / 60
+    service.tracking_motion_ra = 100.0
+    service.tracking_motion_dec = service._pointing["current"]["dec"]
+    service.tracking_last_motion_at = 990.0
+    service._tick_tracking_guide()
+    assert service.tracking_guide_state == "enabled"
+    assert service.tracking_guide_recovery_mode == "pulse"
+    assert service.mountcontrol_queue.commands[-1]["type"] == "toggle_guide_correction"
+    assert not any(
+        c["type"] == "sync_and_goto" for c in service.mountcontrol_queue.commands
+    )
+
+
+def test_divergent_pulses_without_manual_support_do_not_force_small_goto(monkeypatch):
     clock = [1000.0]
     service = _make_service(monkeypatch, clock)
     service.active_target_ra, service.active_target_dec = 100.0, 21.9
@@ -1191,17 +1239,19 @@ def test_divergent_pulse_alignment_recovers_without_reentering_pulse_stage(monke
     monkeypatch.setattr(service, "_mount_status_summary", lambda: status)
     service._tick_pulse_align()
     assert service.pulse_alignment_unreliable
-    assert service.phase == "pifinder_goto"
+    assert service.phase == "pifinder_pulse_align"
     assert service.active_target_dec == 21.9
     clock[0] += iggs.MFNAVIS_CORRECTION_RETRY_SECONDS + 1
-    service._tick_goto_wait()
+    service._tick_pulse_align()
     assert service.last_error_arcmin == pytest.approx(6.0)
-    assert service.mountcontrol_queue.commands[-1]["type"] == "sync_and_goto"
-    assert service.phase == "pifinder_goto"
+    assert not any(
+        c["type"] == "sync_and_goto" for c in service.mountcontrol_queue.commands
+    )
+    assert service.phase == "pifinder_pulse_align"
 
 
 @pytest.mark.parametrize("error_arcmin", [1.0, 6.0])
-def test_tracking_uses_recovery_instead_of_known_unreliable_pulses(
+def test_tracking_does_not_repeat_small_goto_after_unreliable_pulses(
     monkeypatch, error_arcmin
 ):
     service = _make_service(monkeypatch, [1000.0])
@@ -1213,8 +1263,145 @@ def test_tracking_uses_recovery_instead_of_known_unreliable_pulses(
     service.tracking_last_motion_at = 990.0
     service._tick_tracking_guide()
     if error_arcmin > 3:
-        assert service.tracking_guide_state == "recovering_goto"
-        assert service.mountcontrol_queue.commands[-1]["type"] == "sync_and_goto"
+        assert service.tracking_guide_state == "settling"
+        assert not service.mountcontrol_queue.commands
     else:
         assert service.tracking_guide_state == "enabled"
         assert not service.mountcontrol_queue.commands
+
+
+@pytest.mark.parametrize("recovery_enabled", [True, False])
+def test_failed_pulses_use_manual_steps_before_goto(monkeypatch, recovery_enabled):
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    service.config_values.update(
+        indi_goto_refine_accuracy_arcmin=1.0,
+        indi_tracking_guide_goto_recovery_enabled=recovery_enabled,
+    )
+    service.tracking_target_dec = 21.9
+    service.phase = "complete"
+    status = {
+        "available": True,
+        "device": "LX200 OnStepX",
+        "tracking_enabled": True,
+        "guide_correction_mode": "reacquire",
+    }
+    monkeypatch.setattr(service, "_mount_status_summary", lambda: status)
+    service._tick_tracking_guide()
+    clock[0] += 5
+    service._tick_tracking_guide()
+    assert service.pulse_alignment_unreliable
+    assert service.tracking_guide_state == "enabled"
+    assert service.mountcontrol_queue.commands[-1]["manual_fallback"] is True
+    assert not any(
+        c["type"] == "sync_and_goto" for c in service.mountcontrol_queue.commands
+    )
+
+
+@pytest.mark.parametrize("large_error", [False, True])
+def test_only_large_error_escalates_to_goto_manual_stall_retries_steps(
+    monkeypatch, large_error
+):
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    service.config_values["indi_goto_refine_accuracy_arcmin"] = 1.0
+    service.tracking_target_dec = 20.0 if large_error else 21.9
+    service.phase = "complete"
+    service.pulse_alignment_unreliable = True
+    status = {
+        "available": True,
+        "device": "LX200 OnStepX",
+        "tracking_enabled": True,
+        "guide_correction_mode": "off" if large_error else "approach_reacquire",
+    }
+    monkeypatch.setattr(service, "_mount_status_summary", lambda: status)
+    service._tick_tracking_guide()
+    clock[0] += 5
+    service._tick_tracking_guide()
+    if large_error:
+        assert service.mountcontrol_queue.commands[-1]["type"] == "sync_and_goto"
+        assert service.tracking_guide_state == "recovering_goto"
+    else:
+        assert not service.mountcontrol_queue.commands
+        assert service.tracking_guide_state == "settling"
+        clock[0] += iggs.MFNAVIS_FINE_RETRY_SECONDS + 1
+        service._tick_tracking_guide()
+        command = service.mountcontrol_queue.commands[-1]
+        assert command["type"] == "toggle_guide_correction"
+        assert command["manual_fallback"] and command["reset_manual_progress"]
+
+
+def test_own_manual_step_is_not_canceled_or_retargeted(monkeypatch):
+    service = _make_service(monkeypatch, [1000.0])
+    service.phase = "complete"
+    service.tracking_guide_active_sent = True
+    status = {
+        "available": True,
+        "device": "LX200 OnStepX",
+        "tracking_enabled": True,
+        "mount_motion_active": True,
+        "manual_motion_origin": "guide_correction",
+    }
+    monkeypatch.setattr(service, "_mount_status_summary", lambda: status)
+    service._tick_tracking_guide()
+    assert not service.mountcontrol_queue.commands
+    assert service.tracking_guide_active_sent
+    assert not service.manual_retarget_pending
+    assert service.tracking_target_dec == 20.0
+
+
+def test_alignment_pulse_failure_hands_off_to_manual_steps(monkeypatch):
+    service = _make_service(monkeypatch, [1000.0])
+    service.active_target_ra, service.active_target_dec = 100.0, 21.9
+    status = {
+        "available": True,
+        "device": "LX200 OnStepX",
+        "guide_correction_mode": "reacquire",
+    }
+    monkeypatch.setattr(service, "_mount_status_summary", lambda: status)
+    service._begin_pulse_align()
+    service.mountcontrol_queue.commands.clear()
+    service._tick_pulse_align()
+    assert service.phase == "pifinder_pulse_align"
+    assert service.mountcontrol_queue.commands[-1]["manual_fallback"] is True
+    assert not any(
+        c["type"] == "sync_and_goto" for c in service.mountcontrol_queue.commands
+    )
+
+
+def test_small_manual_stall_retries_without_goto_during_alignment(monkeypatch):
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    service.config_values["indi_goto_refine_accuracy_arcmin"] = 1.0
+    service.active_target_ra, service.active_target_dec = 100.0, 21.9
+    service.pulse_alignment_unreliable = True
+    service._begin_pulse_align()
+    service.mountcontrol_queue.commands.clear()
+    status = {
+        "available": True,
+        "device": "LX200 OnStepX",
+        "guide_correction_mode": "approach_reacquire",
+    }
+    monkeypatch.setattr(service, "_mount_status_summary", lambda: status)
+    service._tick_pulse_align()
+    assert service.phase == "pifinder_pulse_align"
+    assert not service.mountcontrol_queue.commands
+    clock[0] += iggs.MFNAVIS_FINE_RETRY_SECONDS + 1
+    service._tick_pulse_align()
+    command = service.mountcontrol_queue.commands[-1]
+    assert command["manual_fallback"] and command["reset_manual_progress"]
+    assert not any(
+        c["type"] == "sync_and_goto" for c in service.mountcontrol_queue.commands
+    )
+
+
+def test_large_error_during_fine_alignment_uses_goto_then_fresh_baseline(monkeypatch):
+    service = _make_service(monkeypatch, [1000.0])
+    service.active_target_ra, service.active_target_dec = 100.0, 20.0
+    service.pulse_alignment_unreliable = True
+    service._begin_pulse_align()
+    service._tick_pulse_align()
+    assert service.mountcontrol_queue.commands[-1]["type"] == "sync_and_goto"
+    assert service.phase == "pifinder_goto"
+    assert not service.pulse_alignment_unreliable
+    assert not service.manual_approach_unreliable

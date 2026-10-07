@@ -142,6 +142,7 @@ class PreprocessedRun:
     diagnostics: MFStarOnlyDiagnostics
     frame_hw: tuple[int, int]
     frame_id: Optional[int]
+    context_frame: Optional[np.ndarray] = None
 
 
 def _preprocess_backend_options(cfg) -> dict[str, str]:
@@ -523,6 +524,7 @@ class SepShadowRunner:
                 return None
             detection = detect_primary_stars(
                 result.frame,
+                context_frame=arr,
                 sigma=self.sigma,
                 # Keep tetra3's proven brightest-48 input unchanged while
                 # allowing LiveCam to show genuine filtered stars farther
@@ -548,6 +550,7 @@ class SepShadowRunner:
                 diagnostics=result.diagnostics,
                 frame_hw=(int(arr.shape[0]), int(arr.shape[1])),
                 frame_id=frame_id,
+                context_frame=arr,
             )
         except Exception as exc:
             logger.exception("Star-only solver preprocessing failed")
@@ -586,6 +589,7 @@ class SepShadowRunner:
         """Reuse the same synthesized frame; never preprocess it a second time."""
         detection = sep_detect.detect_stars(
             run.frame,
+            context_frame=run.context_frame,
             sigma=self.sigma,
             overlay_max_stars=128,
             saturation_level=None,
