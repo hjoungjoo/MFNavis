@@ -258,8 +258,8 @@ def test_fresh_solve_uses_arrival_error_for_fine_alignment(rig):
     cmd = commands(service)[-1]
     assert service.phase == "pifinder_pulse_align"
     assert cmd["type"] == "toggle_guide_correction"
-    assert cmd["manual_approach"] is False
-    assert cmd["manual_fallback"] is False
+    assert "manual_approach" not in cmd
+    assert "manual_fallback" not in cmd
     assert service.correction_count == 1
     solve(rig)
     service._tick_state_machine()
@@ -610,7 +610,7 @@ def test_timed_pulse_outage_waits_for_completion_and_new_exposures(
         assert commands(service)[-1]["type"] == "sync_and_goto"
 
 
-def test_recovery_after_guide_motion_uses_new_camera_solve(rig):
+def test_recovery_after_guide_pulse_uses_new_camera_solve(rig):
     service, clock, mount, pointing = rig
     start(rig, optical=True)
     service.sync_goto_request_id = None
@@ -618,11 +618,10 @@ def test_recovery_after_guide_motion_uses_new_camera_solve(rig):
     commands(service)
     clock[0] += 1
     pointing["current"]["metadata"]["last_solve_attempt"] = clock[0]
-    mount.update(mount_motion_active=True, manual_motion_origin="guide_correction")
+    mount.update(guide_pulse_until_wall=clock[0] + 0.5)
     service._tick_state_machine()
-    assert service.phase == "pifinder_pulse_align"
-    assert not commands(service)
-    mount["mount_motion_active"] = False
+    assert service.phase == "native_pending"
+    assert commands(service) == [{"type": "toggle_guide_correction", "enabled": False}]
     clock[0] += 1
     solve(rig)
     service._tick_state_machine()
@@ -756,21 +755,6 @@ def test_mount_limit_change_applies_to_next_goto_without_restart(rig):
     mount["alignment_max_altitude"] = 85.0
     service.handle_command({"type": "goto_target", "ra": 110.0, "dec": 30.0})
     assert commands(service)[-1]["type"] == "sync_and_goto"
-
-
-@pytest.mark.parametrize("phase", ["complete", "pifinder_pulse_align"])
-def test_solve_loss_during_own_manual_step_does_not_cancel_lease(rig, phase):
-    service, clock, mount, pointing = rig
-    start(rig, optical=True)
-    service.phase = phase
-    service.pulse_align_sent = phase == "pifinder_pulse_align"
-    service.tracking_guide_active_sent = phase == "complete"
-    mount.update(mount_motion_active=True, manual_motion_origin="guide_correction")
-    clock[0] += 1
-    pointing["current"]["metadata"]["last_solve_attempt"] = clock[0]
-    assert service._tick_solve_fallback() is False
-    assert service.phase == phase
-    assert not commands(service)
 
 
 def test_ping_and_unknown_command_do_not_cancel_accepted_tracking(rig):

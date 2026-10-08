@@ -36,7 +36,6 @@ class SmoothMountRuntime:
         m._guide_predictive_tracking = False
         m._pending_goto_refine = None
         m._pending_guide_rate = None
-        m._approach_rate_request = None
         m._slew_rate_reassert_at = None
         m._cancel_sync_goto("smooth tracking engine handover")
         # Ongoing user/native motion is not adopted as tracking recovery.

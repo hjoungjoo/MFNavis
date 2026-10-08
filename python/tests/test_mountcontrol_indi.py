@@ -574,12 +574,6 @@ def test_failed_firmware_refresh_does_not_extend_input_lease(monkeypatch):
     assert mount._manual_motion_deadline == deadline
 
 
-def test_keepalive_does_not_extend_bounded_guide_correction(monkeypatch):
-    mount = DummyMountControl()
-    assert mount.manual_move("south", origin="guide_correction")
-    assert not mount.manual_motion_keepalive("south")
-
-
 @pytest.mark.parametrize("tracking", [False, True])
 def test_direction_release_preserves_tracking_without_global_abort(
     monkeypatch, tracking
@@ -1566,27 +1560,6 @@ def test_manual_move_reasserts_slew_rate_when_polluted():
     assert mount._slew_rate_polluted is False
 
 
-def test_guide_fallback_manual_move_keeps_polluted_guide_rate():
-    mount = DummyMountControl()
-    mount.client = DummyIndiClient()
-    mount.device = DummyIndiDevice()
-    mount.slew_rate = 6
-    mount._slew_rate_polluted = True
-
-    # The guide-correction fallback nudge opts out: its duration was computed
-    # for the slow guide rate, so the user rate must NOT come back first.
-    assert mount.manual_move(
-        "north",
-        lease_seconds=1.0,
-        reassert_slew_rate=False,
-        origin="guide_correction",
-    )
-
-    assert ("LX200 OnStep", "TELESCOPE_SLEW_RATE", "6") not in mount.client.switches
-    assert mount._slew_rate_polluted is True
-    assert mount._manual_motion_origin == "guide_correction"
-
-
 def test_set_slew_rate_clears_pending_reassert():
     mount = DummyMountControl()
     mount._slew_rate_polluted = True
@@ -1595,7 +1568,8 @@ def test_set_slew_rate_clears_pending_reassert():
     assert mount.set_slew_rate(4)
 
     assert mount._slew_rate_reassert_at is None
-    assert mount._slew_rate_polluted is True  # RAM selection does not touch hardware.
+    assert mount._slew_rate_polluted is False
+    assert "TELESCOPE_SLEW_RATE.4=On" in mount.applied_properties[-1][0]
 
 
 def test_multipoint_align_location_time_requires_trusted_clock(monkeypatch):
@@ -2713,7 +2687,7 @@ def test_predictive_tracking_reversal_disables_feedforward(monkeypatch):
 
 def test_initial_alignment_does_not_enable_predictive_tracking(monkeypatch):
     mount, clock, _ = _predictive_mount(monkeypatch)
-    mount.toggle_guide_correction(True, 10.0, 0.0, 3.0, manual_approach=True)
+    mount.toggle_guide_correction(True, 10.0, 0.0, 3.0)
     clock[0] += 1
     previous_count = len(mount.client.numbers)
     mount._check_guide_correction()
@@ -2730,11 +2704,11 @@ def test_old_drift_history_cannot_restore_predictive_pulses(monkeypatch):
     assert not mount.client.numbers
 
 
-def test_regular_pulse_keeps_post_solve_settling_delay(monkeypatch):
+def test_regular_pulse_has_no_post_solve_settling_delay(monkeypatch):
     mount, clock, _ = _predictive_mount(monkeypatch)
     clock[0] += 1
     mount._send_guide_pulse("east", 100)
-    assert mount._guide_pulse_until == pytest.approx(clock[0] + 0.6)
+    assert mount._guide_pulse_until == pytest.approx(clock[0] + 0.1)
 
 
 def test_guide_correction_requires_a_target():
@@ -2744,7 +2718,7 @@ def test_guide_correction_requires_a_target():
     assert not mount._guide_correction_enabled
 
 
-def _manual_approach_mount(monkeypatch, axis_errors=(0.2, 0.03)):
+def _pulse_correction_mount(monkeypatch, axis_errors=(0.2, 0.03)):
     clock = [1000.0]
     observation = [999.9]
     monkeypatch.setattr(mci.time, "time", lambda: clock[0])
@@ -2765,164 +2739,23 @@ def _manual_approach_mount(monkeypatch, axis_errors=(0.2, 0.03)):
     pulses = []
     monkeypatch.setattr(mount, "_guide_pulse_supported", lambda: True)
     monkeypatch.setattr(mount, "_apply_guide_pulse", lambda *args: pulses.append(args))
-    assert mount.toggle_guide_correction(True, 10.0, 20.0, 1.5, manual_approach=True)
+    assert mount.toggle_guide_correction(True, 10.0, 20.0, 1.5)
     return mount, clock, observation, errors, motions, pulses
 
 
-def _approach_ack(mount, rate, state="ok"):
+def _slew_rate_ack(mount, rate, state="ok"):
     mount.receive_sync_property(
         "TELESCOPE_SLEW_RATE", state, {str(rate): True}, mount._client_generation
     )
 
 
-def test_goto_approach_waits_for_speed_ack_and_uses_physical_altaz(monkeypatch):
-    mount, clock, _observation, _errors, motions, pulses = _manual_approach_mount(
-        monkeypatch
-    )
-    saved_rate = mount.slew_rate
-    _approach_ack(mount, 6)  # Cached matching state is not an acknowledgement.
-    mount._check_guide_correction()
-    assert mount.client.switches[-1][1:] == ("TELESCOPE_SLEW_RATE", "6")
-    assert not motions and not pulses
-    _approach_ack(mount, 6, "busy")
-    mount._check_guide_correction()
-    assert not motions
-    _approach_ack(mount, 6)
-    mount._check_guide_correction()
-    # Target RA is lower, but target azimuth is higher: physical east, not west.
-    assert mount._manual_motion_direction == "east"
-    assert mount._manual_motion_origin == "guide_correction"
-    assert motions[-1] == ["LX200 OnStep.TELESCOPE_MOTION_WE.MOTION_WEST=On"]
-    assert mount._manual_motion_deadline - clock[0] <= 1.0
-    assert mount.slew_rate == saved_rate
-    assert not pulses
-
-
-@pytest.mark.parametrize("failure", ["alert", "timeout", "disconnect"])
-def test_goto_approach_speed_failure_never_starts_motion(monkeypatch, failure):
-    mount, clock, _observation, _errors, motions, pulses = _manual_approach_mount(
-        monkeypatch
-    )
-    mount._check_guide_correction()
-    if failure == "alert":
-        _approach_ack(mount, 6, "alert")
-    elif failure == "timeout":
-        clock[0] += 5.1
-    else:
-        mount.mark_disconnected("test disconnect")
-    mount._check_guide_correction()
-    assert not motions and not pulses
-    assert not mount._guide_correction_enabled
-    assert mount._guide_correction_mode == "failed"
-
-
-def test_goto_approach_stops_and_waits_for_post_stop_solve_before_pulse(monkeypatch):
-    mount, clock, observation, errors, motions, pulses = _manual_approach_mount(
-        monkeypatch, axis_errors=(0.02, -0.12)
-    )
-    mount._check_guide_correction()
-    _approach_ack(mount, 5)
-    mount._check_guide_correction()
-    assert mount._manual_motion_direction == "south"
-    clock[0] += 1.1
-    mount._check_manual_motion_deadline()
-    assert mount._manual_motion_direction is None
-    assert all("=Off" in prop for prop in motions[-1])
-    assert not any("ABORT" in prop for prop in motions[-1])
-    assert mount._guide_correction_mode == "waiting_solve"
-    assert mount._guide_observation_after_wall == clock[0]
-    assert mount._guide_correction_next_at == clock[0]
-    clock[0] += 0.01
-    # Newer than the previous solve, but still taken during the approach.
-    observation[0] = 1000.8
-    mount._check_guide_correction()
-    assert not pulses and len(motions) == 2
-    errors[:] = [0.02, -0.03]
-    monkeypatch.setattr(mount, "_current_plate_solve", lambda: (10.02, 20.0, clock[0]))
-    mount._check_guide_correction()
-    assert len(pulses) == 1
-    assert mount._guide_correction_mode == "pulse"
-    assert mount._confirmed_guide_rates == (0.5, 0.5)
-    assert mount.client.numbers[-1][1] == "GUIDE_RATE"
-
-
-@pytest.mark.parametrize("when", ["waiting_speed", "moving"])
-def test_disabling_goto_approach_cancels_pending_or_active_move(monkeypatch, when):
-    mount, _clock, _observation, _errors, motions, pulses = _manual_approach_mount(
-        monkeypatch
-    )
-    mount._check_guide_correction()
-    if when == "moving":
-        _approach_ack(mount, 6)
-        mount._check_guide_correction()
-    mount.toggle_guide_correction(False)
-    _approach_ack(mount, 6)
-    mount._check_guide_correction()
-    assert mount._manual_motion_direction is None
-    assert mount._approach_rate_request is None
-    assert mount._guide_correction_mode == "off"
-    assert len(motions) == (2 if when == "moving" else 0)
-    assert not pulses
-
-
-def test_goto_approach_requests_recovery_after_three_moves_without_progress(
-    monkeypatch,
-):
-    mount, clock, observation, _errors, motions, _pulses = _manual_approach_mount(
-        monkeypatch
-    )
-    for _ in range(4):
-        observation[0] = clock[0]
-        mount._check_guide_correction()
-        _approach_ack(mount, 6)
-        mount._check_guide_correction()
-        clock[0] += 1.1
-        mount._check_manual_motion_deadline()
-        clock[0] += 0.6
-    assert not mount._guide_correction_enabled
-    assert not mount._guide_manual_approach
-    assert mount._guide_correction_mode == "approach_reacquire"
-    observation[0] = clock[0]
-    mount._check_guide_correction()
-    assert not _pulses
-    assert len(motions) == 6  # Three bounded moves, each followed by stop.
-
-
 def test_tracking_guide_does_not_enable_manual_approach(monkeypatch):
-    mount, _clock, _observation, _errors, motions, pulses = _manual_approach_mount(
+    mount, _clock, _observation, _errors, motions, pulses = _pulse_correction_mount(
         monkeypatch
     )
     mount.toggle_guide_correction(True, 10.0, 20.0, 1.5)
     mount._check_guide_correction()
-    assert not mount._guide_manual_approach
     assert not motions and len(pulses) == 1
-
-
-def test_final_manual_approach_slows_down_before_two_arcmin_band(monkeypatch):
-    mount, _clock, _observation, _errors, motions, pulses = _manual_approach_mount(
-        monkeypatch, axis_errors=(0.0, 0.04)
-    )
-    monkeypatch.setattr(mount, "_current_plate_solve", lambda: (10.01, 20.0, 999.9))
-    mount._check_guide_correction()
-    assert mount.client.switches[-1][1:] == ("TELESCOPE_SLEW_RATE", "4")
-    _approach_ack(mount, 4)
-    mount._check_guide_correction()
-    assert mount._manual_motion_direction == "north"
-    assert len(motions) == 1 and not pulses
-
-
-def test_guide_correction_pulses_toward_target_on_fresh_solve(monkeypatch):
-    solve_time = time.time()
-    mount = DummyMountControl(DummySharedState(DummySolution(9.9, 20.0, solve_time)))
-    mount._last_goto_target = (10.0, 20.0)
-    monkeypatch.setattr(mount, "_select_guide_rate_for_error", lambda error: True)
-
-    assert mount.toggle_guide_correction(enabled=True, accuracy_arcmin=1.0)
-    mount._guide_correction_next_at = time.monotonic() - 1.0
-    mount._check_guide_correction()
-
-    assert mount._manual_motion_direction == "east"
-    assert mount._guide_correction_last_solve_time == solve_time
 
 
 def test_guide_correction_does_not_pulse_inside_accuracy():
@@ -2969,7 +2802,7 @@ def test_recovery_guide_rejects_pre_arrival_solve_from_shared_state(monkeypatch)
     mount._check_guide_correction()
     assert mount.client.numbers[-1][1:] == (
         "TELESCOPE_TIMED_GUIDE_NS",
-        {"TIMED_GUIDE_S": 2500.0},
+        {"TIMED_GUIDE_N": 0.0, "TIMED_GUIDE_S": 2500.0},
     )
 
 
@@ -2985,25 +2818,29 @@ def test_tracking_remeasures_after_each_bounded_pulse(monkeypatch):
     monkeypatch.setattr(mount, "_select_guide_rate_for_error", lambda error: True)
     monkeypatch.setattr(mount, "_guide_pulse_inversions", lambda: (False, False))
     mount._confirmed_guide_rates = (1.0, 1.0)
-    mount.toggle_guide_correction(True, 10.0, 20.0, 1.0)
+    mount.toggle_guide_correction(True, 10.0, 20.0, 0.5)
     mount._check_guide_correction()
-    assert mount.client.numbers[-1][2] == {"TIMED_GUIDE_W": 2500.0}
+    assert mount.client.numbers[-1][2] == {
+        "TIMED_GUIDE_E": 0.0,
+        "TIMED_GUIDE_W": 2500.0,
+    }
     assert mount._manual_motion_queue_timeout() == pytest.approx(0.1)
     sent = len(mount.client.numbers)
     clock[0] = 1001.6
     observation[0] = (10.03, 20.0, clock[0])
     mount._check_guide_correction()
-    assert len(mount.client.numbers) == sent  # Pulse/settling still in progress.
-    clock[0] = 1003.2
-    mount._check_guide_correction()
-    assert len(mount.client.numbers) == sent  # Exposure predates settled position.
-    observation[0] = (10.025, 20.0, clock[0])
-    mount._check_guide_correction()
     assert len(mount.client.numbers) == sent + 1
-    assert mount.client.numbers[-1][2] == {"TIMED_GUIDE_W": 2500.0}
-    clock[0] = 1007.0
+    assert mount.client.numbers[-1][2] == {
+        "TIMED_GUIDE_E": 0.0,
+        "TIMED_GUIDE_W": 2500.0,
+    }
+    assert mount._guide_pulse_until == pytest.approx(1004.1)
+    clock[0] = 1001.7
     mount._check_guide_correction()
     assert len(mount.client.numbers) == sent + 1  # Never replay an observation.
+    clock[0] = 1007.0
+    mount._check_guide_correction()
+    assert len(mount.client.numbers) == sent + 1
 
 
 @pytest.mark.parametrize("solve_time", [980.0, 1001.0, float("nan"), float("inf")])
@@ -3012,7 +2849,11 @@ def test_guide_correction_rejects_old_or_invalid_solve_then_resumes(
 ):
     monkeypatch.setattr(mci.time, "time", lambda: 1000.0)
     state = DummySharedState(DummySolution(9.9, 20.0, solve_time))
-    mount = DummyMountControl(state)
+    mount = DummyConnectedMount()
+    mount.shared_state = state
+    monkeypatch.setattr(mount, "_guide_pulse_supported", lambda: True)
+    monkeypatch.setattr(mount, "_guide_pulse_inversions", lambda: (False, False))
+    mount._confirmed_guide_rates = (1.0, 1.0)
     mount._last_goto_target = (10.0, 20.0)
     monkeypatch.setattr(mount, "_select_guide_rate_for_error", lambda error: True)
     assert mount.toggle_guide_correction(enabled=True, accuracy_arcmin=1.0)
@@ -3023,7 +2864,9 @@ def test_guide_correction_rejects_old_or_invalid_solve_then_resumes(
 
     state._solution = DummySolution(9.9, 20.0, 999.0)
     mount._check_guide_correction()
-    assert mount._manual_motion_direction == "east"
+    assert mount._manual_motion_direction is None
+    assert mount.client.numbers[-1][1] == "TELESCOPE_TIMED_GUIDE_WE"
+    assert mount.client.numbers[-1][2]["TIMED_GUIDE_E"] > 0
     assert mount._guide_correction_last_solve_time == 999.0
 
 
@@ -3232,20 +3075,18 @@ def test_speed_refresh_ignores_temporary_driver_guide_selector(monkeypatch):
     assert mount.slew_rate == 7
 
 
-def test_manual_speed_change_during_pulse_stays_in_ram_until_user_moves():
+def test_manual_speed_change_applies_after_unsupported_driver_pulse_ends(monkeypatch):
     mount = DummyConnectedMount()
-    mount._guide_pulse_until = time.monotonic() + 2.5
+    clock = [1000.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    mount._guide_pulse_until = clock[0] + 2.5
     assert mount.set_slew_rate(6)
     assert mount.client.switches == []
     assert mount.slew_rate == 6
-    assert DummyMountControl().slew_rate == 7
-    mount._check_slew_rate_reassert()
-    assert mount.client.switches == []
-    mount._guide_pulse_until = 0.0
-    mount._slew_rate_reassert_at = 0.0
-    mount._check_slew_rate_reassert()
-    assert mount.client.switches == []
-    assert mount.user_manual_slew_rate == 6
+    clock[0] += 2.5
+    mount._check_manual_speed_request()
+    assert mount.client.switches[-1][1:] == ("TELESCOPE_SLEW_RATE", "6")
+    assert mount._manual_speed_apply_state == "waiting_ack"
 
 
 def test_guide_setting_during_manual_move_only_saves():
@@ -3291,7 +3132,6 @@ def test_short_user_move_disables_tracking_correction_before_service_tick(monkey
     monkeypatch.setattr(mount, "_apply_indi_properties", lambda *args: True)
     mount._guide_correction_enabled = True
     mount._guide_correction_target = (10.0, 20.0)
-    mount._guide_manual_approach = False
     monkeypatch.setattr(mount, "_publish_manual_motion_progress", lambda **kwargs: None)
     assert mount.manual_move("north")
     assert not mount._guide_correction_enabled
@@ -3611,10 +3451,9 @@ def test_initial_reset_failure_reports_error_without_retry(monkeypatch, raises):
 def test_diverging_pulses_request_recovery_from_distinct_fresh_solves(
     monkeypatch, solve_outages
 ):
-    mount, clock, observation, errors, _motions, pulses = _manual_approach_mount(
+    mount, clock, observation, errors, _motions, pulses = _pulse_correction_mount(
         monkeypatch, axis_errors=(0.1, 0.0)
     )
-    mount._guide_manual_approach = False
     monkeypatch.setattr(mount, "_select_guide_rate_for_error", lambda *args: True)
     mount._check_guide_correction()
     assert len(pulses) == 1
@@ -3970,45 +3809,8 @@ def test_success_message_cannot_verify_old_or_wrong_idle_readback(monkeypatch):
     assert not mount.moves
 
 
-@pytest.mark.parametrize("pulse_supported", [True, False])
-def test_manual_fallback_has_bounded_hold_and_fresh_post_stop_solve(
-    monkeypatch, pulse_supported
-):
-    mount, clock, observation, _errors, motions, pulses = _manual_approach_mount(
-        monkeypatch, axis_errors=(0.03, 0.01)
-    )
-    monkeypatch.setattr(mount, "_guide_pulse_supported", lambda: pulse_supported)
-    mount.toggle_guide_correction(
-        True, 10.0, 20.0, 1.0, manual_fallback=pulse_supported
-    )
-    # Divergence history must not reject the independent physical-axis fallback.
-    mount._guide_pulse_best_error = 0.1
-    mount._guide_pulse_worsening = 3
-    if not pulse_supported:
-        mount._guide_pulse_best_error = None
-    mount._check_guide_correction()
-    _approach_ack(mount, 4)
-    mount._check_guide_correction()
-    assert mount._manual_motion_direction == "east"
-    assert mount._manual_motion_deadline - clock[0] <= 0.5
-    assert not pulses
-    clock[0] += 9.1  # Exhaust even the entire bounded extension allowance.
-    mount._check_manual_motion_deadline()
-    assert mount._guide_observation_after_wall == clock[0]
-    clock[0] += 0.01  # A new solve can continue immediately after the stop.
-    observation[0] = 1000.3  # Exposure from the move cannot authorize another step.
-    mount._check_guide_correction()
-    assert len(motions) == 2
-    observation[0] = clock[0]
-    mount._check_guide_correction()
-    _approach_ack(mount, 4)
-    mount._check_guide_correction()
-    assert len(motions) == 3
-    assert not pulses
-
-
 def test_ineffective_pulses_escalate_after_five_distinct_observations(monkeypatch):
-    mount, clock, observation, _errors, motions, pulses = _manual_approach_mount(
+    mount, clock, observation, _errors, motions, pulses = _pulse_correction_mount(
         monkeypatch
     )
     mount.toggle_guide_correction(True, 10.0, 20.0, 1.0)
@@ -4024,28 +3826,8 @@ def test_ineffective_pulses_escalate_after_five_distinct_observations(monkeypatc
     assert not motions
 
 
-def test_manual_fallback_jitter_does_not_reset_stall_budget(monkeypatch):
-    mount, clock, observation, errors, motions, pulses = _manual_approach_mount(
-        monkeypatch
-    )
-    mount.toggle_guide_correction(True, 10.0, 20.0, 1.0, manual_fallback=True)
-    for error in (6.0, 6.4, 6.2, 6.6, 6.1, 6.2):
-        errors[:] = [error / 60, 0.0]
-        observation[0] = clock[0]
-        mount._check_guide_correction()
-        _approach_ack(mount, 5)
-        mount._check_guide_correction()
-        clock[0] += 9.1
-        mount._check_manual_motion_deadline()
-        clock[0] += 0.6
-    assert mount._guide_correction_mode == "approach_reacquire"
-    assert not mount._guide_correction_enabled
-    assert len(motions) == 10  # Five moves and their stops, no sixth move.
-    assert not pulses
-
-
 def test_pulse_jitter_does_not_reset_stall_budget(monkeypatch):
-    mount, clock, observation, errors, _motions, pulses = _manual_approach_mount(
+    mount, clock, observation, errors, _motions, pulses = _pulse_correction_mount(
         monkeypatch
     )
     mount.toggle_guide_correction(True, 10.0, 20.0, 1.0)
@@ -4059,339 +3841,19 @@ def test_pulse_jitter_does_not_reset_stall_budget(monkeypatch):
     assert len(pulses) == 5
 
 
-def test_manual_step_adjusts_duration_from_response_and_slows_near_target(monkeypatch):
-    mount, clock, _observation, errors, _motions, _pulses = _manual_approach_mount(
-        monkeypatch
-    )
-    mount.toggle_guide_correction(True, 10.0, 20.0, 1.0, manual_fallback=True)
-    rates, moves = [], []
-    monkeypatch.setattr(
-        mount, "_select_approach_rate", lambda rate: rates.append(rate) or True
-    )
-    monkeypatch.setattr(
-        mount,
-        "manual_move",
-        lambda direction, **kw: moves.append((direction, kw["lease_seconds"])) or True,
-    )
-    for error in (6.0, 6.05, 6.0, 2.0, -1.8):
-        errors[:] = [error / 60, 0.0]
-        clock[0] += 3
-        mount._apply_manual_approach(10.1, 20.0, 10.0, 20.0, abs(error), clock[0])
-    durations = [m[1] for m in moves]
-    assert durations[0] < durations[1] < durations[2] <= 1.5
-    assert rates[:3] == [5, 5, 5]  # Extend movement before raising speed.
-    assert rates[3:] == [4, 4]
-    assert durations[3] < durations[2]
-    assert moves[-1][0] == "west"
-    assert durations[-1] < durations[-2]  # Damp after crossing the target.
-    assert all(0 < duration <= 1.5 for duration in durations)
-
-
-def test_manual_retry_clears_stall_but_waits_for_new_observation(monkeypatch):
-    mount, clock, observation, _errors, motions, _pulses = _manual_approach_mount(
-        monkeypatch
-    )
-    mount._approach_no_progress = 5
-    mount._approach_previous_error = 1.0
-    mount.toggle_guide_correction(
-        True, 10.0, 20.0, 1.0, manual_fallback=True, reset_manual_progress=True
-    )
-    assert mount._approach_no_progress == 0
-    assert mount._approach_previous_error is None
-    mount._check_guide_correction()
-    assert not motions  # The retained pre-pause image cannot drive a new step.
-    observation[0] = clock[0] + 0.1
-    clock[0] += 0.1
-    mount._check_guide_correction()
-    _approach_ack(mount, 6)
-    mount._check_guide_correction()
-    assert mount._manual_motion_direction == "east"
-
-
 def test_completed_goto_clears_convergence_history_not_target(monkeypatch):
-    mount, clock, _observation, _errors, _motions, _pulses = _manual_approach_mount(
+    mount, clock, _observation, _errors, _motions, _pulses = _pulse_correction_mount(
         monkeypatch
     )
     mount._goto_motion = {"target_ra": 10.0, "target_dec": 20.0}
     mount._guide_pulse_best_error = 0.1
     mount._guide_pulse_no_progress = 5
-    mount._approach_no_progress = 5
     monkeypatch.setattr(mount, "_read_current_position", lambda: None)
     mount._complete_goto_motion()
     assert mount._guide_pulse_best_error is None
-    assert mount._guide_pulse_no_progress == mount._approach_no_progress == 0
+    assert mount._guide_pulse_no_progress == 0
     assert mount._guide_correction_target == (10.0, 20.0)
     assert mount._guide_observation_after_wall >= clock[0]
-
-
-def test_manual_cumulative_response_predicts_remaining_time_from_measured_motion(
-    monkeypatch,
-):
-    mount, *_ = _manual_approach_mount(monkeypatch)
-    # Three one-second commands each close 0.4 arcmin, despite requested
-    # durations of 0.5 s: use observed command dwell through the stop ACK.
-    for timestamp in (1001.0, 1003.0, 1005.0):
-        mount._record_manual_response(
-            dict(
-                axis="alt",
-                rate=5,
-                error=-5.0,
-                duration=0.5,
-                elapsed=1.0,
-                solve_time=timestamp - 1,
-            ),
-            -4.6,
-            timestamp,
-        )
-    predicted = mount._predict_manual_duration("alt", 5, -2.0, 1005.0)
-    assert predicted == pytest.approx(2.0 / 0.4 * 0.35)
-    assert mount._predict_manual_duration("alt", 5, 2.0, 1005.0) is None
-    assert mount._predict_manual_duration("az", 5, -2.0, 1005.0) is None
-    assert mount._predict_manual_duration("alt", 4, -2.0, 1005.0) is None
-    assert mount._predict_manual_duration("alt", 5, -2.0, 1066.0) is None
-
-
-@pytest.mark.parametrize(
-    "progress",
-    [(0.02, -0.02, 0.02), (-0.4, -0.4, -0.4), (0.8, -0.7, 0.8), (0.0, 0.0, 1.0)],
-)
-def test_manual_prediction_rejects_noise_divergence_and_single_outlier(
-    monkeypatch, progress
-):
-    mount, *_ = _manual_approach_mount(monkeypatch)
-    for index, delta in enumerate(progress):
-        timestamp = 1001.0 + index * 2
-        mount._record_manual_response(
-            dict(axis="az", rate=5, error=5.0, duration=1.0, solve_time=timestamp - 1),
-            5.0 - delta,
-            timestamp,
-        )
-    assert mount._predict_manual_duration("az", 5, 2.0, 1005.0) is None
-
-
-def test_manual_prediction_does_not_learn_across_solve_outage(monkeypatch):
-    mount, *_ = _manual_approach_mount(monkeypatch)
-    for timestamp in (1001.0, 1003.0, 1005.0):
-        mount._record_manual_response(
-            dict(axis="az", rate=5, error=5.0, duration=1.0, solve_time=timestamp - 1),
-            4.5,
-            timestamp,
-        )
-    assert mount._predict_manual_duration("az", 5, 2.0, 1005.0) is not None
-    mount._record_manual_response(
-        dict(axis="az", rate=5, error=5.0, duration=1.0, solve_time=1005.0),
-        2.0,
-        1030.0,
-    )
-    assert mount._predict_manual_duration("az", 5, 2.0, 1030.0) is None
-
-
-def test_manual_prediction_changes_commands_with_bounded_growth(monkeypatch):
-    mount, clock, _observation, errors, _motions, _pulses = _manual_approach_mount(
-        monkeypatch
-    )
-    mount.toggle_guide_correction(True, 10.0, 20.0, 1.0, manual_fallback=True)
-    moves = []
-    monkeypatch.setattr(mount, "_select_approach_rate", lambda rate: True)
-    monkeypatch.setattr(
-        mount,
-        "manual_move",
-        lambda direction, **kw: moves.append(kw["lease_seconds"]) or True,
-    )
-    # Empirical response is substantially slower than the nominal 8x speed.
-    for timestamp in (994.0, 996.0, 998.0):
-        mount._record_manual_response(
-            dict(axis="az", rate=5, error=5.0, duration=1.0, solve_time=timestamp - 1),
-            4.8,
-            timestamp,
-        )
-    mount._approach_duration_scale["az"] = 2.0
-    for error in (4.0, 3.8):
-        errors[:] = [error / 60, 0.0]
-        mount._apply_manual_approach(10.1, 20.0, 10.0, 20.0, error, clock[0])
-        clock[0] += 2
-    assert moves[0] == pytest.approx(1.5)
-    assert moves[1] <= 1.5
-    # A new target cannot inherit another target's measured response.
-    mount.toggle_guide_correction(True, 11.0, 20.0, 1.0, manual_fallback=True)
-    assert not mount._approach_response_samples
-
-
-def _start_continuous_manual(monkeypatch, error=6.0):
-    state = _manual_approach_mount(monkeypatch, axis_errors=(error / 60, 0.0))
-    mount, *_ = state
-    mount.toggle_guide_correction(True, 10.0, 20.0, 1.0, manual_fallback=True)
-    mount._check_guide_correction()
-    _approach_ack(mount, 5 if error > 3 else 4)
-    mount._check_guide_correction()
-    return state
-
-
-def test_continuous_manual_extends_without_stop_or_speed_change_and_times_out(
-    monkeypatch,
-):
-    mount, clock, _observation, _errors, motions, _pulses = _start_continuous_manual(
-        monkeypatch, 1.8
-    )
-    start = clock[0]
-    base = mount._manual_motion_deadline - start
-    rate_writes = [s for s in mount.client.switches if s[1] == "TELESCOPE_SLEW_RATE"]
-    total = base
-    for extra in (0.5, 1.0, 2.0, 4.0):
-        clock[0] = mount._manual_motion_deadline
-        mount._check_manual_motion_deadline()
-        total += extra
-        assert mount._manual_motion_direction == "east"
-        assert mount._manual_motion_deadline == pytest.approx(start + total)
-        assert len(motions) == 1  # No Off/On cycle between increments.
-    assert [
-        s for s in mount.client.switches if s[1] == "TELESCOPE_SLEW_RATE"
-    ] == rate_writes
-    assert any(
-        s[1] == "TELESCOPE_MOTION_WE" for s in mount.client.switches
-    )  # Firmware keepalive.
-    clock[0] = mount._manual_motion_deadline
-    mount._check_manual_motion_deadline()
-    assert mount._manual_motion_direction is None
-    assert len(motions) == 2
-    assert mount._approach_last_step["elapsed"] == pytest.approx(total)
-    mount._check_guide_correction()
-    assert len(motions) == 2  # No fresh solve: the bounded hold cannot restart.
-
-
-@pytest.mark.parametrize("measured", [-2.0, 0.5])
-def test_continuous_manual_checks_solve_before_deadline_and_slows_next_move(
-    monkeypatch, measured
-):
-    mount, clock, observation, errors, _motions, _pulses = _start_continuous_manual(
-        monkeypatch
-    )
-    clock[0] += 0.1
-    observation[0] = clock[0]
-    errors[:] = [measured / 60, 0.0]
-    assert clock[0] < mount._manual_motion_deadline
-    mount._check_manual_motion_deadline()
-    assert mount._manual_motion_direction is None
-    assert mount._approach_rate_ceiling["az"] == 4
-    assert mount._approach_last_step["ending"]
-    # After an overshoot, even a residual in the 8x band must use 4x.
-    if measured < 0:
-        clock[0] += 0.1
-        observation[0] = clock[0]
-        errors[:] = [-4.0 / 60, 0.0]
-        mount._check_guide_correction()
-        assert mount.client.switches[-1][1:] == ("TELESCOPE_SLEW_RATE", "4")
-        _approach_ack(mount, 4)
-        mount._check_guide_correction()
-        assert mount._manual_motion_direction == "west"
-        assert mount._approach_last_step.get("extension_index", 0) == 0
-
-
-def test_continuous_manual_ignores_pre_start_solve_and_stops_on_refresh_failure(
-    monkeypatch,
-):
-    mount, clock, observation, errors, motions, _pulses = _start_continuous_manual(
-        monkeypatch
-    )
-    clock[0] += 0.1
-    errors[:] = [-0.02, 0.0]
-    observation[0] = 1000.0  # At/before the movement start, not in-flight feedback.
-    mount._check_manual_motion_deadline()
-    assert mount._manual_motion_direction == "east"
-    monkeypatch.setattr(mount, "_refresh_manual_motion", lambda now: False)
-    mount._check_manual_motion_deadline()
-    assert mount._manual_motion_direction is None
-    assert len(motions) == 2
-
-
-def test_continuous_manual_disable_cancels_extensions(monkeypatch):
-    mount, clock, _observation, _errors, motions, _pulses = _start_continuous_manual(
-        monkeypatch
-    )
-    clock[0] = mount._manual_motion_deadline
-    mount._check_manual_motion_deadline()
-    assert mount._approach_last_step["extension_index"] == 1
-    mount.toggle_guide_correction(False)
-    assert mount._manual_motion_direction is None
-    clock[0] += 1
-    mount._check_manual_motion_deadline()
-    assert len(motions) == 2
-
-
-def test_manual_axes_keep_independent_speed_duration_and_extension_state(monkeypatch):
-    mount, clock, _observation, errors, _motions, _pulses = _manual_approach_mount(
-        monkeypatch
-    )
-    mount.toggle_guide_correction(True, 10.0, 20.0, 1.0, manual_fallback=True)
-    rates, moves = [], []
-    monkeypatch.setattr(
-        mount, "_select_approach_rate", lambda rate: rates.append(rate) or True
-    )
-    monkeypatch.setattr(
-        mount,
-        "manual_move",
-        lambda direction, **kw: moves.append((direction, kw["lease_seconds"])) or True,
-    )
-    errors[:] = [3.4 / 60, 3.0 / 60]
-    mount._apply_manual_approach(10.1, 20.0, 10.0, 20.0, 4.5, clock[0])
-    az_step = mount._approach_last_step
-    az_step["extension_index"] = 3
-    assert az_step["axis"] == "az" and rates[-1] == 5
-    clock[0] += 2
-    # The other axis has no 8x history; it must use its own 4x tier, even
-    # though the previously driven azimuth remains in its 8x hysteresis band.
-    mount._apply_manual_approach(10.1, 20.0, 10.0, 20.0, 4.5, clock[0])
-    alt_step = mount._approach_last_step
-    assert alt_step["axis"] == "alt" and rates[-1] == 4
-    assert alt_step.get("extension_index", 0) == 0
-    assert mount._approach_duration_scale["az"] == pytest.approx(1.35)
-    assert mount._approach_duration_scale["alt"] == 1.0
-    assert az_step["extension_index"] == 3
-    clock[0] += 2
-    errors[:] = [3.2 / 60, 2.8 / 60]
-    mount._apply_manual_approach(10.1, 20.0, 10.0, 20.0, 4.2, clock[0])
-    assert mount._approach_last_step["axis"] == "az"
-    assert rates[-1] == 5  # Azimuth retains its own 8x history, not altitude's 4x.
-    assert mount._approach_axis_steps["alt"] is alt_step
-    assert moves[0][0] == moves[2][0] == "east"
-    assert moves[1][0] == "north"
-
-
-def test_stalled_manual_axis_does_not_pause_other_axis(monkeypatch):
-    mount, clock, _observation, errors, _motions, _pulses = _manual_approach_mount(
-        monkeypatch
-    )
-    mount.toggle_guide_correction(True, 10.0, 20.0, 1.0, manual_fallback=True)
-    monkeypatch.setattr(mount, "_select_approach_rate", lambda rate: True)
-    monkeypatch.setattr(mount, "manual_move", lambda *args, **kw: True)
-    mount._approach_axis_progress["az"] = {
-        "best": 6.0,
-        "stalled": 5,
-        "retry_at": clock[0] + 10,
-    }
-    errors[:] = [8.0 / 60, -2.0 / 60]
-    mount._apply_manual_approach(10.1, 20.0, 10.0, 20.0, 8.2, clock[0])
-    assert mount._guide_correction_enabled
-    assert mount._approach_last_step["axis"] == "alt"
-    assert mount._approach_axis_progress["alt"]["stalled"] == 0
-    assert mount._approach_axis_progress["az"]["stalled"] == 5
-
-
-def test_crossing_one_axis_does_not_slow_other_axis(monkeypatch):
-    mount, clock, observation, errors, _motions, _pulses = _start_continuous_manual(
-        monkeypatch
-    )
-    observation[0] = clock[0] = clock[0] + 0.1
-    errors[:] = [-2.0 / 60, 6.0 / 60]
-    mount._check_manual_motion_deadline()
-    assert mount._approach_rate_ceiling == {"az": 4, "alt": 6}
-    observation[0] = clock[0] = clock[0] + 0.1
-    mount._check_guide_correction()
-    assert mount.client.switches[-1][1:] == ("TELESCOPE_SLEW_RATE", "5")
-    _approach_ack(mount, 5)
-    mount._check_guide_correction()
-    assert mount._manual_motion_direction == "north"
-    assert mount._approach_axis_steps["alt"]["rate"] == 5
 
 
 @pytest.mark.parametrize(
@@ -4402,14 +3864,12 @@ def test_crossing_one_axis_does_not_slow_other_axis(monkeypatch):
         {"type": "reduce_slew_rate"},
     ],
 )
-def test_user_speed_selection_cannot_interrupt_or_rewrite_automatic_motion(
+def test_user_speed_selection_finishes_pulses_before_applying_selector(
     monkeypatch, command
 ):
     from PiFinder.tracking_commands import PriorityMountQueue
 
-    mount, clock, _observation, _errors, motions, _pulses = _start_continuous_manual(
-        monkeypatch
-    )
+    mount, clock, observation = _early_solve_pulse_mount(monkeypatch)
     q = PriorityMountQueue()
     try:
         mount.mount_queue = q
@@ -4418,33 +3878,49 @@ def test_user_speed_selection_cannot_interrupt_or_rewrite_automatic_motion(
         q.put(command)
         mount.handle_command(q.get(timeout=1))
         assert q.control_epoch == mount._guide_control_epoch
-        assert mount._manual_motion_origin == "guide_correction"
+        assert mount._manual_motion_origin is None
         assert mount._guide_correction_enabled
         assert mount.client.switches == before
         assert mount._slew_rate_reassert_at is None
-        assert len(motions) == 1
-        clock[0] = mount._manual_motion_deadline
-        mount._check_manual_motion_deadline()
-        assert mount._manual_motion_direction == "east"
+        assert mount._guide_pulse_until == pytest.approx(clock[0] + 0.001)
+        assert len(mount.client.numbers) == 2
+        assert all(max(values.values()) == 1 for _, _, values in mount.client.numbers)
+        clock[0] += 0.02
+        observation[0] = (9.99, -0.01, clock[0])
+        mount._check_manual_speed_request()
+        assert mount.client.switches[-1][1:] == (
+            "TELESCOPE_SLEW_RATE",
+            str(mount.slew_rate),
+        )
+        mount._check_guide_correction()
+        assert len(mount.client.numbers) == 2  # Wait for the manual speed ACK.
+        _slew_rate_ack(mount, mount.slew_rate)
+        mount._check_manual_speed_request()
+        assert mount._manual_speed_apply_state == "applied"
+        assert mount._guide_correction_enabled
+        assert mount._guide_rate_needs_reassert  # Next guide uses its own rate.
     finally:
         q.queue.close()
         q.queue.join_thread()
 
 
-def test_user_takeover_stops_continuous_correction_before_user_speed_and_motion(
+def test_user_takeover_stops_pulse_before_user_speed_and_motion(
     monkeypatch,
 ):
-    mount, _clock, _observation, _errors, _motions, _pulses = _start_continuous_manual(
-        monkeypatch
-    )
+    mount, _clock, _observation = _early_solve_pulse_mount(monkeypatch)
     events = []
+    monkeypatch.setattr(
+        mount,
+        "set_tracking",
+        lambda enabled: events.append(("tracking", enabled)) or True,
+    )
     mount.user_manual_slew_rate = 7
     mount._pending_goto_refine = {"old": True}
     monkeypatch.setattr(
         mount,
         "_apply_indi_properties",
         lambda props, *args: events.append(
-            "stop" if any("=Off" in p for p in props) else "move"
+            "stop" if any("=Off" in p or "ABORT" in p for p in props) else "move"
         )
         or True,
     )
@@ -4454,42 +3930,21 @@ def test_user_takeover_stops_continuous_correction_before_user_speed_and_motion(
         lambda device, name, value: events.append((name, value)) or True,
     )
     assert mount.manual_move("north", 0.4)
-    assert events == ["stop", ("TELESCOPE_SLEW_RATE", "7"), "move"]
+    assert events == ["stop", ("tracking", True), ("TELESCOPE_SLEW_RATE", "7"), "move"]
     assert mount._manual_motion_origin == "user"
     assert not mount._guide_correction_enabled
     assert mount._pending_goto_refine is None
     assert not mount.toggle_guide_correction(True, 10, 20)
     assert not mount.manual_move("east", origin="guide_correction")
-    assert len(events) == 3
-
-
-def test_user_motion_already_queued_ends_correction_before_extension(monkeypatch):
-    from PiFinder.tracking_commands import PriorityMountQueue
-
-    mount, clock, _observation, _errors, motions, _pulses = _start_continuous_manual(
-        monkeypatch
-    )
-    q = PriorityMountQueue()
-    try:
-        mount.mount_queue = q
-        mount._guide_control_epoch = q.control_epoch
-        q.put({"type": "manual_movement", "direction": "north"})
-        clock[0] += 0.1
-        mount._check_manual_motion_deadline()
-        assert mount._manual_motion_direction is None
-        assert len(motions) == 2
-        q.get(timeout=1)
-    finally:
-        q.queue.close()
-        q.queue.join_thread()
+    assert len(events) == 4
 
 
 def test_repeated_user_taps_skip_matching_confirmed_speed(monkeypatch):
-    mount, clock, _observation, _errors, motions, _pulses = _manual_approach_mount(
+    mount, clock, _observation, _errors, motions, _pulses = _pulse_correction_mount(
         monkeypatch
     )
     mount.user_manual_slew_rate = 7
-    _approach_ack(mount, 7)
+    _slew_rate_ack(mount, 7)
     assert mount.manual_move("north", 0.3)
     assert mount.stop_mount()
     clock[0] += 0.1
@@ -4498,12 +3953,12 @@ def test_repeated_user_taps_skip_matching_confirmed_speed(monkeypatch):
     assert len(motions) == 3
     # External or automatic selector change must force exactly one restore.
     assert mount.stop_mount()
-    _approach_ack(mount, 4)
+    _slew_rate_ack(mount, 4)
     assert mount.manual_move("north", 0.3)
     assert [s[-1] for s in mount.client.switches if s[1] == "TELESCOPE_SLEW_RATE"] == [
         "7"
     ]
-    _approach_ack(mount, 7)
+    _slew_rate_ack(mount, 7)
     assert mount.stop_mount()
     assert mount.manual_move("north", 0.3)
     assert [s[-1] for s in mount.client.switches if s[1] == "TELESCOPE_SLEW_RATE"] == [
@@ -4514,7 +3969,7 @@ def test_repeated_user_taps_skip_matching_confirmed_speed(monkeypatch):
 def test_guide_write_invalidates_older_matching_manual_speed_ack(monkeypatch):
     mount = DummyConnectedMount()
     mount.user_manual_slew_rate = 7
-    _approach_ack(mount, 7)
+    _slew_rate_ack(mount, 7)
     assert mount._user_rate_is_selected()
     monkeypatch.setattr(mount, "_current_guide_rate_x", lambda: (0.5, 0.5))
     mount._select_guide_rate_for_error(20)
@@ -4524,7 +3979,7 @@ def test_guide_write_invalidates_older_matching_manual_speed_ack(monkeypatch):
 
 
 def test_user_speed_change_during_hold_stops_then_restores_remaining_lease(monkeypatch):
-    mount, clock, _observation, _errors, _motions, _pulses = _manual_approach_mount(
+    mount, clock, _observation, _errors, _motions, _pulses = _pulse_correction_mount(
         monkeypatch
     )
     assert mount.manual_move("north", 1.0)
@@ -4534,7 +3989,7 @@ def test_user_speed_change_during_hold_stops_then_restores_remaining_lease(monke
         mount,
         "_apply_indi_properties",
         lambda props, *args: events.append(
-            "stop" if any("=Off" in p for p in props) else "move"
+            "stop" if any("=Off" in p or "ABORT" in p for p in props) else "move"
         )
         or True,
     )
@@ -4547,20 +4002,393 @@ def test_user_speed_change_during_hold_stops_then_restores_remaining_lease(monke
     assert mount.set_slew_rate(6)
     assert events == ["stop", ("TELESCOPE_SLEW_RATE", "6"), "move"]
     assert mount._manual_motion_deadline == pytest.approx(deadline)
-    _approach_ack(mount, 6)
+    _slew_rate_ack(mount, 6)
     events.clear()
     assert mount.set_slew_rate(6)
     assert not events  # Repeating the same speed does not interrupt the hold.
 
 
 def test_failed_user_takeover_stop_blocks_speed_and_correction_renewal(monkeypatch):
-    mount, clock, _observation, _errors, _motions, _pulses = _start_continuous_manual(
-        monkeypatch
-    )
+    mount, _clock, _observation = _early_solve_pulse_mount(monkeypatch)
+    deadline = mount._guide_pulse_until
     monkeypatch.setattr(mount, "_apply_indi_properties", lambda *args: False)
     before = list(mount.client.switches)
     assert not mount.manual_move("north", 0.3)
     assert mount.client.switches == before
     assert not mount._guide_correction_enabled
-    assert mount._manual_motion_deadline == clock[0]
-    assert not mount._continue_manual_correction(clock[0])
+    assert mount._manual_motion_direction is None
+    assert mount._guide_pulse_until == deadline
+    mount._check_guide_correction()
+    assert not mount.client.numbers
+
+
+def test_full_proportional_pulse_time():
+    mount = DummyConnectedMount()
+    assert mount._guide_pulse_ms(mci.SIDEREAL_ARCSEC_PER_SEC, 1.0) == 1000
+    assert mount._guide_pulse_ms(1000, 1.0) == 2500
+
+
+def _early_solve_pulse_mount(monkeypatch):
+    mount, clock, observation = _predictive_mount(monkeypatch)
+    mount._guide_correction_accuracy_arcmin = 0.1
+    clock[0] = 1007.0
+    observation[0] = (9.99, -0.01, clock[0])
+    mount._check_guide_correction()
+    assert mount._guide_pulse_until == pytest.approx(1009.5)
+    mount.client.numbers.clear()
+    return mount, clock, observation
+
+
+@pytest.mark.parametrize("arrived", [False, True])
+def test_fresh_solve_replaces_active_pulses_before_2500ms(monkeypatch, arrived):
+    mount, clock, observation = _early_solve_pulse_mount(monkeypatch)
+    clock[0] = 1007.3
+    observation[0] = (10.0 if arrived else 10.003, 0.0, clock[0])
+    mount._check_guide_correction()
+    assert len(mount.client.numbers) == 2
+    ns = [v for _, prop, v in mount.client.numbers if prop.endswith("NS")][0]
+    we = [v for _, prop, v in mount.client.numbers if prop.endswith("WE")][0]
+    assert max(ns.values()) == 1  # This axis arrived; its old pulse ends.
+    if arrived:
+        assert max(we.values()) == 1
+        assert mount._guide_pulse_until == pytest.approx(1007.301)
+        clock[0] = 1007.4
+        mount._check_guide_correction()
+        assert mount._guide_correction_mode == "complete"
+    else:
+        # The other axis reverses immediately, with no preliminary stop pulse.
+        assert we["TIMED_GUIDE_W"] > 20
+        assert we["TIMED_GUIDE_E"] == 0
+        assert mount._guide_pulse_until == pytest.approx(
+            1007.3 + we["TIMED_GUIDE_W"] / 1000
+        )
+        assert mount._guide_correction_last_solve_time == 1007.3
+    count = len(mount.client.numbers)
+    clock[0] += 0.1
+    mount._check_guide_correction()
+    assert len(mount.client.numbers) == count
+
+
+def test_active_pulse_ignores_old_solve_and_unknown_driver(monkeypatch):
+    mount, clock, observation = _early_solve_pulse_mount(monkeypatch)
+    clock[0] = 1007.3
+    mount._check_guide_correction()
+    assert not mount.client.numbers
+    observation[0] = (10.0, 0.0, clock[0])
+    monkeypatch.setattr(mount, "_indi_device_name", lambda: "unknown mount")
+    mount._check_guide_correction()
+    assert not mount.client.numbers
+    assert mount._guide_pulse_until == pytest.approx(1009.5)
+
+
+def test_failed_pulse_replacement_keeps_original_deadline(monkeypatch):
+    mount, clock, observation = _early_solve_pulse_mount(monkeypatch)
+    clock[0] = 1007.3
+    observation[0] = (10.0, 0.0, clock[0])
+    monkeypatch.setattr(mount.client, "set_number", lambda *a: False)
+    mount._check_guide_correction()
+    assert mount._guide_pulse_until == pytest.approx(1009.5)
+    assert mount._guide_correction_last_solve_time == 1007.0
+
+
+def test_user_command_prevents_early_pulse_replacement(monkeypatch):
+    from PiFinder.tracking_commands import control_epoch
+
+    mount, clock, observation = _early_solve_pulse_mount(monkeypatch)
+    clock[0] = 1007.3
+    observation[0] = (10.0, 0.0, clock[0])
+    mount._guide_control_epoch = control_epoch(mount.mount_queue) - 1
+    mount._check_guide_correction()
+    assert not mount.client.numbers
+    assert not mount._guide_correction_enabled
+
+
+def test_same_direction_pulse_timer_is_replaced_not_added(monkeypatch):
+    mount, clock, observation = _early_solve_pulse_mount(monkeypatch)
+    clock[0] = 1007.5
+    observation[0] = (9.997, 0.0, clock[0])
+    mount._check_guide_correction()
+    values = [v for _, prop, v in mount.client.numbers if prop.endswith("WE")][0]
+    duration = values["TIMED_GUIDE_E"]
+    assert 20 <= duration < 2500
+    assert values["TIMED_GUIDE_W"] == 0
+    assert mount._guide_pulse_until == pytest.approx(clock[0] + duration / 1000)
+    assert mount._guide_pulse_until < 1009.5
+
+
+def test_shared_guide_rate_change_finishes_old_pulses_first(monkeypatch):
+    mount, clock, observation = _early_solve_pulse_mount(monkeypatch)
+    # Exercise real asynchronous profile selection with the driver's ACK.
+    monkeypatch.setattr(
+        mount,
+        "_select_guide_rate_for_error",
+        mci.MountControlIndi._select_guide_rate_for_error.__get__(mount),
+    )
+    mount._guide_rate_needs_reassert = False
+    mount._confirmed_guide_rates = (1.0, 1.0)
+    mount._guide_correction_accuracy_arcmin = 0.2
+    clock[0] = 1007.3
+    observation[0] = (9.995, 0.0, clock[0])  # 0.3 arcmin: fine profile
+    mount._check_guide_correction()
+    assert len(mount.client.numbers) == 2
+    assert all(
+        prop.startswith("TELESCOPE_TIMED_GUIDE") for _, prop, _ in mount.client.numbers
+    )
+    assert all(max(v.values()) == 1 for _, _, v in mount.client.numbers)
+    clock[0] = 1007.4
+    mount.client.numbers.clear()
+    mount._check_guide_correction()
+    assert mount.client.numbers[0][1] == "GUIDE_RATE"
+    assert mount.client.numbers[-1][1] == "TELESCOPE_TIMED_GUIDE_WE"
+    assert mount.client.numbers[-1][2]["TIMED_GUIDE_E"] > 1
+
+
+def test_both_axes_replace_directly_without_stop_pulses(monkeypatch):
+    mount, clock, observation = _early_solve_pulse_mount(monkeypatch)
+    clock[0] = 1007.3
+    observation[0] = (9.995, -0.003, clock[0])
+    mount._check_guide_correction()
+    assert len(mount.client.numbers) == 2
+    ns = mount.client.numbers[0][2]
+    we = mount.client.numbers[1][2]
+    assert ns["TIMED_GUIDE_N"] > 20
+    assert we["TIMED_GUIDE_E"] > 20
+    assert ns["TIMED_GUIDE_N"] != we["TIMED_GUIDE_E"]
+    assert mount._guide_pulse_until == pytest.approx(
+        clock[0] + max(ns["TIMED_GUIDE_N"], we["TIMED_GUIDE_E"]) / 1000
+    )
+
+
+def test_rejected_axis_replacement_preserves_its_existing_timer(monkeypatch):
+    mount, clock, observation = _early_solve_pulse_mount(monkeypatch)
+    clock[0] = 1007.3
+    observation[0] = (9.995, -0.003, clock[0])
+    send = mount.client.set_number
+    monkeypatch.setattr(
+        mount.client,
+        "set_number",
+        lambda dev, prop, values: False
+        if prop.endswith("WE")
+        else send(dev, prop, values),
+    )
+    mount._check_guide_correction()
+    assert mount._guide_active_pulses["TELESCOPE_TIMED_GUIDE_NS"][1] < 1009.5
+    assert mount._guide_active_pulses["TELESCOPE_TIMED_GUIDE_WE"][1] == 1009.5
+    assert mount._guide_pulse_until == 1009.5
+
+
+def test_fast_solve_updates_do_not_prematurely_exhaust_progress_budget(monkeypatch):
+    mount, clock, observation = _early_solve_pulse_mount(monkeypatch)
+    for tick in range(1, 10):
+        clock[0] = 1007.0 + tick * 0.1
+        observation[0] = (9.99, -0.01, clock[0])
+        mount._check_guide_correction()
+        assert mount._guide_correction_enabled
+        assert mount._guide_correction_mode == "pulse"
+    assert mount._guide_pulse_no_progress == 0
+    assert len(mount.client.numbers) == 18
+    for tick in range(1, 6):
+        clock[0] = 1007.0 + tick
+        observation[0] = (9.99, -0.01, clock[0])
+        mount._check_guide_correction()
+    clock[0] += 0.01
+    mount._check_guide_correction()
+    assert mount._guide_correction_mode == "reacquire"
+
+
+def test_slower_axis_scales_time_for_faster_shared_rate(monkeypatch):
+    mount = DummyConnectedMount()
+    mount._guide_correction_accuracy_arcmin = 0.1
+    # Below 0.2 arcmin requests 0.5x; above it requests 1x.
+    slow_error = 0.5 * mci.SIDEREAL_ARCSEC_PER_SEC
+    assert mount._requested_axis_guide_rate(slow_error / 60) == 0.5
+    assert mount._requested_axis_guide_rate(1.0) == 1.0
+    assert mount._axis_pid_pulse_ms("ns", slow_error, 100, 1.0) == 500
+    mount._guide_pid["ns"].reset()
+    assert mount._axis_pid_pulse_ms("ns", slow_error, 100, 0.5) == 1000
+
+
+def test_actual_commands_use_fastest_axis_rate_and_shorter_slow_axis(monkeypatch):
+    mount, clock, observation = _predictive_mount(monkeypatch)
+    mount._guide_correction_accuracy_arcmin = 0.1
+    monkeypatch.setattr(
+        mount,
+        "_select_guide_rate_for_error",
+        mci.MountControlIndi._select_guide_rate_for_error.__get__(mount),
+    )
+    clock[0] = 1007.0
+    observation[0] = (10.0 - 15.041 / 3600, -7.5205 / 3600, clock[0])
+    mount._check_guide_correction()
+    rate_commands = [v for _, prop, v in mount.client.numbers if prop == "GUIDE_RATE"]
+    assert rate_commands[-1] == {"GUIDE_RATE_WE": 1.0, "GUIDE_RATE_NS": 1.0}
+    ns = [
+        v for _, prop, v in mount.client.numbers if prop == "TELESCOPE_TIMED_GUIDE_NS"
+    ][-1]
+    we = [
+        v for _, prop, v in mount.client.numbers if prop == "TELESCOPE_TIMED_GUIDE_WE"
+    ][-1]
+    assert ns["TIMED_GUIDE_N"] == pytest.approx(500, abs=1)
+    assert we["TIMED_GUIDE_E"] == pytest.approx(1000, abs=1)
+
+
+@pytest.mark.parametrize("origin", ["guide_correction", "automatic"])
+def test_automatic_manual_motion_is_rejected(origin):
+    mount = DummyMountControl()
+    assert not mount.manual_move("north", origin=origin, reassert_slew_rate=False)
+    assert not mount.applied_properties
+    assert mount._manual_motion_direction is None
+
+
+@pytest.mark.parametrize("supported", [False, True])
+def test_legacy_fallback_command_cannot_start_manual_motion(monkeypatch, supported):
+    mount, _clock, _observation, _errors, motions, pulses = _pulse_correction_mount(
+        monkeypatch
+    )
+    monkeypatch.setattr(mount, "_guide_pulse_supported", lambda: supported)
+    mount.handle_command(
+        {
+            "type": "toggle_guide_correction",
+            "enabled": True,
+            "target_ra": 10.0,
+            "target_dec": 20.0,
+            "manual_approach": True,
+            "manual_fallback": True,
+            "reset_manual_progress": True,
+        }
+    )
+    mount._check_guide_correction()
+    assert not motions
+    assert mount._manual_motion_direction is None
+    assert len(pulses) == int(supported)
+    assert mount._guide_correction_mode == ("pulse" if supported else "unsupported")
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        ({"type": "set_slew_rate", "rate": 6}, 6),
+        ({"type": "increase_slew_rate", "notify_ui": True}, 8),
+        ({"type": "reduce_slew_rate", "notify_ui": True}, 6),
+    ],
+)
+def test_speed_command_applies_immediately_and_displays_only_after_ack(
+    command, expected
+):
+    from queue import Queue as LocalQueue
+
+    mount = DummyConnectedMount()
+    mount.console_queue = LocalQueue()
+    _slew_rate_ack(mount, 7)
+    mount.handle_command(command)
+    assert mount.client.switches[-1][1:] == ("TELESCOPE_SLEW_RATE", str(expected))
+    assert not any(isinstance(x, tuple) for x in mount.console_queue.queue)
+    # Wrong, busy and previous-generation receipts cannot announce completion.
+    _slew_rate_ack(mount, 7)
+    mount._check_manual_speed_request()
+    _slew_rate_ack(mount, expected, "busy")
+    mount._check_manual_speed_request()
+    mount.receive_sync_property(
+        "TELESCOPE_SLEW_RATE", "ok", {str(expected): True}, mount._client_generation - 1
+    )
+    mount._check_manual_speed_request()
+    assert mount._manual_speed_apply_state == "waiting_ack"
+    assert not any(isinstance(x, tuple) for x in mount.console_queue.queue)
+    _slew_rate_ack(mount, expected)
+    mount._check_manual_speed_request()
+    mount._check_manual_speed_request()
+    assert [x for x in mount.console_queue.queue if isinstance(x, tuple)] == [
+        ("slew_rate_popup", expected)
+    ]
+    assert mount._status_fields()["manual_speed_apply_state"] == "applied"
+    assert mount._manual_motion_direction is None
+
+
+@pytest.mark.parametrize("failure", ["reject", "alert", "timeout", "disconnect"])
+def test_speed_failure_never_shows_success_popup(monkeypatch, failure):
+    from queue import Queue as LocalQueue
+
+    mount = DummyConnectedMount()
+    mount.console_queue = LocalQueue()
+    clock = [1000.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    if failure == "reject":
+        monkeypatch.setattr(mount.client, "set_switch", lambda *args: False)
+    mount.set_slew_rate(6)
+    if failure == "alert":
+        _slew_rate_ack(mount, 6, "alert")
+    elif failure == "timeout":
+        clock[0] += 5.1
+    elif failure == "disconnect":
+        mount.mark_disconnected("test disconnect")
+    mount._check_manual_speed_request()
+    assert mount._manual_speed_apply_state == "failed"
+    assert mount._manual_speed_request is None
+    assert not any(isinstance(x, tuple) for x in mount.console_queue.queue)
+
+
+def test_repeated_speed_request_skips_pending_and_confirmed_writes():
+    mount = DummyConnectedMount()
+    assert mount.set_slew_rate(6)
+    assert mount.set_slew_rate(6)
+    assert len(mount.client.switches) == 1
+    _slew_rate_ack(mount, 6)
+    mount._check_manual_speed_request()
+    assert mount.set_slew_rate(6)
+    assert len(mount.client.switches) == 1
+
+
+@pytest.mark.parametrize("requested", [7, 8])
+def test_new_speed_request_supersedes_old_ack(requested):
+    from queue import Queue as LocalQueue
+
+    mount = DummyConnectedMount()
+    mount.console_queue = LocalQueue()
+    _slew_rate_ack(mount, 7)
+    mount.set_slew_rate(6)
+    mount.set_slew_rate(requested)
+    assert [entry[-1] for entry in mount.client.switches] == ["6", str(requested)]
+    _slew_rate_ack(mount, 6)
+    mount._check_manual_speed_request()
+    assert mount.console_queue.empty()
+    _slew_rate_ack(mount, requested)
+    mount._check_manual_speed_request()
+    assert mount.console_queue.get_nowait() == ("slew_rate_popup", requested)
+
+
+@pytest.mark.parametrize("rate", [0, 1, 2, 6, 7, 9])
+def test_onstepx_manual_speed_applies_without_changing_active_pulses(monkeypatch, rate):
+    from queue import Queue as LocalQueue
+
+    mount, _clock, _observation = _early_solve_pulse_mount(monkeypatch)
+    mount.console_queue = LocalQueue()
+    monkeypatch.setattr(mount, "_indi_device_name", lambda: "LX200 OnStepX")
+    deadlines = dict(mount._guide_active_pulses)
+    pulse_until = mount._guide_pulse_until
+    assert mount.set_slew_rate(rate)
+    assert mount.client.switches[-1][1:] == ("TELESCOPE_SLEW_RATE", str(rate))
+    assert not mount.client.numbers  # No 1 ms stop/replacement pulses.
+    assert mount._guide_active_pulses == deadlines
+    assert mount._guide_pulse_until == pulse_until
+    assert mount.console_queue.empty()
+    _slew_rate_ack(mount, rate)
+    mount._check_manual_speed_request()
+    assert mount.console_queue.get_nowait() == ("slew_rate_popup", rate)
+
+
+def test_onstepx_guide_profile_reassertion_keeps_active_pulse_timers(monkeypatch):
+    mount, _clock, _observation = _early_solve_pulse_mount(monkeypatch)
+    monkeypatch.setattr(mount, "_indi_device_name", lambda: "LX200 OnStepX")
+    monkeypatch.setattr(
+        mount,
+        "_select_guide_rate_for_error",
+        mci.MountControlIndi._select_guide_rate_for_error.__get__(mount),
+    )
+    deadlines = dict(mount._guide_active_pulses)
+    mount.set_slew_rate(7)
+    _slew_rate_ack(mount, 7)
+    mount._check_manual_speed_request()
+    assert mount._select_guide_rate_for_error(20)
+    assert [name for _, name, _ in mount.client.numbers] == ["GUIDE_RATE"]
+    assert mount._guide_active_pulses == deadlines
+    assert mount._guide_rate_needs_reassert is False
+    assert mount.user_manual_slew_rate == 7
