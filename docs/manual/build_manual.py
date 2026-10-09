@@ -291,7 +291,7 @@ def make_diagrams():
 def make_html(language):
     labels = {
         "ko": {
-            "title": "MFNavis LCD 사용자 매뉴얼",
+            "title": "MFNavis 사용자 매뉴얼 LCD와 웹",
             "contents": "목차",
             "print": "인쇄 또는 PDF 저장",
             "download": "PDF 내려받기",
@@ -299,7 +299,7 @@ def make_html(language):
             "footer": "MFNavis · 사용자 매뉴얼 초안 · 2026년 10월 9일",
         },
         "en": {
-            "title": "MFNavis LCD User Manual",
+            "title": "MFNavis User Manual LCD and Web",
             "contents": "Contents",
             "print": "Print or save as PDF",
             "download": "Download PDF",
@@ -330,10 +330,12 @@ def make_html(language):
         content,
     )
 
-    # Keep native LCD pixels intact; arrange captures as captioned figures.
-    def lcd_gallery(match):
+    # Keep native pixels intact; arrange LCD and web captures with captions.
+    def capture_gallery(match):
         pictures = re.findall(r"<img\b[^>]*>", match[0])
-        if not all('src="assets/lcd/' in picture for picture in pictures):
+        lcd = all('src="assets/lcd/' in picture for picture in pictures)
+        web = all('src="assets/web/' in picture for picture in pictures)
+        if not (lcd or web):
             return match[0]
         figures = []
         for picture in pictures:
@@ -341,15 +343,33 @@ def make_html(language):
             figures.append(
                 f"<figure>{picture}<figcaption>{caption}</figcaption></figure>"
             )
-        classes = "lcd-gallery lcd-four" if len(figures) == 4 else "lcd-gallery"
+        classes = (
+            ("lcd-gallery lcd-four" if len(figures) == 4 else "lcd-gallery")
+            if lcd
+            else "web-gallery"
+        )
         return f'<div class="{classes}">' + "".join(figures) + "</div>"
 
     content = re.sub(
-        r"<p>\s*(?:<img\b[^>]*>\s*)+</p>", lcd_gallery, content, flags=re.S
+        r"<p>\s*(?:<img\b[^>]*>\s*)+</p>", capture_gallery, content, flags=re.S
     )
     content = content.replace(
         'src="assets/menu_overview.png"',
         'class="menu-overview" src="assets/menu_overview.png"',
+    )
+    web_start = content.index('<h2 id="chapter-14">')
+    web_content = re.sub(
+        r"<h3\b[^>]*>[^<]*</h3>\s*<p>(?:(?!</p>).)*</p>\s*"
+        r'<div class="web-gallery">.*?</div>',
+        lambda match: '<section class="screen-intro">' + match[0] + "</section>",
+        content[web_start:],
+        flags=re.S,
+    )
+    content = (
+        content[:web_start]
+        + '<section class="web-manual">'
+        + web_content
+        + "</section>"
     )
     # All assets are embedded: the HTML can be read offline as a single file.
     for path in ASSETS.rglob("*.png"):
@@ -378,10 +398,15 @@ img { display: block; width: 100%; height: auto; margin: 22px auto; }
 .lcd-gallery img { width: 100%; aspect-ratio: 1; margin: 0; border: 1px solid #223042; background: black; image-rendering: pixelated; }
 .lcd-gallery figcaption { margin-top: 8px; font-size: 12px; line-height: 1.6; text-align: center; overflow-wrap: anywhere; }
 .lcd-four { max-width: 530px; margin-left: auto; margin-right: auto; }
+.web-gallery { margin: 22px 0; }
+.web-gallery figure { margin: 0; break-inside: avoid; }
+.web-gallery img { margin: 0; border: 1px solid #d8e0e7; }
+.web-gallery figcaption { margin-top: 8px; font-size: 12px; line-height: 1.6; text-align: center; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.7; margin: 18px 0 26px; }
 th { text-align: left; background: #f0f3f6; color: #223042; font-weight: 700; }
 th,td { border: 1px solid #d8e0e7; padding: 9px 11px; vertical-align: top; overflow-wrap: anywhere; }
 td:first-child { width: 24%; }
+.web-manual td:first-child { width: 38%; }
 ol,ul { padding-left: 25px; }
 li { padding-left: 3px; margin: 9px 0; }
 nav { background: #f6f8fa; border-left: 4px solid #982d3b; margin: 26px 0 38px; padding: 20px 24px; }
@@ -395,7 +420,7 @@ button { border: 0; border-radius: 5px; background: #982d3b; color: white; paddi
 .footer { margin-top: 38px; color: #617285; font-size: 12px; }
 @media(max-width:700px) { main { padding: 28px 20px; margin: 0; } h1 { font-size: 27px; } table { font-size: 11px; } th,td { padding: 6px; } .tools { padding: 10px; margin: 0; } }
 @page { size: A4; margin: 17mm 16mm 19mm;
- @bottom-left { content: 'MFNavis LCD User Manual'; font-family: Arial,sans-serif; font-size: 8pt; color: #617285; }
+ @bottom-left { content: 'MFNavis User Manual'; font-family: Arial,sans-serif; font-size: 8pt; color: #617285; }
  @bottom-right { content: counter(page); font-family: Arial,sans-serif; font-size: 8pt; color: #617285; }
 }
 @media print {
@@ -418,8 +443,12 @@ button { border: 0; border-radius: 5px; background: #982d3b; color: white; paddi
  .lcd-gallery img { margin: 0; max-height: none; }
  .lcd-gallery figcaption { font-size: 8pt; line-height: 1.5; margin-top: 5pt; }
  .lcd-four { max-width: 120mm; }
+ .web-gallery { margin: 12pt 0; }
+ .web-gallery img { max-height: 125mm; }
+ .web-gallery figcaption { font-size: 8pt; line-height: 1.5; margin-top: 5pt; }
  li { break-inside: avoid; } nav { padding: 14pt 20pt; margin: 18pt 0; }
  .keep { break-inside: avoid; }
+ .screen-intro { break-inside: avoid; }
  .tools,.footer { display: none; }
 }
 """.replace("FONT_DATA", font)

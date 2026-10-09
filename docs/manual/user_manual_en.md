@@ -1,8 +1,8 @@
-# MFNavis LCD User Manual
+# MFNavis User Manual LCD and Web
 
 **Draft user manual · October 9, 2026**
 
-MFNavis identifies stars in camera images to show where your telescope is pointing and guide you toward an observing target. This manual explains how to prepare for observing, find objects, and change settings using the LCD and keypad. A connected INDI mount also supports automatic and manual movement.
+MFNavis identifies stars in camera images to show where your telescope is pointing and guide you toward an observing target. This manual explains how to prepare for observing, find objects, and change settings using the LCD, keypad, and web interface. A connected INDI mount also supports automatic and manual movement. **INDI MOUNT connection and detailed settings are available on the web server's INDI page.** See [chapter 14](#chapter-14) for connecting to the web interface and using each page.
 
 Tables, instructions, and menu paths show **official English menu names (Korean UI labels)** together, for example Start(시작), Focus(초점), and Set Filters(필터 설정). Names such as Lens, Distortion, and CALIB also appear in English in the Korean UI, so they are written once. Parentheses contain the actual Korean UI label. The menu diagrams explain menu relationships. LCD captures show the current UI at 128×128 resolution; location, time, measurements, and mount status are examples for the procedures. Actual text size and layout depend on your device. INDI menus appear **only when Mount Control(가대 제어) is enabled**.
 
@@ -398,6 +398,8 @@ Changing WiFi mode may disconnect your phone or computer. Reconnect to the netwo
 
 ## 9 Connecting and moving an INDI mount
 
+**INDI MOUNT detailed settings:** Open the MFNavis web server on a phone or PC and select **INDI**. You can configure USB or network connections, mount limits, multi-point alignment, backlash, GoTo / Guide, and SkySafari. See 14.1 for web access, 14.4 for connections, and 14.5–14.7 for the other settings.
+
 ### 9.1 Enabling mount control
 
 1. Select `Tools(도구) → Experimental(실험적) → Mount Control(가대 제어) → On(켜짐)`. MFNavis restarts.
@@ -408,7 +410,7 @@ Changing WiFi mode may disconnect your phone or computer. Reconnect to the netwo
 
 ![STATUS(상태) · connection status](assets/lcd/en/indi_status.png)
 
-When Mount Control(가대 제어) is Off(꺼짐), `Start(시작) → INDI` and `Settings(설정) → INDI Setting(INDI 설정)` are hidden. The mount driver and connection settings must be configured during installation. Check STATUS(상태) for successful connection even after an LCD request message appears.
+When Mount Control(가대 제어) is Off(꺼짐), `Start(시작) → INDI` and `Settings(설정) → INDI Setting(INDI 설정)` are hidden. For a first connection or a changed transport, configure the web **INDI → LX200 OnStepX Driver Connection(LX200 OnStepX 드라이버 연결)** section first (14.4). Its heading also includes the current driver's name. Check STATUS(상태) for successful connection even after an LCD request message appears.
 
 ### 9.2 INIT(초기화) commands
 
@@ -713,6 +715,215 @@ When reporting a problem, include the error text, current menu path, intended ac
 | Choose telescope / eyepiece | Tools(도구) → Equipment(관측 장비) | 11.2 |
 | Enter location / time manually | Tools(도구) → Place & Time(위치/시간) | 11.3 |
 | Shut down normally | Tools(도구) → Power(전원) → Shutdown(종료) → Confirm(확인) | 11.7 |
+| Web access / virtual keypad | Web Home(홈) / Remote(원격 조작) | 14.1–14.2 |
+| INDI MOUNT connection / detailed settings | Web INDI | 14.4–14.7 |
+
+## 14 Using the web interface
+
+Use the web pages in a browser on a phone, tablet, or PC. You can view the LCD, use a virtual keypad, search objects, and configure the INDI MOUNT, locations, equipment, and network. The images below are captures of the current web interface; IP addresses, equipment lists, and status values are examples.
+
+### 14.1 Connecting and common controls
+
+1. Connect your phone or PC to the same network as MFNavis. In the default AP configuration, join **MFNavisAP** and open **http://10.10.10.1**. Use your changed AP name or address if you have configured different values.
+2. In Client(무선 연결) mode, find the device IP in LCD `Tools(도구) → Status(상태)` and open `http://device-IP`. Add `:8080` if a development server is running on port 8080.
+3. If a settings or control page opens Login(로그인), enter the configured device password. Web login uses the password of the system account running the MFNavis service.
+4. Choose a page from the top navigation. On phones, open **☰** for the same menu. Select English(영어) or Korean(한국어) in the language selector. Web and LCD languages are configured separately.
+5. Use the save or apply button for the section you edited, then check its result message and current values. On the INDI page, **each settings section has its own apply button**.
+
+The top bar also provides fullscreen and web-theme controls. The footer's **User manual(사용자 매뉴얼)** links open Korean or English editions, including before login. The manual's language selector keeps the current chapter.
+
+| Web menu | Purpose | Instructions |
+|---|---|---|
+| Home(홈) | LCD screen, network, GPS, coordinates, and version | 14.2 |
+| Remote(원격 조작) | Virtual keypad beside the screen | 14.2 |
+| Catalogs(천체 목록) | Search, filters, object details, and sending targets | 14.3 |
+| Observations(관측 기록) | View and download observing sessions | 14.11 |
+| Locations(관측지) | Register, edit, and load observing locations | 14.8 |
+| Equipment(관측 장비) | Register and select telescopes and eyepieces | 14.9 |
+| INDI | INDI MOUNT connection, controls, and detailed settings | 14.4–14.7 |
+| Network Setup(네트워크 설정) | AP, Client, AP+STA, and Wi-Fi settings | 14.10 |
+| Tools(도구) | Password, backup, and restore | 14.12 |
+| LiveCam(실시간 영상) | Camera preview, exposure, gain, and stacking | 14.13 |
+| Logs(로그) | View and download operating logs | 14.12 |
+
+### 14.2 Home(홈) and Remote(원격 조작)
+
+**Path:** Web navigation `Home(홈)` or `Remote(원격 조작)`
+
+![Home(홈) · LCD screen and device status](assets/web/en/home.png)
+
+Home(홈) shows the device's current LCD image. The status table below it shows network address, GPS location, pointing coordinates, and software version. Edit icons beside network and GPS values open their settings pages.
+
+![Remote(원격 조작) · virtual keypad](assets/web/en/remote.png)
+
+The arrows, numbers, `■`, and `+ / −` on Remote(원격 조작) send the corresponding LCD keypad button. Follow chapters 3–11 for the active LCD screen's controls.
+
+| Action | Virtual keypad sequence |
+|---|---|
+| Short press | Click or tap the desired key once |
+| Long press | Select **Long(경도)**, then press the desired key. Example: Long(경도) → ← |
+| Square-button combination | Select **■ +**, then press the desired key. Example: ■ + → + or − adjusts LCD brightness |
+| Cancel a modifier | Click the selected Long(경도) or ■ + again |
+
+Long(경도) and ■ + apply to the next key once, then clear. The current Korean UI labels Long as ‘경도’; on this keypad it selects a **long press**. Select it again for another modified key. Number keys such as `5` and `0` may execute mount commands depending on the active LCD screen; check that screen first.
+
+### 14.3 Catalogs(천체 목록): search and send targets
+
+**Path:** Web `Catalogs(천체 목록)`
+
+![Catalogs(천체 목록) · global search and catalog selection](assets/web/en/catalogs.png)
+
+1. Enter `M31`, `NGC 224`, or a name in the global search and select a result. You can also open a catalog card.
+2. Filter a catalog by name, type, constellation, magnitude, and observation status. **Up now(현재 지평선 위)** requires location information and a supported catalog. **Nearby(주변)** sorts by distance from the current pointing. Choose sorting by number, magnitude, or altitude where available.
+3. Open an object to view its coordinates, magnitude, description, and altitude information. **Push to MFNavis(MFNavis로 천체 보내기)** sends it to the device's object screen.
+4. With Mount Control(가대 제어) enabled and GoTo Type(자동 도입 유형) set to a value other than Off(꺼짐), sending a target can **also request automatic movement**. Check movement status and error. Use **Stop GoTo(자동 도입 정지)** to stop it. During multi-point alignment, movement follows the alignment workflow.
+
+Returning to Catalogs(천체 목록) may resume your previous catalog or object. Open the page's Catalogs(천체 목록) breadcrumb or `/catalogs?home=1` for the catalog home. Use web observation marking and the LCD's detailed LOG(로그) entry according to the record you want to keep.
+
+### 14.4 INDI MOUNT connection settings
+
+**Path:** Web `INDI → Current INDI Driver State(현재 INDI 드라이버 상태) / LX200 OnStepX Driver Connection(LX200 OnStepX 드라이버 연결)`
+
+![INDI · LX200 OnStepX Driver Connection(LX200 OnStepX 드라이버 연결)](assets/web/en/indi_connection.png)
+
+1. Enable LCD `Tools(도구) → Experimental(실험적) → Mount Control(가대 제어) → On(켜짐)` and wait for MFNavis to restart.
+2. Open **INDI Web Manager(INDI 웹 관리)** on the web INDI page to select and start the profile and driver. This link opens port 8624 on the same device. Check the driver name and running state on the original INDI page.
+3. Enter **INDI Server Host(INDI 서버 호스트)** and **INDI Server Port(INDI 서버 포트)**. The local defaults are `localhost` and `7624`. These identify the INDI server, separately from the mount's own address and port.
+4. Choose **Connection Type(연결 방식)** and enter the transport settings below.
+5. Click **Apply to INDI(INDI에 적용)**. Check the result and driver state. If needed, request LCD `INIT(초기화) → Connect(연결)` and check `STATUS(상태)`.
+
+| Connection | Fields | Check |
+|---|---|---|
+| Network TCP(네트워크 TCP) | Choose OnStep Network Device(OnStep 네트워크 장치), or use Manual IP or Host(수동 IP 또는 호스트). Enter OnStep TCP Port(OnStep TCP 포트) | Device choices come from AP clients. Change the default TCP port 9999 if your mount uses another port |
+| USB Serial(USB 시리얼) | Choose USB Serial Port(USB 시리얼 포트) and Communication Speed(통신 속도), or enter a port manually | Connect the cable and reload the page to refresh the port list |
+| USB automatic discovery | Select Auto (Find connected OnStep)(자동 (연결된 OnStep 찾기)) and, if needed, Auto (Detect with port)(자동 (포트와 함께 속도 찾기)), then apply | Requires a local INDI server, running OnStepX profile, and enabled Mount Control. Check discovery messages and the final connection result |
+
+OnStepX-specific connection, location-transfer, and mount-limit controls use the **LX200 OnStepX** driver. Other drivers may disable or omit support for these actions. **Restart INDI(INDI 재시작)** restarts the driver; **REBOOT INDI(INDI 재시작)** requests a reboot of the connected OnStep controller. Their Korean labels match, so distinguish them by their English button names.
+
+### 14.5 INDI location, time, and manual movement
+
+**Path:** Web `INDI → Location and Time(위치 및 시간) / Mount Control(가대 제어)`
+
+1. Use **Reload Current Values(현재 값 다시 읽기)** to read MFNavis location and UTC time. Check latitude, longitude, and elevation, and edit the location if needed.
+2. Click **Send Location and Time(위치 및 시간 전송)** and check progress and the result. The command uses MFNavis's current UTC time; the displayed time field is read-only. To change MFNavis location or time first, use GPS Settings(GPS 설정) or the LCD location/time menu (14.8, 11.3).
+3. Check Home and Park states under **Mount Control(가대 제어)**. Select **Manual Slew Rate(수동 이동 속도)**, then **hold a direction button** to move. Releasing it stops manual movement.
+4. Choose **Pulse Guide Rate(펄스 가이드 속도)** and click **Save(저장)** for fine corrections. This value is separate from manual slew rate.
+
+At Home(홈 위치) sets the current Home position; Return Home(홈으로 복귀) moves there. Park(파크) moves to the park position, Unpark(언파크) releases parking, and Set-Park(파크 위치 설정) sets the current park position. Check the telescope's surroundings before requesting movement. **Reset Pointing(좌표 초기화)** under Pointing Coordinate Service(지향 좌표 서비스) rebuilds the coordinate reference.
+
+### 14.6 INDI mount limits, alignment, and backlash
+
+**Path:** Web `INDI → Settings(설정)`
+
+| Section | Action | Verify |
+|---|---|---|
+| Mount Limits(마운트 제한) | Enter overhead, horizon, and east/west meridian limits; click Apply Mount Limits(마운트 제한 적용) | Read back current values. Overhead: 60–90°; horizon: −30–30°; meridian: −180–180 minutes. Four meridian minutes equal 1°; meridian limits apply to German equatorial mounts |
+| Multi-Point Align(다지점 정렬) | Choose Align Mode(정렬 모드), Align Points(정렬점 수) from 1–9, and Alignment Star(정렬 별) for manual mode; click Start Align(정렬 시작) | Current alignment point and status messages |
+| Backlash(백래시) | Check axis names, enter corrections from 0–3600, and click Save Backlash(백래시 저장) | Current backlash and save result |
+
+For manual multi-point alignment, select a star, click **GoTo Selected Star(선택한 별로 자동 도입)**, center it, and click **Confirm Point(정렬점 확정)**. Repeat for the next point. In automatic mode, follow status messages. Use **Cancel Align(정렬 취소)** to cancel.
+
+Backlash **Start Motion Test(이동 테스트 시작)** performs actual round-trip GoTo movement. Check the repeat count, instructions, and results. Use **Continue Motion Test(이동 테스트 계속)** when the test is waiting. Distinguish recommended candidates from stored values and confirm your chosen values with Save Backlash(백래시 저장). Axis labels follow the mount type, such as RA/DEC or AZ/ALT.
+
+Mount-limit inputs and their apply button are disabled when driver values cannot be read. In Alt/Az mode, meridian values may be reported by INDI without direct readback from the controller.
+
+### 14.7 INDI GoTo / Guide and SkySafari settings
+
+**Path:** Web `INDI → GoTo / Guide Settings(자동 도입 / Guide 설정)`
+
+![GoTo / Guide Settings(자동 도입 / Guide 설정) · detailed web settings](assets/web/en/indi_goto.png)
+
+| Setting | Purpose |
+|---|---|
+| GoTo Type(자동 도입 유형) | Off(꺼짐), INDI Mount(INDI 가대), or MFNavis; shares the saved LCD setting in 9.6 |
+| GoTo / Tracking Accuracy arcmin(GoTo 완료·추적 유지 허용 오차 (분각)) | Shared arrival and tracking tolerance in positive arcminutes |
+| Tracking Guide(추적 가이드) | Enable corrections using solved coordinates |
+| Tracking Guide GoTo Recovery (re-slew when off target by more than 3 deg)(추적 가이드 자동 도입 복구 (목표에서 3° 이상 벗어나면 재슬루)) | Recover large errors by requesting another GoTo |
+| Manual Re-target (after a manual move, track the new position instead of returning)(수동 재타겟 (수동 이동 후 원위치 복귀 대신 새 위치를 추적)) | Track the new direction after manual movement |
+| Invert guide pulse RA/Az (WE)(가이드 펄스 적경·방위각(WE) 반전) / Invert guide pulse Dec/Alt (NS)(가이드 펄스 적위·고도(NS) 반전) | Reverse the corresponding correction direction |
+| MFNavis GoTo: Max sync + GoTo iterations(MFNavis 자동 도입: 최대 sync + 자동 도입 반복 횟수) | Select the maximum Sync / GoTo iteration count for MFNavis mode |
+| Use unaligned IMU as a provisional GoTo reference (indoor test)(정렬 전 IMU를 GoTo 임시 기준으로 사용 (실내 테스트)) | Relative heading for indoor testing. It does not locate real sky targets; turn it off after testing |
+
+Click **Apply GoTo / Guide Settings(자동 도입 / Guide 설정 적용)** after editing and check the result. **Pause Guide(가이드 일시정지)** temporarily pauses correction; use the resume button shown afterward to continue. Check target, phase, error, and correction state under GoTo / Guide Status(자동 도입 / Guide 상태).
+
+During a solving failure, MFNavis continues native mount GoTo and tracking. A new solve after settling can restart fine alignment, including when Tracking Guide is off.
+
+Under **SkySafari Mount Mode(SkySafari 가대 모드)**, choose mount code, Sync, and planet-tracking options, then click **Apply SkySafari Settings(SkySafari 설정 적용)**. Check that the displayed MFNavis mount type matches your equipment. **Smooth optical tracking(부드러운 영상 추적 보정)** on the same INDI page provides mode, target, and verified equipment-profile settings, followed by save, target-center confirmation, correction start, and stop controls. Response calibration and starting correction can move the mount.
+
+### 14.8 Locations(관측지) and GPS Settings(GPS 설정)
+
+**Path:** Web `Locations(관측지)`; edit current location/time through Home(홈)'s GPS edit icon (`/gps`)
+
+![Location Management(관측지 관리) · add an observing location](assets/web/en/locations.png)
+
+1. Open the add-location form and enter a name. Use **Lookup Coordinates(좌표 조회)** to choose a country, region, and place, or enter latitude, longitude, and elevation manually.
+2. Choose decimal degrees or **Use DMS Format(도·분·초 형식 사용)**. Check coordinate signs for north/south and east/west. Click **Save Location(위치 저장)**.
+3. Use **Load Location(위치 불러오기)** to apply a saved location. **Set as Default(기본값으로 설정)** is a separate default-location choice. Use edit and delete icons to manage entries.
+4. On GPS Settings(GPS 설정), check the current coordinates, elevation, date, and UTC time, then click **Save(저장)**. **Set to Browser Date/Time(브라우저 날짜·시각으로 설정)** uses your browser's clock, so verify your phone or PC time first.
+
+Saving a location and loading it as the current location are separate actions. To send location/time to the INDI mount as well, follow 14.5.
+
+### 14.9 Equipment(관측 장비): register and select
+
+**Path:** Web `Equipment(관측 장비)`
+
+![Equipment(관측 장비) · telescope and eyepiece lists](assets/web/en/equipment.png)
+
+1. Click **Add new instrument(새 망원경 추가)** or **Add new eyepiece(새 접안렌즈 추가)**.
+2. Enter name and relevant measurements: telescope aperture and focal length, eyepiece focal length and apparent field, and other applicable fields. Check units and allowed ranges, then save.
+3. Select the telescope and eyepiece to use. Check the selection marker and updated magnification/field on LCD `Tools(도구) → Equipment(관측 장비)`.
+4. Use edit and delete icons to manage entries. DeepskyLog import fetches equipment for the entered username from an external service and requires internet access.
+
+### 14.10 Network Setup(네트워크 설정)
+
+**Path:** Web `Network Setup(네트워크 설정)`
+
+![Network Setup(네트워크 설정) · AP and Wi-Fi settings](assets/web/en/network.png)
+
+| Task | Action |
+|---|---|
+| Change connection mode | Select AP, Client, or AP+STA under Wifi Mode(무선 연결 방식) |
+| Configure AP | Enter AP name, IP, security, and password; choose AP+STA internet sharing and STA band preference as needed |
+| Save without applying | Save Settings(설정 저장) stores the edits while retaining the current connection |
+| Apply settings | Apply & Restart(적용 후 재시작) → confirm; reconnect using the changed address and network |
+| Register Wi-Fi | Wifi Networks(무선 네트워크) → + → choose a nearby network or enter name/password → Save(저장) |
+| Apply saved Wi-Fi | Adjust priorities, then use Apply Now(지금 적용) when pending changes are shown. A network's connect button requests that connection |
+
+Applying and restarting or switching Wi-Fi can disconnect your browser. Use the new AP name/IP if changed. AP Connected Devices(접속점 연결 장치) lists current AP clients and also supplies the INDI network-device choices.
+
+### 14.11 Observations(관측 기록): view and download
+
+**Path:** Web `Observations(관측 기록)`
+
+Select an observing session to view its objects, ratings, and notes. Download icons save all observations or the selected session as **TSV**. Open it as a tab-delimited file in a spreadsheet. See 6.6 for creating detailed observations on the LCD.
+
+### 14.12 Tools(도구), Logs(로그), and diagnostic captures
+
+**Path:** Web `Tools(도구)` or `Logs(로그)`
+
+![Tools(도구) · password, backup, and restore](assets/web/en/tools.png)
+
+| Function | Instructions |
+|---|---|
+| Change Password(비밀번호 변경) | Enter current password and the new password twice. This changes both web login and that system account's SSH password |
+| Download Backup File(백업 파일 내려받기) | Save a ZIP containing personal settings, observations, and observing lists |
+| Upload and Restore(파일을 올려 복원) | Choose backup → restore → confirm. Existing preferences and observations are overwritten; back up current data first |
+| Logs(로그) | Pause/resume display, copy, or use Download All Logs(모든 로그 내려받기). Save to SD(SD로 저장) saves on the device |
+
+To collect solving diagnostics, open **Plate-solving diagnostic capture(솔빙 테스트 자료 수집)** at `/solver-capture`. Choose scene, test stage, capture contents, maximum duration, attempts, and storage limit. Click **Start recording(기록 시작)** and verify the recording state. Add segment notes as needed, then click **Stop recording(기록 종료)**. Recording also stops at the configured limits.
+
+### 14.13 LiveCam(실시간 영상)
+
+**Path:** Web `LiveCam(실시간 영상)`
+
+![LiveCam(실시간 영상) · image processing and camera controls](assets/web/en/livecam.png)
+
+1. Enable **Processing On(처리 켜짐)**, choose Input Frame(입력 프레임), Output(출력), and Preview Mode(미리보기 모드), then click **Apply(적용)**. Choose a latest-frame preview or Live Stack(라이브 스택).
+2. For stacking, choose Stack Mode(스택 모드) and frame count. Use **Reset Stack(스택 초기화)** to start a new accumulation.
+3. Under **Camera Exposure / Gain(카메라 노출 / 게인)**, choose exposure mode/value and gain, then click **Apply Camera(카메라 적용)**. Check actual values and status. Manual exposure is in µs; 400000µs equals 0.4 seconds.
+4. Use Preview(미리보기) zoom, fit, and star overlays. Download the image in the selected format, or use TIFF download for supported RAW data.
+
+**Preprocess for solving(천구 좌표 해석용 전처리)** separately affects the solver's input. Distinguish it from preview brightness, color, and stacking changes. Exposure/gain controls are unavailable when no camera process is attached.
 
 ### Scope of this manual
 

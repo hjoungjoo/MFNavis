@@ -134,11 +134,14 @@ def test_manual_language_is_explicit_and_public(app, language):
     page = response.text
     assert f'<html lang="{language}">' in page
     assert ("<p>목차</p>" if language == "ko" else "<p>Contents</p>") in page
-    assert page.count('src="data:image/png;base64,') == 49
-    assert page.count("<figure>") == 41
+    assert page.count('src="data:image/png;base64,') == 59
+    assert page.count("<figure>") == 51
     assert 'class="lcd-gallery"' in page
+    assert page.count('class="web-gallery"') == 10
+    assert "INDI MOUNT" in page
+    assert "LX200 OnStepX Driver Connection(LX200 OnStepX 드라이버 연결)" in page
     assert "data:font/woff2;base64," in page
-    for chapter in range(1, 14):
+    for chapter in range(1, 15):
         assert f'<h2 id="chapter-{chapter}">' in page
         assert f'href="#chapter-{chapter}"' in page
     for edition in ("en", "ko"):

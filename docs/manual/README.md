@@ -1,8 +1,9 @@
-# MFNavis LCD 한국어·영문 사용자 매뉴얼 작업 파일
+# MFNavis LCD와 웹 한국어·영문 사용자 매뉴얼 작업 파일
 
 일반 사용자가 관측 준비부터 천체 탐색과 종료까지 따라갈 수 있는 별도 매뉴얼이다.
 빠른 시작, 메뉴 구조 그림, 공통 키 조작, 화면별 절차와 설정표, 문제 해결,
-자주 쓰는 경로 순서로 구성한다.
+자주 쓰는 경로, 웹 접속과 페이지별 조작 순서로 구성한다. INDI MOUNT의
+세부 설정은 9장의 LCD 안내에서 14장의 웹 설정 절차로 연결한다.
 
 ## 파일
 
@@ -18,14 +19,16 @@
 | [assets](assets) | 메뉴 구조와 조작 그림 8개. PNG와 편집 가능한 SVG를 함께 보관 |
 | [assets/lcd](assets/lcd) | 한국어·영문 LCD 화면 캡처 각 41개. 원본 128×128 PNG와 출처·체크섬 목록 |
 | [capture_lcd.py](capture_lcd.py) | 현재 LCD UI의 화면 버퍼를 독립 실행으로 캡처 |
+| [assets/web](assets/web) | 현재 웹 화면 캡처 각 10개와 출처·체크섬 목록 |
+| [capture_web.py](capture_web.py) | 독립된 예시 웹서버에서 실제 웹페이지를 Chromium으로 캡처 |
 | [build_manual.py](build_manual.py) | 본문과 그림으로 오프라인 HTML 생성 |
 | [render_manual.py](render_manual.py) | 글꼴 로딩 후 Chromium으로 양쪽 언어 PDF 인쇄 |
 
 메뉴 구조도와 키패드 그림은 설명용 개념도다. LCD 이미지는 현재 MFNavis의
 실제 UI 클래스가 그린 화면 버퍼를 그대로 저장한 캡처다. 배포용 PDF는 사용자
 매뉴얼의 형태로 읽을 수 있도록 기존 Sphinx 문서와 독립적으로 구성했다.
-한국어·영문판은 같은 13개 장과 8개 구조도·조작 그림을 사용하며, 각 언어의
-LCD 화면 41개를 해당 절차 옆에 배치한다.
+한국어·영문판은 같은 14개 장과 8개 구조도·조작 그림을 사용하며, 각 언어의
+LCD 화면 41개와 웹 화면 10개를 해당 절차 옆에 배치한다.
 
 ## LCD 화면의 출처
 
@@ -54,7 +57,7 @@ MFNavis 웹 화면 하단의 **사용자 매뉴얼 / User manual**에서 한국�
 - `/manual/user_manual_en.html`: 영문 매뉴얼.
 - 각 HTML의 상단에서 언어 전환, 해당 언어 PDF 내려받기, 인쇄, 웹 화면 복귀 가능.
 - 언어 전환 시 현재 읽는 장으로 이동한다. 목차는 두 언어 모두 `#chapter-1`부터
-  `#chapter-13`까지 같은 앵커를 사용한다.
+  `#chapter-14`까지 같은 앵커를 사용한다.
 - HTML과 PDF는 장비에서 직접 제공한다. 인터넷 연결이나 외부 문서 서비스가
   필요하지 않으며, HTML에는 그림과 한국어 글꼴이 포함되어 있다.
 
@@ -96,6 +99,21 @@ LCD UI가 바뀌면 먼저 아래 명령으로 캡처를 갱신한다. 개발 �
 ```bash
 .venv-dev-trixie/bin/python docs/manual/capture_lcd.py
 ```
+
+웹 UI가 바뀌면 아래 명령으로 웹 화면도 갱신한다. 실제 Flask 템플릿·CSS·
+JavaScript를 사용하며 1200×800 화면 또는 INDI 설정 영역을 캡처한다.
+설정·DB·상태는 임시 폴더로 분리하고 네트워크·드라이버 정보는 예시를 사용한다.
+임시 서버는 지정된 조회 요청만 허용하며, POST와 장비 조작 경로를 차단한다.
+실행 중인 장비 웹서버에 로그인하거나 설정을 변경하지 않는다.
+
+```bash
+.venv-dev-trixie/bin/python docs/manual/capture_web.py
+```
+
+캡처 갱신 후 HTML·PDF 생성 명령을 다시 실행한다. 두 HTML 모두 LCD·웹
+캡처와 글꼴을 포함하므로 오프라인으로 열 수 있다. 웹 기능 설명은
+`python/MFNavis/server.py`, `web_catalogs.py`, `api_extensions.py`,
+`python/views/`의 현재 동작과 `messages.mo`의 정식 한국어 표시명을 따른다.
 
 브라우저로 HTML을 열고 **인쇄 또는 PDF 저장 / Print or save as PDF** 버튼을 눌러도
 인쇄할 수 있다. 그림을 바꾸려면 `build_manual.py`를 수정하고 다시 생성한다.

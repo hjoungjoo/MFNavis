@@ -1,0 +1,123 @@
+{
+  "language": "ko",
+  "source_commit": "1a7fad132aa5c5b7e96f8b036099c5978db93d3d",
+  "capture_kind": "Chromium capture of production Flask templates and assets",
+  "example_data": true,
+  "live_hardware": false,
+  "viewport": [
+    1200,
+    800
+  ],
+  "captures": [
+    {
+      "name": "home",
+      "route": "/",
+      "selector": null,
+      "file": "assets/web/ko/home.png",
+      "resolution": [
+        1200,
+        800
+      ],
+      "sha256": "46ba38a23fd3e4f96e7eae11a6f3fa991cd0bec413b6527a9ed998f16d75cb5e"
+    },
+    {
+      "name": "remote",
+      "route": "/remote",
+      "selector": null,
+      "file": "assets/web/ko/remote.png",
+      "resolution": [
+        1200,
+        800
+      ],
+      "sha256": "2d18b9c4f4f4d42539cd6b6025500b2e016f2930d9a0154656d9ee8abe64b8d3"
+    },
+    {
+      "name": "catalogs",
+      "route": "/catalogs?home=1",
+      "selector": null,
+      "file": "assets/web/ko/catalogs.png",
+      "resolution": [
+        1200,
+        800
+      ],
+      "sha256": "730fc7dd14aed2c889389bd9c430432c54d8639a0bba079a5f1f8b31c944349e"
+    },
+    {
+      "name": "indi_connection",
+      "route": "/indi",
+      "selector": "#indi_mount_form",
+      "file": "assets/web/ko/indi_connection.png",
+      "resolution": [
+        1118,
+        451
+      ],
+      "sha256": "977ac11deab10de87898aef2ad20371b7870f3b6db8db3bc8010acdf79ee6b8d"
+    },
+    {
+      "name": "indi_goto",
+      "route": "/indi",
+      "selector": "#indi_goto_guide_form",
+      "file": "assets/web/ko/indi_goto.png",
+      "resolution": [
+        1118,
+        596
+      ],
+      "sha256": "10ea2d0910533e299e3b865d7a6b33d205e48fb1c141e0d52003fba7d4996009"
+    },
+    {
+      "name": "locations",
+      "route": "/locations?add_new=1",
+      "selector": null,
+      "file": "assets/web/ko/locations.png",
+      "resolution": [
+        1200,
+        800
+      ],
+      "sha256": "2bf7c65c29eb3d1c572eaff72a09bd0fdeb8ae877f50fd4f5053f47e619aa47b"
+    },
+    {
+      "name": "equipment",
+      "route": "/equipment",
+      "selector": null,
+      "file": "assets/web/ko/equipment.png",
+      "resolution": [
+        1200,
+        800
+      ],
+      "sha256": "14996921e7b0589e749f792ddcb60f1b5c334b4c4a6fb855f3d91ea20f6a9f54"
+    },
+    {
+      "name": "network",
+      "route": "/network",
+      "selector": null,
+      "file": "assets/web/ko/network.png",
+      "resolution": [
+        1200,
+        800
+      ],
+      "sha256": "1881840c1c5eaa48dcb002e66870cb7821f1220a09ea6fd8c9d14103ed7339a9"
+    },
+    {
+      "name": "livecam",
+      "route": "/livecam",
+      "selector": null,
+      "file": "assets/web/ko/livecam.png",
+      "resolution": [
+        1200,
+        800
+      ],
+      "sha256": "b960efbef25164dfecb6e615d392f2510ea16a52ed40ab40165edd5e25a24e15"
+    },
+    {
+      "name": "tools",
+      "route": "/tools",
+      "selector": null,
+      "file": "assets/web/ko/tools.png",
+      "resolution": [
+        1200,
+        800
+      ],
+      "sha256": "ab3e25a3dcba96177d92bb096aecc6e289d911d0ba97e49ded0c07b4aae30892"
+    }
+  ]
+}
