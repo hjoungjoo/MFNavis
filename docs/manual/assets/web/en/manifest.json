@@ -111,13 +111,14 @@
     {
       "name": "tools",
       "route": "/tools",
-      "selector": null,
+      "selector": "#cache-download",
       "file": "assets/web/en/tools.png",
       "resolution": [
-        1200,
-        800
+        1166,
+        382
       ],
-      "sha256": "2e4e476798c594da4915d8b2accd9c6a084c32d86d852d637aeab074247f3647"
+      "sha256": "987706beeb6c636d3c887155460d806842f488df0a8161958221056876d2b37b",
+      "source_commit": "0a34cde167fe449b81b94b94080fe1b1dbe95023"
     }
   ]
 }

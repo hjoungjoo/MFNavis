@@ -704,6 +704,106 @@ def test_search_api(web_app):
 
 
 @pytest.mark.unit
+def test_search_api_follows_home_catalog_order(web_app, nearby_catalog):
+    conn = nearby_catalog
+    # Insert in reverse screen order, with better name matches in later groups.
+    codes = [
+        "Zzz",
+        "SaA",
+        "Ta2",
+        "RDS",
+        "SaM",
+        "WDS",
+        "Lyn",
+        "Sh2",
+        "H",
+        "C",
+        "IC",
+        "NGC",
+        "M",
+        "Aaa",
+    ]
+    object_ids = {}
+    for object_id, code in enumerate(codes, 100):
+        object_ids[code] = object_id
+        conn.execute(
+            "INSERT INTO objects (id, obj_type, const) VALUES (?, 'Gx', 'And')",
+            (object_id,),
+        )
+        conn.execute(
+            "INSERT INTO catalog_objects (object_id, catalog_code, sequence) VALUES (?, ?, 1)",
+            (object_id, code),
+        )
+        conn.execute(
+            "INSERT INTO names (object_id, common_name) VALUES (?, ?)",
+            (object_id, "A long needle name" if code in {"M", "NGC"} else "needle"),
+        )
+    # Shared objects use screen order (NGC before C), rather than detail-page
+    # CATALOG_PRIORITY (C before NGC), and aliases do not duplicate results.
+    for code in ("C", "WDS"):
+        conn.execute(
+            "INSERT INTO catalog_objects (object_id, catalog_code, sequence) VALUES (?, ?, 99)",
+            (object_ids["NGC"], code),
+        )
+    conn.execute(
+        "INSERT INTO names (object_id, common_name) VALUES (?, 'needle alias')",
+        (object_ids["NGC"],),
+    )
+
+    app, _server = web_app
+    results = (
+        _login(app.test_client())
+        .get("/catalogs/api/search?q=needle")
+        .get_json()["results"]
+    )
+    assert [r["display"] for r in results] == [
+        "M 1",
+        "NGC 1",
+        "IC 1",
+        "C 1",
+        "H 1",
+        "Sh2 1",
+        "Lyn 1",
+        "WDS 1",
+        "SaM 1",
+        "RDS 1",
+        "Ta2 1",
+        "SaA 1",
+        "Aaa 1",
+        "Zzz 1",
+    ]
+    assert len({r["object_id"] for r in results}) == len(codes)
+    assert results[1]["matched_name"] == "needle alias"
+
+
+@pytest.mark.unit
+def test_search_api_catalog_order_applies_before_limit(web_app, nearby_catalog):
+    conn = nearby_catalog
+    for object_id in range(100, 285):
+        code = "WDS" if object_id < 230 else "M"
+        sequence = object_id - 99 if code == "WDS" else object_id - 229
+        conn.execute(
+            "INSERT INTO objects (id, obj_type, const) VALUES (?, 'Gx', 'And')",
+            (object_id,),
+        )
+        conn.execute(
+            "INSERT INTO catalog_objects (object_id, catalog_code, sequence) VALUES (?, ?, ?)",
+            (object_id, code, sequence),
+        )
+        conn.execute(
+            "INSERT INTO names (object_id, common_name) VALUES (?, ?)",
+            (object_id, "needle" if code == "WDS" else "A long needle name"),
+        )
+    app, _server = web_app
+    results = (
+        _login(app.test_client())
+        .get("/catalogs/api/search?q=needle")
+        .get_json()["results"]
+    )
+    assert [r["display"] for r in results] == [f"M {seq}" for seq in range(1, 51)]
+
+
+@pytest.mark.unit
 def test_search_api_designation_ordering(web_app):
     app, _server = web_app
     client = _login(app.test_client())

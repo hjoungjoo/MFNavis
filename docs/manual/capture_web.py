@@ -7,6 +7,7 @@ It does not contact hardware, change user settings, or run device commands.
 
 from __future__ import annotations
 
+import argparse
 import base64
 from contextlib import ExitStack
 import datetime
@@ -41,11 +42,11 @@ SCREENS = (
     ("equipment", "/equipment", None),
     ("network", "/network", None),
     ("livecam", "/livecam", None),
-    ("tools", "/tools", None),
+    ("tools", "/tools", "#cache-download"),
 )
 
 
-async def capture(ws_url, origin, language):
+async def capture(ws_url, origin, language, screens=SCREENS):
     destination = HERE / "assets/web" / language
     destination.mkdir(parents=True, exist_ok=True)
     records = []
@@ -83,7 +84,7 @@ async def capture(ws_url, origin, language):
             "Emulation.setDeviceMetricsOverride",
             {"width": 1200, "height": 800, "deviceScaleFactor": 1, "mobile": False},
         )
-        for name, route, selector in SCREENS:
+        for name, route, selector in screens:
             await call("Page.navigate", {"url": origin + route})
             for _ in range(100):
                 if await evaluate(
@@ -127,23 +128,40 @@ async def capture(ws_url, origin, language):
                 }
             )
             print(f"Captured {language} web {name}", flush=True)
+    manifest_path = destination / "manifest.json"
+    source_commit = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+    ).strip()
+    if len(screens) != len(SCREENS) and manifest_path.exists():
+        previous = json.loads(manifest_path.read_text())
+        # Keep the original batch's provenance for captures not refreshed.
+        for record in records:
+            record["source_commit"] = source_commit
+        source_commit = previous["source_commit"]
+        by_name = {record["name"]: record for record in previous["captures"]}
+        by_name.update({record["name"]: record for record in records})
+        records = [by_name[name] for name, _, _ in SCREENS if name in by_name]
     manifest = {
         "language": language,
-        "source_commit": subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
-        ).strip(),
+        "source_commit": source_commit,
         "capture_kind": "Chromium capture of production Flask templates and assets",
         "example_data": True,
         "live_hardware": False,
         "viewport": [1200, 800],
         "captures": records,
     }
-    (destination / "manifest.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
-    )
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--screen", choices=[name for name, _, _ in SCREENS], action="append"
+    )
+    args = parser.parse_args()
+    screens = tuple(
+        screen for screen in SCREENS if not args.screen or screen[0] in args.screen
+    )
     os.chdir(ROOT / "python")
     sys.path.insert(0, str(ROOT / "python"))
     from PiFinder import utils
@@ -231,6 +249,7 @@ def main():
                         "/api/camera/controls",
                         "/api/camera/raw-stack/status",
                         "/api/camera/raw-stack/image",
+                        "/tools/api/cache-download",
                     }
                 )
                 if request.method != "GET" or not (
@@ -272,7 +291,9 @@ def main():
                         item for item in json.load(response) if item["type"] == "page"
                     )
                 for language in ("ko", "en"):
-                    trio.run(capture, page["webSocketDebuggerUrl"], origin, language)
+                    trio.run(
+                        capture, page["webSocketDebuggerUrl"], origin, language, screens
+                    )
             finally:
                 browser.terminate()
                 browser.wait(timeout=10)

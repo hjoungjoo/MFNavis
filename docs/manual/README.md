@@ -113,6 +113,9 @@ JavaScript를 사용하며 1200×800 화면 또는 INDI 설정 영역을 캡처�
 .venv-dev-trixie/bin/python docs/manual/capture_web.py
 ```
 
+특정 화면만 갱신하려면 `--screen tools`처럼 화면 이름을 지정한다.
+두 언어의 해당 캡처와 체크섬만 바꾸며 나머지 캡처 목록은 유지한다.
+
 캡처 갱신 후 HTML·PDF 생성 명령을 다시 실행한다. 두 HTML 모두 LCD·웹
 캡처와 글꼴을 포함하므로 오프라인으로 열 수 있다. 웹 기능 설명은
 `python/MFNavis/server.py`, `web_catalogs.py`, `api_extensions.py`,
@@ -128,6 +131,10 @@ SVG의 텍스트는 별도 벡터 편집기에서도 편집할 수 있다.
 같은 날 추가된 Push 추적 테두리는 `UIObjectDetails._render_push_tracking_border`를
 기준으로 빠른 시작과 6.5절에 반영했다. GoTo 완료 후 현재 대상의 추적 표시,
 밝고 어두운 배경에서의 이중 선, 정지·재이동·상태 만료 시 표시 해제를 설명한다.
+
+2026년 10월 10일에는 14.12절에 웹 Tools의 오프라인 캐시 다운로드를 추가했다.
+다운로드 범위와 동시 실행 수, 진행 표시·로그, 정지·재개, 서비스 재시작·재부팅
+후 재개를 설명하고 한국어·영문 Tools 캡처와 HTML·PDF를 함께 갱신했다.
 
 | 확인 대상 | 코드 |
 |---|---|

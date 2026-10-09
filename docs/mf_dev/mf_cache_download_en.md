@@ -33,6 +33,28 @@ as a camera warm-pixel map.
 - Do not run this during an observing session. Cache generation uses CPU,
   network bandwidth, and SD-card I/O.
 
+## Download from Tools
+
+Open **Tools → Offline Cache Download** in the web UI. Select POSS+SDSS,
+POSS only, or runtime caches only, then choose 1–10 concurrent downloads
+(default 4) and click **Start download**. Use **Skip runtime caches** for images
+only. The status refreshes every two seconds and shows the current stage and
+object, progress, cached objects, saved images, coverage misses, failures,
+elapsed time, estimated remaining time, free disk space, and recent logs.
+
+**Stop** terminates the job and its child downloader. **Resume download** uses
+the previous options and skips completed cache files and cached SDSS coverage
+misses; images interrupted during transfer are requested again. One job runs
+at a time. Leaving the page does not stop it, and reopening Tools reconnects
+to the same job. After a service restart or reboot, the job is shown as
+interrupted and can be resumed manually. Options and recent status are stored
+in `~/MFNavis_data/cache_download.json`.
+
+Image progress counts processed objects, including failures and coverage
+misses. Remaining time is estimated from this run's average processing time.
+A run with download failures ends in the failed state and can be retried with
+Resume. Runtime progress reports its three cache-building stages.
+
 ## Default command
 
 From the repository root, run:

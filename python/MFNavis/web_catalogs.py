@@ -875,23 +875,33 @@ def register_catalog_routes(app, server_instance):
             ):
                 add(row, row["common_name"])
 
-        # Common-name search (also tops up a designation search). Names that
-        # start with the query rank above names that merely contain it, then
-        # shorter names, then alphabetical.
+        # Common-name search (also tops up a designation search) follows the
+        # home page's group and catalog order, including alphabetical "Other"
+        # catalogs. Rank in SQL before limiting or deduplicating so a shared
+        # object uses its first listing in that order. Within each catalog,
+        # prefer prefix matches, then shorter names, then alphabetical.
         if len(results) < 50:
+            catalog_codes = [code for _, codes in CATALOG_GROUPS for code in codes]
+            catalog_rank = (
+                "CASE co.catalog_code "
+                + " ".join(f"WHEN ? THEN {rank}" for rank in range(len(catalog_codes)))
+                + f" ELSE {len(catalog_codes)} END"
+            )
             for row in _query(
-                """
+                f"""
                 SELECT n.object_id, n.common_name, co.catalog_code, co.sequence,
                        o.obj_type, o.const
                   FROM names n
                   JOIN objects o ON o.id = n.object_id
                   JOIN catalog_objects co ON co.object_id = n.object_id
                  WHERE n.common_name LIKE ?
-                 ORDER BY (n.common_name LIKE ?) DESC,
-                          LENGTH(n.common_name), n.common_name
+                 ORDER BY {catalog_rank}, co.catalog_code,
+                          (n.common_name LIKE ?) DESC,
+                          LENGTH(n.common_name), n.common_name,
+                          co.sequence, co.object_id, n.id
                  LIMIT 120
                 """,
-                (f"%{q}%", f"{q}%"),
+                (f"%{q}%", *catalog_codes, f"{q}%"),
             ):
                 add(row, row["common_name"])
 

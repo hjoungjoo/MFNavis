@@ -85,8 +85,11 @@ CSS/JS 로드: `base.html`에는 head 확장 블록이 없으므로, 신규 템�
 - 전부 **서버측 SQL**: `WHERE catalog_code=? AND obj_type IN (...) AND const=? AND filter_mag<=?`
   + `LIMIT/OFFSET`. `mag`은 JSON 텍스트이므로 `json_extract(mag,'$.filter_mag')` 사용.
 - 이름 검색은 `names.common_name LIKE` (통합 검색은 전 카탈로그 대상, LIMIT 50).
-  이름 검색 자체도 **q로 시작하는 이름 우선 → 짧은 이름 → 알파벳순**으로 정렬한다
-  (`ORDER BY (common_name LIKE 'q%') DESC, LENGTH, common_name`, WHERE는 `%q%`).
+  홈 통합 검색은 **카탈로그 홈의 그룹·카탈로그 표시 순서**(`CATALOG_GROUPS`)를
+  먼저 따르며, 미등록 카탈로그는 홈의 `Other`와 같이 코드 알파벳순으로 뒤에 둔다.
+  같은 카탈로그 안에서는 **q로 시작하는 이름 우선 → 짧은 이름 → 알파벳순**으로
+  정렬한다(WHERE는 `%q%`). SQL에서 제한·중복 제거 전에 이 순서를 적용하므로,
+  여러 카탈로그에 속한 천체는 화면 순서상 첫 카탈로그의 지정번호로 표시된다.
 - "Up now"(현재 고도) 필터/정렬: 페이지 크기(≤200행) 범위에서만 고도를 계산하면 정렬이 왜곡되므로,
   고도 정렬 시에는 **필터 통과 행 전체의 (ra,dec)를 가져와 numpy 일괄 계산 후 정렬 → 페이지 슬라이스**.
   Messier급은 문제없고 WDS는 고도 정렬을 비활성화(시퀀스 정렬 고정)한다 — UI에서 안내 문구 표시.

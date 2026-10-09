@@ -166,6 +166,77 @@ def test_sdss_outside_survey_is_not_a_transient_failure(tmp_path, monkeypatch, c
     assert "1 unavailable, 0 failed" in capsys.readouterr().out
 
 
+def test_image_progress_counts_cached_success_and_failure(
+    tmp_path, monkeypatch, capsys
+):
+    import json
+    from PiFinder.cache_progress import PROGRESS_PREFIX
+
+    monkeypatch.setattr(gen_images, "BASE_IMAGE_PATH", str(tmp_path))
+    monkeypatch.setattr(
+        gen_images,
+        "get_objects_to_fetch",
+        lambda: [
+            (1.0, 2.0, "NGC1"),
+            (2.0, 3.0, "NGC2"),
+            (3.0, 4.0, "NGC3"),
+        ],
+    )
+    monkeypatch.setattr(gen_images, "cached_image_exists", lambda path: "NGC1_" in path)
+    monkeypatch.setattr(
+        gen_images,
+        "fetch_object",
+        lambda _session, _ra, _dec, name, *_args: (
+            name,
+            {"POSS": (name == "NGC2", "" if name == "NGC2" else "HTTP 503")},
+        ),
+    )
+    monkeypatch.setattr(sys, "argv", ["gen_images", "--poss", "--progress-json"])
+    assert gen_images.main() == 1
+    events = [
+        json.loads(line[len(PROGRESS_PREFIX) :])
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith(PROGRESS_PREFIX)
+    ]
+    assert events[0]["completed"] == events[0]["cached"] == 1
+    assert events[-1]["completed"] == events[-1]["total"] == 3
+    assert events[-1]["processed"] == 2
+    assert events[-1]["fetched"] == events[-1]["failed"] == 1
+
+
+def test_cached_sdss_unavailability_needs_no_download(tmp_path, monkeypatch, capsys):
+    import json
+    from PiFinder.cache_progress import PROGRESS_PREFIX
+
+    monkeypatch.setattr(gen_images, "BASE_IMAGE_PATH", str(tmp_path))
+    monkeypatch.setattr(
+        gen_images, "get_objects_to_fetch", lambda: [(1.0, 2.0, "NGC1")]
+    )
+    gen_images._cache_sdss_unavailable(1.0, 2.0, "NGC1")
+    monkeypatch.setattr(
+        gen_images, "fetch_object", lambda *_args: pytest.fail("No download needed")
+    )
+    monkeypatch.setattr(sys, "argv", ["gen_images", "--sdss", "--progress-json"])
+    assert gen_images.main() == 0
+    event = next(
+        json.loads(line[len(PROGRESS_PREFIX) :])
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith(PROGRESS_PREFIX)
+    )
+    assert event["completed"] == event["total"] == event["cached"] == 1
+
+
+def test_warmup_forwards_web_progress_flag(cache_warmup, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        cache_warmup.subprocess, "run", lambda args, **kwargs: calls.append(args)
+    )
+    cache_warmup.warm_catalog_images("poss", 2, progress_json=True)
+    assert "--progress-json" in calls[0]
+    assert "--poss" in calls[0]
+    assert calls[0][calls[0].index("--workers") + 1] == "2"
+
+
 def _sdss_session(status, content_type, content=b"cutout"):
     response = gen_images.requests.Response()
     response.status_code = status

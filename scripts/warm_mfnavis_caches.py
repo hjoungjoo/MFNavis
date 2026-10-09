@@ -78,23 +78,30 @@ def _tree_size(path: Path) -> int:
     return sum(entry.stat().st_size for entry in path.rglob("*") if entry.is_file())
 
 
-def warm_runtime_caches() -> None:
+def warm_runtime_caches(progress_json: bool = False) -> None:
     """Build the deterministic local caches used during normal startup/use."""
     _add_project_to_path()
 
     from PiFinder import catalog_cache, utils
+    from PiFinder.cache_progress import emit_progress
     from PiFinder.catalogs import CatalogBuilder
     from PiFinder.plot import _load_raw_stars
     from PiFinder.sqm.color_index import get_bv
     from PiFinder.state import SharedStateObj
 
     print("[runtime] Building Hipparcos star-field cache...", flush=True)
+    if progress_json:
+        emit_progress("runtime", current="Hipparcos", completed=0, total=3)
     _load_raw_stars()
 
     print("[runtime] Building Hipparcos B-V lookup cache...", flush=True)
+    if progress_json:
+        emit_progress("runtime", current="B-V", completed=1, total=3)
     get_bv(())
 
     print("[runtime] Building composite catalog cache...", flush=True)
+    if progress_json:
+        emit_progress("runtime", current="Catalogs", completed=2, total=3)
     builder = CatalogBuilder()
     builder.build(SharedStateObj(), include_dynamic_catalogs=False)
 
@@ -112,6 +119,8 @@ def warm_runtime_caches() -> None:
 
     if catalog_cache.load() is None:
         raise RuntimeError("Catalog cache was not written successfully")
+    if progress_json:
+        emit_progress("runtime", current="Catalogs", completed=3, total=3)
 
     cache_root = utils.data_dir / "cache"
     print(
@@ -120,9 +129,13 @@ def warm_runtime_caches() -> None:
     )
 
 
-def warm_catalog_images(image_sources: str, workers: int) -> None:
+def warm_catalog_images(
+    image_sources: str, workers: int, progress_json: bool = False
+) -> None:
     """Delegate image generation to the existing resumable image module."""
     args = [sys.executable, "-m", "MFNavis.gen_images", "--workers", str(workers)]
+    if progress_json:
+        args.append("--progress-json")
     if image_sources == "poss":
         args.append("--poss")
     elif image_sources == "both":
@@ -147,6 +160,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         prog="warm_mfnavis_caches.py",
         description="Pre-populate rebuildable MFNavis runtime and catalog-image caches.",
+    )
+    parser.add_argument(
+        "--progress-json", action="store_true", help="Emit machine-readable progress."
     )
     parser.add_argument(
         "--images",
@@ -175,8 +191,8 @@ def main() -> int:
     try:
         _ensure_runtime_python()
         if not args.skip_runtime:
-            warm_runtime_caches()
-        warm_catalog_images(args.images, args.workers)
+            warm_runtime_caches(args.progress_json)
+        warm_catalog_images(args.images, args.workers, args.progress_json)
     except KeyboardInterrupt:
         print("\nStopped. Re-run this command to continue from the existing cache.")
         return 130

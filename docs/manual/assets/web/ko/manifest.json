@@ -111,13 +111,14 @@
     {
       "name": "tools",
       "route": "/tools",
-      "selector": null,
+      "selector": "#cache-download",
       "file": "assets/web/ko/tools.png",
       "resolution": [
-        1200,
-        800
+        1166,
+        382
       ],
-      "sha256": "ab3e25a3dcba96177d92bb096aecc6e289d911d0ba97e49ded0c07b4aae30892"
+      "sha256": "7f66922e664e8b372b235007220ae86b4e1965ad13c2530a898e892bd9cc27e8",
+      "source_commit": "0a34cde167fe449b81b94b94080fe1b1dbe95023"
     }
   ]
 }

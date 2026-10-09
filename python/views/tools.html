@@ -23,6 +23,57 @@
 </div>
 {% endif %}
 
+<div class="card grey darken-2" id="cache-download"
+     data-labels='{{ {
+       "idle": _("Ready"), "running": _("Downloading"),
+       "stopping": _("Stopping"), "stopped": _("Stopped"),
+       "interrupted": _("Interrupted"), "completed": _("Completed"),
+       "failed": _("Failed"), "preparing": _("Preparing"),
+       "runtime": _("Runtime caches"), "images": _("Catalog images"),
+       "cached": _("Already cached"), "fetched": _("Saved images"),
+       "unavailable": _("Outside survey coverage"), "errors": _("Failed downloads"),
+       "elapsed": _("Elapsed"), "eta": _("Estimated remaining"),
+       "free": _("Free space"), "connection_error": _("Unable to load download status. Retrying...")
+     } | tojson }}'>
+  <div class="card-content">
+    <h5 class="grey-text">{{ _('Offline Cache Download') }}</h5>
+    <p>{{ _('Prepare runtime caches and catalog images while connected to the internet. Downloads continue when you leave this page. Stop and resume without downloading completed files again.') }}</p>
+    <div class="row" style="margin-top: 1rem;">
+      <div class="col s12 m5">
+        <label for="cache-images">{{ _('Catalog images') }}</label>
+        <select id="cache-images" class="browser-default">
+          <option value="both">{{ _('POSS and SDSS') }}</option>
+          <option value="poss">{{ _('POSS only') }}</option>
+          <option value="none">{{ _('Runtime caches only') }}</option>
+        </select>
+      </div>
+      <div class="col s12 m3">
+        <label for="cache-workers">{{ _('Concurrent downloads') }}</label>
+        <input id="cache-workers" type="number" min="1" max="10" value="4">
+      </div>
+      <div class="col s12 m4" style="padding-top: 1rem;">
+        <label><input id="cache-skip-runtime" type="checkbox"><span>{{ _('Skip runtime caches') }}</span></label>
+      </div>
+    </div>
+    <div role="status" aria-live="polite">
+      <p id="cache-state">{{ _('Loading…') }}</p>
+      <progress id="cache-progress" style="width: 100%;" aria-label="{{ _('Download progress') }}"></progress>
+      <p id="cache-counts"></p>
+      <p id="cache-timing"></p>
+    </div>
+    <p id="cache-error" class="red-text" role="alert"></p>
+    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+      <button type="button" id="cache-start" class="btn" disabled>{{ _('Start download') }}</button>
+      <button type="button" id="cache-stop" class="btn" disabled>{{ _('Stop') }}</button>
+      <button type="button" id="cache-resume" class="btn" disabled>{{ _('Resume download') }}</button>
+    </div>
+    <details style="margin-top: 1rem;">
+      <summary>{{ _('Recent download log') }}</summary>
+      <pre id="cache-log" style="white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto;"></pre>
+    </details>
+  </div>
+</div>
+
 <div class="card grey darken-2">
   <div class="card-content">
     <h5 class="grey-text">{{ _('Change Password') }}</h5>
@@ -100,6 +151,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/js/cache_download.js"></script>
 <script>
   document.addEventListener('DOMContentLoaded', function() {
       var elems = document.querySelectorAll('select');

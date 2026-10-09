@@ -1,6 +1,6 @@
 # MFNavis User Manual LCD and Web
 
-**Draft user manual · October 9, 2026**
+**Draft user manual · October 10, 2026**
 
 MFNavis identifies stars in camera images to show where your telescope is pointing and guide you toward an observing target. This manual explains how to prepare for observing, find objects, and change settings using the LCD, keypad, and web interface. A connected INDI mount also supports automatic and manual movement. **INDI MOUNT connection and detailed settings are available on the web server's INDI page.** See [chapter 14](#chapter-14) for connecting to the web interface and using each page.
 
@@ -742,7 +742,7 @@ The top bar also provides fullscreen and web-theme controls. The footer's **User
 | Equipment | Register and select telescopes and eyepieces | 14.9 |
 | INDI | INDI MOUNT connection, controls, and detailed settings | 14.4–14.7 |
 | Network Setup | AP, Client, AP+STA, and Wi-Fi settings | 14.10 |
-| Tools | Password, backup, and restore | 14.12 |
+| Tools | Offline cache download, password, backup, and restore | 14.12 |
 | LiveCam | Camera preview, exposure, gain, and stacking | 14.13 |
 | Logs | View and download operating logs | 14.12 |
 
@@ -901,7 +901,32 @@ Select an observing session to view its objects, ratings, and notes. Download ic
 
 **Path:** Web `Tools` or `Logs`
 
-![Tools · password, backup, and restore](assets/web/en/tools.png)
+![Tools · offline cache download and progress](assets/web/en/tools.png)
+
+**Offline Cache Download**
+
+Prepare star-map and catalog startup caches and survey images while internet access is available. Saved images remain available offline. Web catalog photos use POSS; SDSS provides an additional survey image.
+
+1. Open web `Tools → Offline Cache Download`. The MFNavis device itself must have internet access. Connecting your phone to the device's AP alone does not provide an internet connection.
+2. Under **Catalog images**, choose **POSS and SDSS**, **POSS only**, or **Runtime caches only**. Select **Skip runtime caches** to download images only.
+3. Set **Concurrent downloads** between 1 and 10; the default is 4. Check **Free space**. A full image download can take a long time and occupy several GB; at least 6GB of free space is recommended for POSS+SDSS.
+4. Click **Start download**. Only one job runs at a time. It prepares runtime caches first, then downloads the selected images.
+5. Check the status and progress, refreshed about every two seconds. Expand **Recent download log** to read recent job messages.
+
+| Display | Meaning |
+|---|---|
+| Stage, current object, count, and progress | Runtime caches show three build stages; image progress counts processed objects, including cached objects, failures, and coverage misses |
+| Already cached | Objects that need no download in this run; saved SDSS coverage-miss records are also reused |
+| Saved images | Images newly saved in this run; one object can have two images when downloading both POSS and SDSS |
+| Outside survey coverage | SDSS images found to be unavailable in this run; these are not download failures |
+| Failed downloads | Images that could not be downloaded; if the final state is Failed, check the log and retry |
+| Elapsed and Estimated remaining | Time elapsed in the current run and an estimate from its average processing rate; the estimate changes with network conditions |
+
+**Stop and resume:** Click **Stop** and wait for Stopping to change to Stopped. **Resume download** uses the previous scope and worker count, skipping completed files. An image interrupted during transfer is requested again. To change options, stop the job, edit the options, and click **Start download**; completed caches are still reused.
+
+The job continues if you navigate away or close the browser. Reopen Tools to see the same job. A service restart or device reboot interrupts the job; it appears as Interrupted. Check the internet connection and click **Resume download**. Progress and elapsed time describe the new run, with existing cache counts updated after checking saved files.
+
+**Password, backup, restore, and logs**
 
 | Function | Instructions |
 |---|---|
@@ -927,4 +952,4 @@ To collect solving diagnostics, open **Plate-solving diagnostic capture** at `/s
 
 ### Scope of this manual
 
-This draft follows the MFNavis source in the working tree on October 9, 2026. Device-specific LCD displays, physical buttons, and responses from connected mounts require verification on actual hardware before release. Available entries can vary with hardware, language, saved equipment and observing lists, and software version.
+This draft follows the MFNavis source in the working tree on October 10, 2026. Device-specific LCD displays, physical buttons, and responses from connected mounts require verification on actual hardware before release. Available entries can vary with hardware, language, saved equipment and observing lists, and software version.

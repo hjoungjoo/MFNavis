@@ -298,7 +298,7 @@ def make_html(language):
             "home": "웹 화면으로 돌아가기",
             "language": "Language / 언어",
             "korean": "한국어",
-            "footer": "MFNavis · 사용자 매뉴얼 초안 · 2026년 10월 9일",
+            "footer": "MFNavis · 사용자 매뉴얼 초안 · 2026년 10월 10일",
         },
         "en": {
             "title": "MFNavis User Manual LCD and Web",
@@ -308,7 +308,7 @@ def make_html(language):
             "home": "Back to web interface",
             "language": "Language",
             "korean": "Korean",
-            "footer": "MFNavis · Draft user manual · October 9, 2026",
+            "footer": "MFNavis · Draft user manual · October 10, 2026",
         },
     }[language]
     source = (HERE / f"user_manual_{language}.md").read_text(encoding="utf-8")

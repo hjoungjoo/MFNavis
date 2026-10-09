@@ -1449,6 +1449,10 @@ class Server:
         def tools():
             return app.jinja_env.get_template("tools.html").render(title=_("Tools"))
 
+        from PiFinder.web_cache_download import register_cache_download_routes
+
+        register_cache_download_routes(app)
+
         @app.route("/livecam")
         @auth_required
         def livecam():

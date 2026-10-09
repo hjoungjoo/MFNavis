@@ -28,6 +28,7 @@ from PIL import Image, ImageOps
 from tqdm import tqdm
 
 from PiFinder import utils
+from PiFinder.cache_progress import emit_progress
 
 BASE_IMAGE_PATH = f"{utils.data_dir}/catalog_images"
 
@@ -247,6 +248,7 @@ def main() -> int:
     )
     parser.add_argument("--poss", action="store_true", help="Fetch POSS only")
     parser.add_argument("--sdss", action="store_true", help="Fetch SDSS only")
+    parser.add_argument("--progress-json", action="store_true")
     parser.add_argument(
         "--workers", type=int, default=10, help="Concurrent workers (default: 10)"
     )
@@ -276,13 +278,30 @@ def main() -> int:
             poss_missing = do_poss and not cached_image_exists(
                 resolve_image_path(name, "POSS")
             )
-            sdss_missing = do_sdss and not cached_image_exists(
-                resolve_image_path(name, "SDSS")
+            sdss_missing = (
+                do_sdss
+                and not cached_image_exists(resolve_image_path(name, "SDSS"))
+                and not sdss_unavailable_cached(ra, dec, name)
             )
             if poss_missing or sdss_missing:
                 to_fetch.append((ra, dec, name))
         print(f"Missing images: {len(to_fetch)} of {len(objects)}")
 
+    already_cached = len(objects) - len(to_fetch)
+    if args.progress_json:
+        emit_progress(
+            "images",
+            total=len(objects),
+            completed=already_cached,
+            cached=already_cached,
+            processed=0,
+            fetched=0,
+            skipped=0,
+            unavailable=0,
+            failed=0,
+            current="",
+            elapsed=0,
+        )
     if not to_fetch:
         print("Nothing to fetch!")
         return 0
@@ -302,6 +321,8 @@ def main() -> int:
     skipped = 0
     unavailable = 0
     t_start = time.time()
+    processed = 0
+    last_progress = time.monotonic()
 
     executor = ThreadPoolExecutor(max_workers=args.workers)
     try:
@@ -313,7 +334,10 @@ def main() -> int:
         }
 
         for future in tqdm(
-            as_completed(futures), total=len(futures), desc="Downloading"
+            as_completed(futures),
+            total=len(futures),
+            desc="Downloading",
+            disable=args.progress_json,
         ):
             name = futures[future]
             try:
@@ -331,6 +355,24 @@ def main() -> int:
                         failed.append((f"{name}_{source}", err))
             except Exception as e:
                 failed.append((name, str(e)))
+            processed += 1
+            if args.progress_json and (
+                time.monotonic() - last_progress >= 0.5 or processed == len(to_fetch)
+            ):
+                emit_progress(
+                    "images",
+                    total=len(objects),
+                    completed=already_cached + processed,
+                    cached=already_cached,
+                    processed=processed,
+                    fetched=fetched,
+                    skipped=skipped,
+                    unavailable=unavailable,
+                    failed=len(failed),
+                    current=name,
+                    elapsed=time.time() - t_start,
+                )
+                last_progress = time.monotonic()
     except KeyboardInterrupt:
         executor.shutdown(wait=False, cancel_futures=True)
         raise
