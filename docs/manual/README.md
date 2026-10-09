@@ -16,12 +16,34 @@
 | [user_manual_en.md](user_manual_en.md) | 영문 본문 편집 원본 |
 | [menu_labels_ko.json](menu_labels_ko.json) | 메뉴·선택값·화면 문구의 정식 영문명과 실제 한국어 UI 표시명 대조표 |
 | [assets](assets) | 메뉴 구조와 조작 그림 8개. PNG와 편집 가능한 SVG를 함께 보관 |
+| [assets/lcd](assets/lcd) | 한국어·영문 LCD 화면 캡처 각 41개. 원본 128×128 PNG와 출처·체크섬 목록 |
+| [capture_lcd.py](capture_lcd.py) | 현재 LCD UI의 화면 버퍼를 독립 실행으로 캡처 |
 | [build_manual.py](build_manual.py) | 본문과 그림으로 오프라인 HTML 생성 |
 | [render_manual.py](render_manual.py) | 글꼴 로딩 후 Chromium으로 양쪽 언어 PDF 인쇄 |
 
-그림은 설명용 개념도이며 실제 장비 화면 캡처가 아니다. 배포용 PDF는 사용자
+메뉴 구조도와 키패드 그림은 설명용 개념도다. LCD 이미지는 현재 MFNavis의
+실제 UI 클래스가 그린 화면 버퍼를 그대로 저장한 캡처다. 배포용 PDF는 사용자
 매뉴얼의 형태로 읽을 수 있도록 기존 Sphinx 문서와 독립적으로 구성했다.
-한국어·영문판은 같은 13개 장과 8개 그림을 사용한다.
+한국어·영문판은 같은 13개 장과 8개 구조도·조작 그림을 사용하며, 각 언어의
+LCD 화면 41개를 해당 절차 옆에 배치한다.
+
+## LCD 화면의 출처
+
+128×128 SSD1351 레이아웃을 사용하는 `DisplayHeadless`에서 현재 UI를 렌더링한다.
+글자, 아이콘, 선택 표시, 배치와 추적 테두리는 실제 LCD UI 코드의 출력이며
+PNG의 픽셀을 다시 그리거나 보정하지 않는다. HTML은 확대 시 픽셀을 유지하고,
+PDF에는 읽을 수 있는 크기로 캡션과 함께 배치한다. 기기를 촬영한 사진이나
+실시간 관측 기록으로 소개하지 않는다.
+
+카메라의 별 영상은 저장소의 `test_images/pleiades.png`를 사용한다.
+주간 정렬은 저장된 장비 카메라 프레임으로 UI를 캡처했다. 위치·시각·SQM·
+마운트 상태는 설명용 예시이며, 연결 성공이나 실제 마운트 동작을 검증한
+기록이 아니다. 각 언어 폴더의 `manifest.json`에 소스 커밋, UI 클래스,
+해상도와 PNG SHA-256을 기록한다.
+
+캡처 과정은 설정·관측 DB·상태 파일을 임시 폴더로 분리하고, 명령은 소비자가
+없는 큐에 넣는다. 실행 중인 서비스, 카메라, SPI 장치와 연결된 마운트를
+조작하지 않는다. 저장소의 옛 PiFinder 캡처는 현재 MFNavis 화면으로 사용하지 않는다.
 
 ## 웹에서 열기
 
@@ -49,7 +71,8 @@ MFNavis 웹 화면 하단의 **사용자 매뉴얼 / User manual**에서 한국�
 현재 UI에 적용되지 않으므로 정식 표시명으로 사용하지 않는다.
 예를 들어 `Lens`, `Distortion`, `Recovery Range`, `CALIB`, `SWEEP`은
 한국어 UI에서도 영어로 표시된다. 번역 파일을 갱신하면 대조표와 본문을
-함께 검토한다. 그림은 영어 메뉴 이름으로 구성한 개념도다.
+함께 검토한다. 구조도는 영어 메뉴 이름으로 구성하고, LCD 화면은 매뉴얼
+언어에 맞춰 캡처한다.
 
 ## 다시 생성하기
 
@@ -63,6 +86,16 @@ python3 docs/manual/build_manual.py
 
 두 명령은 한국어·영문 HTML과 PDF를 모두 생성한다. 각 `.md` 원본을 수정한 뒤
 두 명령을 순서대로 실행한다.
+
+LCD UI가 바뀌면 먼저 아래 명령으로 캡처를 갱신한다. 개발 가상환경의 MFNavis
+실행 의존성이 필요하다. 저장된 주간 카메라 프레임을 사용할 때는
+`--day-frame /path/to/frame.png`를 추가한다. 생략하면 번들 예제 별 영상을 사용하므로
+주간 정렬 그림의 배경이 달라진다. `--language ko` 또는 `--language en`으로
+한 언어만 갱신할 수도 있다.
+
+```bash
+.venv-dev-trixie/bin/python docs/manual/capture_lcd.py
+```
 
 브라우저로 HTML을 열고 **인쇄 또는 PDF 저장 / Print or save as PDF** 버튼을 눌러도
 인쇄할 수 있다. 그림을 바꾸려면 `build_manual.py`를 수정하고 다시 생성한다.

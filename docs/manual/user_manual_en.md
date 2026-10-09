@@ -4,7 +4,7 @@
 
 MFNavis identifies stars in camera images to show where your telescope is pointing and guide you toward an observing target. This manual explains how to prepare for observing, find objects, and change settings using the LCD and keypad. A connected INDI mount also supports automatic and manual movement.
 
-Tables, instructions, and menu paths show **official English menu names (Korean UI labels)** together, for example Start(시작), Focus(초점), and Set Filters(필터 설정). Names such as Lens, Distortion, and CALIB also appear in English in the Korean UI, so they are written once. Parentheses contain the actual Korean UI label. The illustrations are schematic guides to menus and controls; actual text size and layout depend on your device. INDI menus appear **only when Mount Control(가대 제어) is enabled**.
+Tables, instructions, and menu paths show **official English menu names (Korean UI labels)** together, for example Start(시작), Focus(초점), and Set Filters(필터 설정). Names such as Lens, Distortion, and CALIB also appear in English in the Korean UI, so they are written once. Parentheses contain the actual Korean UI label. The menu diagrams explain menu relationships. LCD captures show the current UI at 128×128 resolution; location, time, measurements, and mount status are examples for the procedures. Actual text size and layout depend on your device. INDI menus appear **only when Mount Control(가대 제어) is enabled**.
 
 ## 1 Quick start for your first observing session
 
@@ -25,6 +25,8 @@ Follow these steps for your first session. **Plate solving** identifies the star
 ## 2 The menu structure at a glance
 
 There are six top-level menus. Use **Start(시작)** before observing, **Chart(성도) and Objects(천체)** to find objects, **Settings(설정)** for display and device settings, and **Tools(도구)** to check status and shut down.
+
+![MFNavis main menu · the selected entry is centered](assets/lcd/en/main_menu.png)
 
 ![Top-level MFNavis menus and their immediate children](assets/menu_overview.png)
 
@@ -72,6 +74,8 @@ In this manual, `□` means the keypad's **SQUARE** button. A short press means 
 
 Hold `□` to open the quick menu for the current screen. Press the direction shown beside the function you want. When a quick submenu is open, a short `□` press closes one level; holding it closes the entire quick menu.
 
+![MFNavis quick menu · choose a function with its direction key](assets/lcd/en/quick_menu.png)
+
 On screens with help, select **HELP** at the top of the quick menu. Use `↑ / ↓` to change help pages and `←`, `→`, or `□` to close help. Help availability depends on the screen.
 
 ### 3.4 Check the active screen before using number keys
@@ -97,6 +101,11 @@ Number keys have different roles on different screens: object-number search in c
 
 **Path:** `Start(시작) → Focus(초점)` · **Before you start:** Remove the lens cap and point the camera toward a star field.
 
+![Focus(초점) · Image view](assets/lcd/en/focus_image.png)
+![Focus(초점) · Stars view](assets/lcd/en/focus_stars.png)
+![Focus(초점) · Single view](assets/lcd/en/focus_single.png)
+![Focus(초점) · Stats and HFD](assets/lcd/en/focus_stats.png)
+
 1. Short-press `□` to cycle through Image, Stars, Single, and Stats views. Use Stars to examine several stars and Single to enlarge one star.
 2. If stars are hard to see, press `↑` to increase exposure. If the image is too bright or stars spread out, press `↓` to reduce exposure.
 3. In Image, Stars, and Single views, use `+ / −` to change zoom.
@@ -110,6 +119,10 @@ To change gain, select `hold □ → right Gain(이득)` in the quick menu. Adju
 ### 4.2 Align(정렬): align the observing center at night
 
 **Path:** `Start(시작) → Align(정렬)` · **Before you start:** Plate solving must be working. Center a bright star in the telescope eyepiece.
+
+![Align(정렬) · before pressing □](assets/lcd/en/align_start.png)
+![Align(정렬) · choose a star with direction keys](assets/lcd/en/align_select.png)
+![Align(정렬) · star selected: □ save / 0 cancel](assets/lcd/en/align_selected.png)
 
 1. Press `□` to start star selection.
 2. Use the direction keys to select the same star that is centered in the eyepiece. Use `+ / −` to zoom the chart.
@@ -125,6 +138,9 @@ During star selection, `←` selects a star to the left. Press `0` to cancel sel
 
 **Path:** `Start(시작) → Align (Day)(주간정렬)` · **Before you start:** Center a distant, easily recognized terrestrial target in the eyepiece.
 
+![Align (Day)(주간정렬) · 7 / 9 / 1 / 3 quadrants](assets/lcd/en/align_day_quadrants.png)
+![Align (Day)(주간정렬) · fine adjustment with direction keys](assets/lcd/en/align_day_fine.png)
+
 1. Press `□` to begin.
 2. Choose the quadrant containing the target using number keys: `7` upper left, `9` upper right, `1` lower left, `3` lower right. Quadrant selection can run up to three times.
 3. Press a direction key once to enter fine adjustment. This first press does not move the reference point. Further direction-key presses move it onto the target.
@@ -135,6 +151,8 @@ Here, `+ / −` increase / decrease **exposure**. Pressing `0` cancels without s
 ### 4.4 GPS Status(GPS 상태)
 
 **Path:** `Start(시작) → GPS Status(GPS 상태)` or `Tools(도구) → Place & Time(위치/시간) → GPS Status(GPS 상태)`
+
+![GPS Status(GPS 상태) · receiver information](assets/lcd/en/gps_status.png)
 
 Check the location-fix status and satellite information. If a fix is unavailable, wait with an open view of the sky. Where GPS is unavailable, enter location and time manually as described in chapter 11. Leave with `←`.
 
@@ -147,6 +165,8 @@ The menu contains STATUS(상태), INIT(초기화), and Guide(가이드). Changin
 ## 5 Viewing the sky with Chart(성도)
 
 **Path:** `Chart(성도)` · **Before you start:** A pointing direction must be available to draw the chart.
+
+![Chart(성도) · stars and chart at the current pointing direction](assets/lcd/en/chart.png)
 
 | Control | Action |
 |---|---|
@@ -177,6 +197,8 @@ Opening details with `→` requires **Center Object(중앙 천체) to be On(켜�
 | Name Search(이름 검색) | Enter a name and press → to open results, then select an object. |
 | Set Filters(필터 설정) | Choose catalogs, object types, altitude, magnitude, and observation status. |
 
+![Objects(천체) · lists and search menus](assets/lcd/en/objects_menu.png)
+
 **Catalog groups**
 
 | Group | Included catalogs |
@@ -189,11 +211,15 @@ Opening details with `→` requires **Center Object(중앙 천체) to be On(켜�
 
 In a catalog list, number keys jump to an object near that number. For example, press `3`, then `1` in Messier, **check that the selected name is M31**, and press `→`. If filters hide the target, that number may select a different object.
 
+![Messier · entering M31](assets/lcd/en/messier.png)
+
 Press `□` to change the list view. While a numeric-entry indicator is visible, `□` clears it. Select `hold □ → left Sort(정렬)` to choose Nearest(가까운순) or Standard(표준) sorting; right Filter(필터) opens filters directly. The Comets(혜성) quick menu also offers Refresh(새로고침).
 
 ### 6.3 Name Search(이름 검색): search by name
 
 **Path:** `Objects(천체) → Name Search(이름 검색)`
+
+![Name Search(이름 검색) · character-key layout](assets/lcd/en/name_search.png)
 
 1. Enter a name with the number keys using the displayed letter layout. In Multi-Tap, press the same key repeatedly to select a letter. In T9, press the corresponding key once for each letter.
 2. Press `−` to delete the last character and `+` to insert a space. Press `□` to change the character layout.
@@ -205,6 +231,9 @@ Choose the input method in `Settings(설정) → User Pref...(사용자...) → 
 ### 6.4 Set Filters(필터 설정): filter lists
 
 **Path:** `Objects(천체) → Set Filters(필터 설정)`
+
+![Set Filters(필터 설정) · filter entries](assets/lcd/en/filters.png)
+![Type(종류) · multiple selections](assets/lcd/en/filter_multi.png)
 
 | Entry | Control and effect |
 |---|---|
@@ -220,6 +249,10 @@ Choose the input method in `Settings(설정) → User Pref...(사용자...) → 
 ### 6.5 Object details and movement guidance
 
 **Path:** `Objects(천체) → an object list → select an object → →`
+
+![M45 · movement guidance and tracking border](assets/lcd/en/object_push.png)
+![M45 · camera view and tracking border](assets/lcd/en/object_camera.png)
+![M45 · description view](assets/lcd/en/object_description.png)
 
 Each `□` press cycles through **movement guidance → camera → object image → description → contrast information**. In guidance view, follow the direction arrows and remaining angle toward the target.
 
@@ -250,17 +283,23 @@ To align the eyepiece center using the selected object, center it in the eyepiec
 
 Open LOG(로그) with `→` in object details, then select a field with `↑ / ↓`. For ratings, enter `0–5` or cycle values with `→`. Press `→` on observing conditions or eyepiece to open a selection screen. Select the save entry and press `→`; Logged!(기록됨!) appears and the details screen returns.
 
+![LOG(로그) · observation ratings](assets/lcd/en/log.png)
+
 Conditions(조건) includes Transparency(투명도) and Seeing(시상). Choose NA(해당없음), Excellent(최상), Very Good(매우 좋음), Good(좋음), Fair(보통), or Poor(나쁨) to describe the conditions, then apply with `→`.
 
 ### 6.7 Custom(사용자): enter coordinates
 
 **Path:** `Objects(천체) → Custom(사용자)`
 
+![Custom(사용자) · RA / Dec fields](assets/lcd/en/custom_coordinates.png)
+
 Move between fields with `↑ / ↓` and enter RA and Dec with the number keys. Press `−` to delete a digit. In the Dec degrees field, `+` changes the sign; in Epoch, `+` changes the coordinate reference epoch. Press `□` to change the coordinate-entry format. Check every value and confirm with `→`, or leave without saving with `←`.
 
 ## 7 Checking sky brightness with SQM
 
 **Path:** `SQM` · **Meaning:** Shows the brightness of the sky toward which the camera points, in mag/arcsec². A larger number means a darker sky.
+
+![SQM · sky-brightness value and units](assets/lcd/en/sqm.png)
 
 | Control | Action |
 |---|---|
@@ -276,6 +315,8 @@ Moonlight, clouds, twilight, and the camera's pointing altitude affect readings.
 
 **Path:** `SQM → hold □ → left CALIB → SQM Calibration(SQM 보정)`
 
+![SQM Calibration(SQM 보정) · introduction](assets/lcd/en/sqm_calibration.png)
+
 1. Open CALIB and press `□` to start.
 2. At the lens-cap instruction, put the cap on and press `□`. Wait for frame collection to finish.
 3. At the cap-removal instruction, remove the cap and press `□` to collect sky frames.
@@ -287,6 +328,8 @@ Moonlight, clouds, twilight, and the camera's pointing altitude affect readings.
 
 **Path:** `SQM → hold □ → down SWEEP → SQM Sweep`
 
+![SQM Sweep · enter 2130 for a 21.30 reference](assets/lcd/en/sqm_sweep.png)
+
 If you know a reference SQM value, enter four digits: for example, `2130` means **21.30**. Press `−` to delete the last digit and `□` to confirm. With an empty entry, `0` or `□` continues without a reference value.
 
 At confirmation, press `□` to start collection; press `□` again after completion to leave. Here, `0` cancels at confirmation. SWEEP helps diagnose how readings change with exposure.
@@ -295,9 +338,13 @@ At confirmation, press `□` to start collection; press `□` again after comple
 
 ![Settings menu structure](assets/settings_menu.png)
 
+![Settings(설정) · settings menu](assets/lcd/en/settings_menu.png)
+
 ### 8.1 User Pref...(사용자...): preferences
 
 **Path:** `Settings(설정) → User Pref...(사용자...) → entry → choose a value → →`
+
+![Language(언어) · selected-value indicator](assets/lcd/en/setting_select.png)
 
 | Entry | Values | Purpose |
 |---|---|---|
@@ -359,11 +406,15 @@ Changing WiFi mode may disconnect your phone or computer. Reconnect to the netwo
 4. Once location and time are ready, select `INIT(초기화) → Set Location(위치 설정)` to send them to the mount.
 5. To use a parked mount, select `INIT(초기화) → Unpark(언파크)` and check status.
 
+![STATUS(상태) · connection status](assets/lcd/en/indi_status.png)
+
 When Mount Control(가대 제어) is Off(꺼짐), `Start(시작) → INDI` and `Settings(설정) → INDI Setting(INDI 설정)` are hidden. The mount driver and connection settings must be configured during installation. Check STATUS(상태) for successful connection even after an LCD request message appears.
 
 ### 9.2 INIT(초기화) commands
 
 **Path:** `Start(시작) → INDI → INIT(초기화) → select a command → →`
+
+![INIT(초기화) · command selection](assets/lcd/en/indi_init.png)
 
 | Entry | Purpose | Check afterward |
 |---|---|---|
@@ -383,6 +434,8 @@ Support varies by mount and driver. Park(파크) and Return Home(홈으로 복�
 
 **Path:** `Start(시작) → INDI → Guide(가이드)`
 
+![Guide(가이드) · movement / speed / correction hints](assets/lcd/en/indi_guide.png)
+
 ![Number-key layout for mount directions](assets/mount_keys.png)
 
 | Control | Action in Guide(가이드) |
@@ -401,6 +454,9 @@ If a current direction is unavailable for Sync, No solve(해 없음) appears. **
 
 **Path:** `Settings(설정) → INDI Setting(INDI 설정) → Multi Align(멀티 정렬)`
 
+![Multi Align(멀티 정렬) · point count](assets/lcd/en/multi_points.png)
+![Multi Align(멀티 정렬) · Manual(수동) / Auto(자동)](assets/lcd/en/multi_mode.png)
+
 1. Adjust the number of alignment points with number keys or `+ / −`. Press `→` or `□` to continue.
 2. Select Manual(수동) / Auto(자동) with `↑ / ↓`, then begin with `→` or `□`. At this step, `1` also starts Manual(수동), and `2` starts Auto(자동).
 3. In Manual(수동), choose a star with `↑ / ↓` and move to it with `→` or `□`. In Auto(자동), follow the instructions during preparation and movement.
@@ -412,6 +468,8 @@ During adjustment, `←` returns to star selection in manual mode; in automatic 
 ### 9.5 Backlash(백래시)
 
 **Path:** `Settings(설정) → INDI Setting(INDI 설정) → Backlash(백래시)`
+
+![Backlash(백래시) · RA / DE entry](assets/lcd/en/backlash.png)
 
 Select the RA axis with `+` or DE axis with `−`. Enter values with number keys and press `□` to send both axes. `→` requests automatic backlash measurement for the selected axis. The input range is 0–999; `0` clears the selected axis's input. **Here, 0 is not entered as a digit.** Check the device's values, units, and support for automatic measurement.
 
@@ -437,6 +495,8 @@ After reversing a correction direction, check with small movements that target e
 ### 10.1 Advanced(고급): hardware and input devices
 
 **Path:** `Settings(설정) → Advanced(고급)`
+
+![Advanced(고급) · hardware and input-device menus](assets/lcd/en/advanced.png)
 
 | Entry | Control and checks |
 |---|---|
@@ -530,17 +590,24 @@ Select each command and press `→` to run it. These functions require the corre
 
 **Path:** `Tools(도구) → Status(상태)`
 
+![Status(상태) · device-status summary](assets/lcd/en/status.png)
+
 Check current plate-solving, location, communications, and equipment status. After changing WiFi mode, check the connection address. When troubleshooting, check both Status(상태) and the relevant function's status screen. Return with `←`.
 
 ### 11.2 Equipment(관측 장비): telescope and eyepiece
 
 **Path:** `Tools(도구) → Equipment(관측 장비)`
 
+![Equipment(관측 장비) · telescope and eyepiece](assets/lcd/en/equipment.png)
+
 Choose the telescope or eyepiece row with `↑ / ↓`, then open its selection list with `→`. Select the equipment and press `→`, then return to Equipment(관측 장비) to check magnification and field of view. Lists depend on your saved equipment configuration. Register and edit equipment in the web equipment-management screen.
 
 ### 11.3 Place & Time(위치/시간): location and time
 
 **Path:** `Tools(도구) → Place & Time(위치/시간)`
+
+![Enter Coords(좌표 입력) · latitude entry](assets/lcd/en/location_entry.png)
+![Set Time/Date(시간/날짜) · time entry](assets/lcd/en/time_entry.png)
 
 | Entry | How to use it |
 |---|---|
@@ -591,6 +658,8 @@ Press `□` to begin the instructions. Rotate the equatorial setup, stop at each
 | Restart | Tools(도구) → Power(전원) → Restart(재시작) → Confirm(확인) → |
 | Return without executing | Cancel(취소) → on either confirmation screen |
 
+![Shutdown(종료) · Confirm(확인) / Cancel(취소)](assets/lcd/en/shutdown_confirm.png)
+
 Shutdown(종료) performs a normal shutdown; Restart(재시작) restarts the system. Wait for shutdown to complete before removing power.
 
 ## 12 Troubleshooting
@@ -598,6 +667,8 @@ Shutdown(종료) performs a normal shutdown; Restart(재시작) restarts the sys
 ### 12.1 Closing an error notice
 
 LCD error notices remain until acknowledged. Read long notices with `↑ / ↓`, then close with `←`, `→`, or `□`. Closing returns to the previous screen; **it does not retry the failed command**. Investigate the cause, then request the action again if needed.
+
+![ERROR(오류) · reading and closing the notice](assets/lcd/en/operation_error.png)
 
 ### 12.2 Checks by symptom
 

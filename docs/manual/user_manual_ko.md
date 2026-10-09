@@ -4,7 +4,7 @@
 
 MFNavis는 카메라로 별의 위치를 확인하여 망원경이 가리키는 하늘을 표시하고, 관측할 천체까지의 이동 방향을 안내합니다. 이 매뉴얼은 LCD와 키패드로 관측을 준비하고, 천체를 찾고, 설정을 바꾸는 방법을 설명합니다. INDI 마운트를 연결하면 자동 이동과 수동 이동도 사용할 수 있습니다.
 
-표와 설명, 진입 경로에는 **정식 영문 메뉴명(한국어 UI 표시명)**을 함께 적었습니다. 예를 들어 Start(시작), Focus(초점), Set Filters(필터 설정)입니다. Lens, Distortion, CALIB처럼 한국어 UI에서도 같은 영문으로 표시되는 이름은 중복 표기를 생략합니다. 괄호 안은 설명용 의역이 아니라 실제 한국어 UI의 표시명입니다. 그림은 메뉴 관계와 조작을 설명하기 위한 개념도이며, 실제 화면의 글자 크기와 배치는 장비에 따라 다릅니다. INDI 관련 메뉴는 **Mount Control(가대 제어)을 켠 경우에만** 나타납니다.
+표와 설명, 진입 경로에는 **정식 영문 메뉴명(한국어 UI 표시명)**을 함께 적었습니다. 예를 들어 Start(시작), Focus(초점), Set Filters(필터 설정)입니다. Lens, Distortion, CALIB처럼 한국어 UI에서도 같은 영문으로 표시되는 이름은 중복 표기를 생략합니다. 괄호 안은 설명용 의역이 아니라 실제 한국어 UI의 표시명입니다. 메뉴 구조도는 메뉴 관계를 설명하는 개념도입니다. LCD 화면 캡처는 현재 UI의 128×128 화면 기준이며, 위치·시각·측정값·마운트 상태는 조작 설명을 위한 예시입니다. 실제 화면의 글자 크기와 배치는 장비에 따라 다릅니다. INDI 관련 메뉴는 **Mount Control(가대 제어)을 켠 경우에만** 나타납니다.
 
 ## 1 처음 사용하는 분을 위한 빠른 시작
 
@@ -26,6 +26,8 @@ MFNavis는 카메라로 별의 위치를 확인하여 망원경이 가리키는 
 
 최상위 메뉴는 여섯 개입니다. 관측 전에는 **Start(시작)**, 천체를 찾을 때는 **Chart(성도)와 Objects(천체)**, 화면과 장비 설정은 **Settings(설정)**, 상태 확인과 종료는 **Tools(도구)**를 사용합니다.
 
+![MFNavis 최상위 메뉴 · 선택한 항목은 중앙에 표시됩니다](assets/lcd/ko/main_menu.png)
+
 ![MFNavis 최상위 메뉴와 바로 아래 메뉴](assets/menu_overview.png)
 
 | 메뉴 | 하는 일 | 처음 사용할 때의 대표 경로 |
@@ -37,7 +39,7 @@ MFNavis는 카메라로 별의 위치를 확인하여 망원경이 가리키는 
 | Settings(설정) | 화면, 카메라, 통신, INDI, 하드웨어 설정 | Settings(설정) → User Pref...(사용자...) |
 | Tools(도구) | 상태, 장비, 위치와 시간, 업데이트, 전원 | Tools(도구) → Status(상태) |
 
-**경로 읽는 법:** `Objects(천체) → By Catalog(카탈로그별) → Messier`는 Objects(천체)를 선택해 `→`, By Catalog(카탈로그별)를 선택해 `→`, Messier를 선택해 `→`를 누르라는 뜻입니다. 메뉴 항목의 위치가 바뀌어도 이름을 따라가면 됩니다.
+**경로 읽는 법:** `Objects(천체) → By Catalog(카탈로그별) → Messier`는 각 이름을 선택하고 `→`로 들어가는 순서입니다. 메뉴 위치가 바뀌어도 이름을 따라가면 됩니다.
 
 ## 3 모든 메뉴에서 알아둘 공통 조작
 
@@ -72,6 +74,8 @@ MFNavis는 카메라로 별의 위치를 확인하여 망원경이 가리키는 
 
 `□`를 길게 누르면 현재 화면에 맞는 퀵 메뉴가 나타납니다. 표시된 방향의 버튼을 눌러 해당 기능을 사용합니다. 하위 퀵 메뉴가 열리면 `□`를 짧게 눌러 한 단계 닫고, 길게 눌러 전체를 닫습니다.
 
+![MFNavis 퀵 메뉴 · 표시된 방향키로 기능을 선택합니다](assets/lcd/ko/quick_menu.png)
+
 도움말이 제공되는 화면에서는 퀵 메뉴의 위쪽 **HELP**를 선택합니다. 도움말 안에서 `↑ / ↓`로 페이지를 넘기고 `←`, `→` 또는 `□`로 닫습니다. 화면에 따라 도움말 제공 여부가 다릅니다.
 
 ### 3.4 숫자키는 화면을 먼저 확인
@@ -97,6 +101,11 @@ MFNavis는 카메라로 별의 위치를 확인하여 망원경이 가리키는 
 
 **경로:** `Start(시작) → Focus(초점)` · **준비:** 렌즈 캡을 열고 카메라를 별이 있는 하늘로 향합니다.
 
+![Focus(초점) · Image 보기](assets/lcd/ko/focus_image.png)
+![Focus(초점) · Stars 보기](assets/lcd/ko/focus_stars.png)
+![Focus(초점) · Single 보기](assets/lcd/ko/focus_single.png)
+![Focus(초점) · Stats와 HFD](assets/lcd/ko/focus_stats.png)
+
 1. `□`를 짧게 눌러 Image, Stars, Single, Stats 보기를 순환합니다. Stars는 여러 별을, Single은 한 별을 확대해 초점을 확인하는 데 사용합니다.
 2. 별이 잘 보이지 않으면 `↑`로 노출을 늘립니다. 너무 밝거나 별이 번지면 `↓`로 노출을 줄입니다.
 3. Image, Stars, Single 보기에서 `+ / −`로 확대 정도를 바꿉니다.
@@ -110,6 +119,10 @@ MFNavis는 카메라로 별의 위치를 확인하여 망원경이 가리키는 
 ### 4.2 Align(정렬) 밤하늘에서 관측 중심 정렬
 
 **경로:** `Start(시작) → Align(정렬)` · **준비:** 솔빙이 되고 있어야 합니다. 망원경으로 밝은 별 하나를 접안렌즈 중앙에 놓습니다.
+
+![Align(정렬) · □로 시작하기 전](assets/lcd/ko/align_start.png)
+![Align(정렬) · 방향키로 별 선택](assets/lcd/ko/align_select.png)
+![Align(정렬) · 별 선택 후 □ 저장 / 0 취소](assets/lcd/ko/align_selected.png)
 
 1. `□`를 눌러 별 선택을 시작합니다.
 2. 방향키로 접안렌즈 중앙에 둔 것과 같은 별을 선택합니다. `+ / −`로 성도를 확대하거나 축소할 수 있습니다.
@@ -125,6 +138,9 @@ MFNavis는 카메라로 별의 위치를 확인하여 망원경이 가리키는 
 
 **경로:** `Start(시작) → Align (Day)(주간정렬)` · **준비:** 멀리 있는 식별하기 쉬운 지상 물체를 접안렌즈 중앙에 놓습니다.
 
+![Align (Day)(주간정렬) · 7 / 9 / 1 / 3 구역 선택](assets/lcd/ko/align_day_quadrants.png)
+![Align (Day)(주간정렬) · 방향키로 미세 조정](assets/lcd/ko/align_day_fine.png)
+
 1. `□`로 시작합니다.
 2. 화면에 보이는 목표가 있는 구역을 숫자키로 고릅니다. `7`은 좌상단, `9`는 우상단, `1`은 좌하단, `3`은 우하단입니다. 구역 선택은 최대 세 번 진행합니다.
 3. 방향키를 한 번 누르면 미세 조정으로 전환됩니다. 이 첫 입력은 표시점을 움직이지 않습니다. 이후 방향키로 목표 지점에 표시점을 맞춥니다.
@@ -135,6 +151,8 @@ MFNavis는 카메라로 별의 위치를 확인하여 망원경이 가리키는 
 ### 4.4 GPS Status(GPS 상태)
 
 **경로:** `Start(시작) → GPS Status(GPS 상태)` 또는 `Tools(도구) → Place & Time(위치/시간) → GPS Status(GPS 상태)`
+
+![GPS Status(GPS 상태) · 수신 정보 표시](assets/lcd/ko/gps_status.png)
 
 화면에서 GPS 위치 확보 상태와 위성 정보를 확인합니다. 위치가 잡히지 않으면 하늘이 열린 곳에서 기다립니다. GPS를 사용할 수 없는 장소에서는 11장의 수동 위치·시간 입력을 사용합니다. 확인 후 `←`로 나옵니다.
 
@@ -147,6 +165,8 @@ STATUS(상태), INIT(초기화), Guide(가이드)로 구성됩니다. Mount Cont
 ## 5 Chart(성도)에서 하늘 보기
 
 **경로:** `Chart(성도)` · **준비:** 현재 방향이 확보되어 있어야 성도를 그릴 수 있습니다.
+
+![Chart(성도) · 현재 방향의 별과 성도](assets/lcd/ko/chart.png)
 
 | 조작 | 화면에서 일어나는 일 |
 |---|---|
@@ -177,6 +197,8 @@ STATUS(상태), INIT(초기화), Guide(가이드)로 구성됩니다. Mount Cont
 | Name Search(이름 검색) | 이름을 입력하고 →로 검색 결과를 엽니다. 결과에서 천체를 선택합니다. |
 | Set Filters(필터 설정) | 표시할 카탈로그, 천체 종류, 고도, 등급과 관측 여부를 선택합니다. |
 
+![Objects(천체) · 목록과 검색 메뉴](assets/lcd/ko/objects_menu.png)
+
 **카탈로그 그룹**
 
 | 그룹 | 포함된 목록 |
@@ -189,11 +211,15 @@ STATUS(상태), INIT(초기화), Guide(가이드)로 구성됩니다. Mount Cont
 
 카탈로그 목록에서 숫자키를 누르면 해당 번호에 가까운 천체로 이동합니다. 예를 들어 Messier 목록에서 `3`, `1`을 누른 뒤 **선택된 이름이 M31인지 확인하고** `→`를 누릅니다. 필터 때문에 목표가 숨겨지면 같은 번호가 선택되지 않을 수 있습니다.
 
+![Messier · M31 번호 입력](assets/lcd/ko/messier.png)
+
 `□`는 목록의 보기 방식을 바꿉니다. 번호 입력 표시가 떠 있을 때는 `□`로 입력 표시를 지웁니다. `□ 길게 → 왼쪽 Sort(정렬)`에서 Nearest(가까운순) 또는 Standard(표준) 정렬을 고르고, 오른쪽 Filter(필터)로 필터 메뉴를 바로 열 수 있습니다. Comets(혜성) 목록의 퀵 메뉴에는 Refresh(새로고침)도 있습니다.
 
 ### 6.3 Name Search(이름 검색) 천체 이름 검색
 
 **경로:** `Objects(천체) → Name Search(이름 검색)`
+
+![Name Search(이름 검색) · 문자 키 배치](assets/lcd/ko/name_search.png)
 
 1. 화면의 문자 배치를 보며 숫자키로 이름을 입력합니다. Multi-Tap에서는 같은 키를 반복해 글자를 고릅니다. T9에서는 글자마다 해당 키를 한 번 누릅니다.
 2. `−`로 마지막 글자를 지우고 `+`로 공백을 넣습니다. `□`로 문자 키 배치를 바꿉니다.
@@ -205,6 +231,9 @@ STATUS(상태), INIT(초기화), Guide(가이드)로 구성됩니다. Mount Cont
 ### 6.4 Set Filters(필터 설정) 필터 설정
 
 **경로:** `Objects(천체) → Set Filters(필터 설정)`
+
+![Set Filters(필터 설정) · 필터 항목](assets/lcd/ko/filters.png)
+![Type(종류) · 복수 선택 표시](assets/lcd/ko/filter_multi.png)
 
 | 항목 | 조작과 효과 |
 |---|---|
@@ -220,6 +249,10 @@ STATUS(상태), INIT(초기화), Guide(가이드)로 구성됩니다. Mount Cont
 ### 6.5 천체 상세 화면과 이동 안내
 
 **경로:** `Objects(천체)의 천체 목록 → 천체 선택 → →`
+
+![M45 · 이동 안내와 추적 테두리](assets/lcd/ko/object_push.png)
+![M45 · 카메라 보기와 추적 테두리](assets/lcd/ko/object_camera.png)
+![M45 · 설명 보기](assets/lcd/ko/object_description.png)
 
 `□`를 누를 때마다 **이동 안내 → 카메라 → 천체 이미지 → 설명 → 대비 정보**가 순환합니다. 이동 안내에서 방향 화살표와 남은 각도를 보며 목표에 접근합니다.
 
@@ -250,17 +283,23 @@ STATUS(상태), INIT(초기화), Guide(가이드)로 구성됩니다. Mount Cont
 
 천체 상세에서 `→`로 LOG(로그)를 열고 `↑ / ↓`로 기록 항목을 고릅니다. 평가 항목에서는 `0–5`로 값을 입력하거나 `→`로 값을 순환합니다. 관측 조건과 접안렌즈 항목은 `→`로 선택 화면을 엽니다. 기록 저장 항목을 선택해 `→`를 누르면 Logged!(기록됨!) 표시 후 상세 화면으로 돌아갑니다.
 
+![LOG(로그) · 관측 평가 항목](assets/lcd/ko/log.png)
+
 Conditions(조건)에는 Transparency(투명도)와 Seeing(시상)이 있습니다. 각 항목에서 NA(해당없음), Excellent(최상), Very Good(매우 좋음), Good(좋음), Fair(보통), Poor(나쁨) 중 관측 당시의 상태를 골라 `→`로 적용합니다.
 
 ### 6.7 Custom(사용자) 좌표 직접 입력
 
 **경로:** `Objects(천체) → Custom(사용자)`
 
+![Custom(사용자) · RA / Dec 입력 칸](assets/lcd/ko/custom_coordinates.png)
+
 `↑ / ↓`로 입력 칸을 옮기고 숫자키로 RA와 Dec를 입력합니다. `−`로 숫자를 지우고, Dec의 도 단위 칸에서 `+`로 부호를 바꿉니다. Epoch 칸의 `+`는 좌표 기준 시점을 바꿉니다. `□`로 좌표 입력 형식을 바꿀 수 있습니다. 모든 값을 확인한 뒤 `→`로 확정하고, 저장하지 않고 나가려면 `←`를 누릅니다.
 
 ## 7 SQM으로 하늘 밝기 확인하기
 
 **경로:** `SQM` · **의미:** 카메라가 향한 하늘의 밝기를 mag/arcsec² 단위로 표시합니다. 숫자가 클수록 하늘이 어둡습니다.
+
+![SQM · 하늘 밝기와 단위 표시](assets/lcd/ko/sqm.png)
 
 | 조작 | 동작 |
 |---|---|
@@ -276,6 +315,8 @@ Conditions(조건)에는 Transparency(투명도)와 Seeing(시상)이 있습니�
 
 **경로:** `SQM → □ 길게 → 왼쪽 CALIB → SQM Calibration(SQM 보정)`
 
+![SQM Calibration(SQM 보정) · 시작 안내](assets/lcd/ko/sqm_calibration.png)
+
 1. `CALIB`를 열고 `□`로 시작합니다.
 2. 렌즈 캡을 닫으라는 안내가 나오면 캡을 닫고 `□`를 누릅니다. 프레임 수집이 끝날 때까지 기다립니다.
 3. 렌즈 캡을 열라는 안내가 나오면 캡을 열고 `□`를 눌러 하늘 프레임을 수집합니다.
@@ -287,6 +328,8 @@ Conditions(조건)에는 Transparency(투명도)와 Seeing(시상)이 있습니�
 
 **경로:** `SQM → □ 길게 → 아래 SWEEP → SQM Sweep`
 
+![SQM Sweep · 2130으로 기준값 21.30 입력](assets/lcd/ko/sqm_sweep.png)
+
 기준 SQM을 알고 있다면 네 자리 숫자로 입력합니다. 예를 들어 `2130`은 **21.30**입니다. `−`로 마지막 숫자를 지우고 `□`로 입력을 확정합니다. 기준값 없이 진행하려면 빈 입력에서 `0` 또는 `□`를 누릅니다.
 
 확인 화면에서 `□`로 수집을 시작하고 완료 후 `□`로 나옵니다. 확인 화면의 `0`은 취소입니다. SWEEP은 노출에 따른 측정 변화를 확인하는 진단 기능입니다.
@@ -295,9 +338,13 @@ Conditions(조건)에는 Transparency(투명도)와 Seeing(시상)이 있습니�
 
 ![Settings(설정) 메뉴 구조](assets/settings_menu.png)
 
+![Settings(설정) · 설정 메뉴](assets/lcd/ko/settings_menu.png)
+
 ### 8.1 User Pref...(사용자...) 사용자 환경
 
 **경로:** `Settings(설정) → User Pref...(사용자...) → 항목 → 값 선택 → →`
+
+![Language(언어) · 현재 선택값 표시](assets/lcd/ko/setting_select.png)
 
 | 항목 | 선택값 | 사용하는 목적 |
 |---|---|---|
@@ -359,11 +406,15 @@ WiFi 모드를 바꾸면 휴대전화나 PC의 연결이 끊길 수 있습니다
 4. 위치와 시간이 준비되면 `INIT(초기화) → Set Location(위치 설정)`으로 마운트에 위치와 시간을 보냅니다.
 5. Park(파크) 상태인 마운트를 사용하려면 `INIT(초기화) → Unpark(언파크)` 후 상태를 확인합니다.
 
+![STATUS(상태) · 연결 상태](assets/lcd/ko/indi_status.png)
+
 Mount Control(가대 제어)이 Off(꺼짐)이면 `Start(시작) → INDI`와 `Settings(설정) → INDI Setting(INDI 설정)`이 숨겨집니다. 마운트 드라이버와 연결 정보는 장비 설치 시 맞춰져 있어야 합니다. LCD에 연결 요청 메시지가 떠도 STATUS(상태)에서 연결 성공 여부를 확인합니다.
 
 ### 9.2 INIT(초기화) 명령
 
 **경로:** `Start(시작) → INDI → INIT(초기화) → 항목 선택 → →`
+
+![INIT(초기화) · 명령 선택](assets/lcd/ko/indi_init.png)
 
 | 항목 | 하는 일 | 실행 후 확인 |
 |---|---|---|
@@ -383,6 +434,8 @@ Mount Control(가대 제어)이 Off(꺼짐)이면 `Start(시작) → INDI`와 `S
 
 **경로:** `Start(시작) → INDI → Guide(가이드)`
 
+![Guide(가이드) · 이동 / 속도 / 보정 안내](assets/lcd/ko/indi_guide.png)
+
 ![마운트 방향키의 숫자 배치](assets/mount_keys.png)
 
 | 조작 | Guide(가이드)에서의 동작 |
@@ -401,6 +454,9 @@ Sync에 사용할 현재 방향이 없으면 No solve(해 없음)가 표시됩�
 
 **경로:** `Settings(설정) → INDI Setting(INDI 설정) → Multi Align(멀티 정렬)`
 
+![Multi Align(멀티 정렬) · 정렬점 수](assets/lcd/ko/multi_points.png)
+![Multi Align(멀티 정렬) · Manual(수동) / Auto(자동)](assets/lcd/ko/multi_mode.png)
+
 1. 정렬점 수를 숫자키 또는 `+ / −`로 조절합니다. `→` 또는 `□`로 다음 단계에 갑니다.
 2. Manual(수동) / Auto(자동)를 `↑ / ↓`로 고른 뒤 `→` 또는 `□`로 시작합니다. 이 단계에서는 `1`로 Manual(수동), `2`로 Auto(자동)를 바로 시작할 수도 있습니다.
 3. Manual(수동)에서는 `↑ / ↓`로 별을 고르고 `→` 또는 `□`로 해당 별에 이동합니다. Auto(자동)에서는 준비와 이동이 진행되는 동안 안내를 확인합니다.
@@ -412,6 +468,8 @@ Sync에 사용할 현재 방향이 없으면 No solve(해 없음)가 표시됩�
 ### 9.5 Backlash(백래시) 백래시
 
 **경로:** `Settings(설정) → INDI Setting(INDI 설정) → Backlash(백래시)`
+
+![Backlash(백래시) · RA / DE 입력](assets/lcd/ko/backlash.png)
 
 `+`로 RA 축, `−`로 DE 축을 선택합니다. 숫자키로 값을 입력하고 `□`로 두 축의 값을 전송합니다. `→`는 선택한 축의 자동 백래시 측정을 요청합니다. 입력 범위는 0–999이며 `0`은 선택 축의 입력을 지웁니다. **이 화면에서 숫자 0은 자릿수 입력이 아닙니다.** 장비가 제공하는 값과 단위, 자동 측정 지원 여부를 함께 확인합니다.
 
@@ -437,6 +495,8 @@ Sync에 사용할 현재 방향이 없으면 No solve(해 없음)가 표시됩�
 ### 10.1 Advanced(고급) 하드웨어와 입력장치
 
 **경로:** `Settings(설정) → Advanced(고급)`
+
+![Advanced(고급) · 하드웨어와 입력장치 메뉴](assets/lcd/ko/advanced.png)
 
 | 항목 | 조작과 확인 |
 |---|---|
@@ -530,17 +590,24 @@ Reconnect(재접속)는 기존 장치 재연결, Refresh(새로고침)는 목록
 
 **경로:** `Tools(도구) → Status(상태)`
 
+![Status(상태) · 장비 상태 요약](assets/lcd/ko/status.png)
+
 현재 솔빙, 위치, 통신과 장비 상태를 확인합니다. WiFi 모드를 바꾼 뒤에는 접속 주소를 확인합니다. 문제가 생기면 Status(상태)와 해당 기능의 상태 화면을 함께 확인하고 `←`로 돌아갑니다.
 
 ### 11.2 Equipment(관측 장비) 망원경과 접안렌즈
 
 **경로:** `Tools(도구) → Equipment(관측 장비)`
 
+![Equipment(관측 장비) · 망원경과 접안렌즈](assets/lcd/ko/equipment.png)
+
 `↑ / ↓`로 망원경 또는 접안렌즈 행을 고르고 `→`로 선택 목록을 엽니다. 사용할 장비를 선택해 `→`를 누른 뒤 Equipment(관측 장비) 화면으로 돌아와 배율과 시야를 확인합니다. 목록은 저장된 장비 구성에 따라 달라집니다. 장비 등록·수정은 웹의 장비 관리 화면에서 합니다.
 
 ### 11.3 Place & Time(위치/시간) 위치와 시간
 
 **경로:** `Tools(도구) → Place & Time(위치/시간)`
+
+![Enter Coords(좌표 입력) · 위도 입력](assets/lcd/ko/location_entry.png)
+![Set Time/Date(시간/날짜) · 시각 입력](assets/lcd/ko/time_entry.png)
 
 | 항목 | 사용하는 방법 |
 |---|---|
@@ -591,6 +658,8 @@ Reconnect(재접속)는 기존 장치 재연결, Refresh(새로고침)는 목록
 | 재시작 | Tools(도구) → Power(전원) → Restart(재시작) → Confirm(확인) → |
 | 실행하지 않고 돌아가기 | 각 확인 화면에서 Cancel(취소) → |
 
+![Shutdown(종료) · Confirm(확인) / Cancel(취소)](assets/lcd/ko/shutdown_confirm.png)
+
 Shutdown(종료)은 정상 종료, Restart(재시작)는 시스템 재시작입니다. 종료 요청을 보낸 직후 전원을 끄지 말고 종료가 끝날 때까지 기다립니다.
 
 ## 12 문제가 생겼을 때
@@ -598,6 +667,8 @@ Shutdown(종료)은 정상 종료, Restart(재시작)는 시스템 재시작입�
 ### 12.1 오류 화면 닫기
 
 LCD 오류 알림은 확인할 때까지 남아 있습니다. 긴 내용은 `↑ / ↓`로 읽고 `←`, `→` 또는 `□`로 닫습니다. 알림을 닫으면 이전 화면으로 돌아가며, **닫기 조작은 실패한 명령을 다시 실행하지 않습니다.** 원인을 확인한 후 필요한 작업을 직접 다시 요청합니다.
+
+![ERROR(오류) · 내용 읽기와 닫기 안내](assets/lcd/ko/operation_error.png)
 
 ### 12.2 증상별 확인 순서
 

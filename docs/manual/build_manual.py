@@ -329,10 +329,32 @@ def make_html(language):
         lambda match: f'<h2 id="chapter-{match[1]}">{match[1]} ',
         content,
     )
+
+    # Keep native LCD pixels intact; arrange captures as captioned figures.
+    def lcd_gallery(match):
+        pictures = re.findall(r"<img\b[^>]*>", match[0])
+        if not all('src="assets/lcd/' in picture for picture in pictures):
+            return match[0]
+        figures = []
+        for picture in pictures:
+            caption = re.search(r'alt="([^"]*)"', picture)[1]
+            figures.append(
+                f"<figure>{picture}<figcaption>{caption}</figcaption></figure>"
+            )
+        classes = "lcd-gallery lcd-four" if len(figures) == 4 else "lcd-gallery"
+        return f'<div class="{classes}">' + "".join(figures) + "</div>"
+
+    content = re.sub(
+        r"<p>\s*(?:<img\b[^>]*>\s*)+</p>", lcd_gallery, content, flags=re.S
+    )
+    content = content.replace(
+        'src="assets/menu_overview.png"',
+        'class="menu-overview" src="assets/menu_overview.png"',
+    )
     # All assets are embedded: the HTML can be read offline as a single file.
-    for path in ASSETS.glob("*.png"):
+    for path in ASSETS.rglob("*.png"):
         uri = "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()
-        content = content.replace(f"assets/{path.name}", uri)
+        content = content.replace(f"assets/{path.relative_to(ASSETS).as_posix()}", uri)
     font = base64.b64encode(
         (ROOT / "python/views/css/mfnavis-korean.woff2").read_bytes()
     ).decode()
@@ -351,6 +373,11 @@ p { margin: 12px 0; }
 strong { font-weight: 700; }
 code { font-family: MFKo,Arial,sans-serif; background: #f2f4f7; color: #344459; padding: 2px 4px; border-radius: 3px; overflow-wrap: anywhere; }
 img { display: block; width: 100%; height: auto; margin: 22px auto; }
+.lcd-gallery { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; margin: 22px 0; }
+.lcd-gallery figure { flex: 0 1 224px; margin: 0; break-inside: avoid; }
+.lcd-gallery img { width: 100%; aspect-ratio: 1; margin: 0; border: 1px solid #223042; background: black; image-rendering: pixelated; }
+.lcd-gallery figcaption { margin-top: 8px; font-size: 12px; line-height: 1.6; text-align: center; overflow-wrap: anywhere; }
+.lcd-four { max-width: 530px; margin-left: auto; margin-right: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.7; margin: 18px 0 26px; }
 th { text-align: left; background: #f0f3f6; color: #223042; font-weight: 700; }
 th,td { border: 1px solid #d8e0e7; padding: 9px 11px; vertical-align: top; overflow-wrap: anywhere; }
@@ -385,6 +412,12 @@ button { border: 0; border-radius: 5px; background: #982d3b; color: white; paddi
  html[lang="en"] table { margin: 14px 0 20px; }
  thead { display: table-header-group; } tr { break-inside: avoid; }
  img { max-height: 195mm; object-fit: contain; break-inside: avoid; margin: 14pt auto; }
+ .menu-overview { width: 80%; margin: 8pt auto; }
+ .lcd-gallery { gap: 6mm; margin: 12pt 0; }
+ .lcd-gallery figure { flex-basis: 43mm; }
+ .lcd-gallery img { margin: 0; max-height: none; }
+ .lcd-gallery figcaption { font-size: 8pt; line-height: 1.5; margin-top: 5pt; }
+ .lcd-four { max-width: 120mm; }
  li { break-inside: avoid; } nav { padding: 14pt 20pt; margin: 18pt 0; }
  .keep { break-inside: avoid; }
  .tools,.footer { display: none; }

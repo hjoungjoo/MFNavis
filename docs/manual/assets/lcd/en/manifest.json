@@ -1,0 +1,469 @@
+{
+  "language": "en",
+  "display": "SSD1351 layout / headless",
+  "resolution": [
+    128,
+    128
+  ],
+  "source_commit": "605d8aa15e549702e065e1559a5ef848231c5c8f",
+  "example_data": true,
+  "capture_kind": "unmodified LCD framebuffer rendered by production UI",
+  "live_hardware": false,
+  "example_datetime": "2026-10-09T13:00:00+00:00",
+  "camera_frame": "test_images/pleiades.png",
+  "camera_frame_sha256": "9530f303023ad293de7f2f0a1dc5a83767fc2de28b74810a8508e33209c51d74",
+  "day_frame": "supplied device camera frame",
+  "captures": [
+    {
+      "name": "main_menu",
+      "file": "assets/lcd/en/main_menu.png",
+      "ui_class": "UITextMenu",
+      "title": "MFNavis",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "2a815550c0251890cc295ecd2df382a0f4ce01b6a656d0b1b14b6b0c5ff76c60"
+    },
+    {
+      "name": "quick_menu",
+      "file": "assets/lcd/en/quick_menu.png",
+      "ui_class": "MenuManager",
+      "title": "Quick Menu",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "4fc7169340e554533cc40e1a335d2812ce9ca85bc03a02ddd05a2624a631d44b"
+    },
+    {
+      "name": "focus_image",
+      "file": "assets/lcd/en/focus_image.png",
+      "ui_class": "UIPreview",
+      "title": "Focus",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "ff17c090ce5e46224643912e0bdfe0b39c9971f1b805d280da16b36176e61a37"
+    },
+    {
+      "name": "focus_stars",
+      "file": "assets/lcd/en/focus_stars.png",
+      "ui_class": "UIPreview",
+      "title": "Focus",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "54e38638605e7e5c5f1b2eb336e565633ea08fe90e1cf24c576efde4baf53a38"
+    },
+    {
+      "name": "focus_single",
+      "file": "assets/lcd/en/focus_single.png",
+      "ui_class": "UIPreview",
+      "title": "Focus",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "a662ada5c30533f1f75c09b061c42599b2cd55fa774fa5ff15d3eb360d2456e5"
+    },
+    {
+      "name": "focus_stats",
+      "file": "assets/lcd/en/focus_stats.png",
+      "ui_class": "UIPreview",
+      "title": "Focus",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "5f2a7f8abb7f5d3d2b89798e587aa6ab1009426770310a1da21fcf795de52dd5"
+    },
+    {
+      "name": "align_start",
+      "file": "assets/lcd/en/align_start.png",
+      "ui_class": "UIAlign",
+      "title": "Align",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "aed6e117f0f9b90081ae81378932d8cdc347da05b9d7063ba5cfff816df29f55"
+    },
+    {
+      "name": "align_select",
+      "file": "assets/lcd/en/align_select.png",
+      "ui_class": "UIAlign",
+      "title": "Align",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "f06e427b8ee9c0869afed6ee8790dc5c3ecdbcddf6284948459ecd331279f6f9"
+    },
+    {
+      "name": "align_selected",
+      "file": "assets/lcd/en/align_selected.png",
+      "ui_class": "UIAlign",
+      "title": "Align",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "9cde9613406d26aaea162e3e59998c68da53bf2d0611446d4d4a8f665bf3b5c6"
+    },
+    {
+      "name": "align_day_quadrants",
+      "file": "assets/lcd/en/align_day_quadrants.png",
+      "ui_class": "UIAlignDaytime",
+      "title": "Align (Day)",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "4d51a83109ccf8c101ade21c2574f069ce605eaf605dbd3e4f26c8fc95adc850"
+    },
+    {
+      "name": "align_day_fine",
+      "file": "assets/lcd/en/align_day_fine.png",
+      "ui_class": "UIAlignDaytime",
+      "title": "Align (Day)",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "7539350af05e2d1cd23df4c8151d04a2825f3ed5115bb2a397e0422fe501958c"
+    },
+    {
+      "name": "gps_status",
+      "file": "assets/lcd/en/gps_status.png",
+      "ui_class": "UIGPSStatus",
+      "title": "GPS Status",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "eab5ec740ea191bc8478a7d63abad2727459277862c136a6d88de0d115dbced3"
+    },
+    {
+      "name": "chart",
+      "file": "assets/lcd/en/chart.png",
+      "ui_class": "UIChart",
+      "title": "Chart",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "f78038444a6f22e555a5e1ec846c71a3e836d61ba665668e7fcff81f6d9c48a7"
+    },
+    {
+      "name": "objects_menu",
+      "file": "assets/lcd/en/objects_menu.png",
+      "ui_class": "UITextMenu",
+      "title": "Objects",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "2c217e610a3dffe9d42be355c75ce18b38910d476231f3182d4effb5bcbc0649"
+    },
+    {
+      "name": "messier",
+      "file": "assets/lcd/en/messier.png",
+      "ui_class": "UIObjectList",
+      "title": "Messier",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "dd75ccadd61528e438c1cf3960514684604ebd0608bef987141f7a2752a8bdbe"
+    },
+    {
+      "name": "filters",
+      "file": "assets/lcd/en/filters.png",
+      "ui_class": "UITextMenu",
+      "title": "Set Filters",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "cd858f453da333ece7a9254903956de63b43949c5a7c8f92bc6ccc88bd078f2e"
+    },
+    {
+      "name": "filter_multi",
+      "file": "assets/lcd/en/filter_multi.png",
+      "ui_class": "UITextMenu",
+      "title": "Type",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "fee71d175574b08245d7a55ac59aaee31884537d8b108f535c9208ba02d273e8"
+    },
+    {
+      "name": "name_search",
+      "file": "assets/lcd/en/name_search.png",
+      "ui_class": "UITextEntry",
+      "title": "Search",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "86be856bfc151b995f9e04b3c89f1e0dc20866185599887cca7fe63c44929ef4"
+    },
+    {
+      "name": "object_push",
+      "file": "assets/lcd/en/object_push.png",
+      "ui_class": "UIObjectDetails",
+      "title": "M 45",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "877fa69d6c4359207902880bd91d4ab370303f8dad46762527816e3ceb68b3d0"
+    },
+    {
+      "name": "object_camera",
+      "file": "assets/lcd/en/object_camera.png",
+      "ui_class": "UIObjectDetails",
+      "title": "M 45",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "d4f39bd9fa9a30359c0b86a1bf1c99912e9af2626c24a21064cf1b96eb6093ac"
+    },
+    {
+      "name": "object_description",
+      "file": "assets/lcd/en/object_description.png",
+      "ui_class": "UIObjectDetails",
+      "title": "M 45",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "3ba9a07822408588ad50a5bcc306c7a45a49a56a4fc8083309bfaa5027b25981"
+    },
+    {
+      "name": "log",
+      "file": "assets/lcd/en/log.png",
+      "ui_class": "UILog",
+      "title": "M 45",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "f69a10be716f991227e01f6d52418da06e59518a4cbf67c902419710510d6e4b"
+    },
+    {
+      "name": "custom_coordinates",
+      "file": "assets/lcd/en/custom_coordinates.png",
+      "ui_class": "UIRADecEntry",
+      "title": "RA/DEC Full",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "5b2380e713938e753c34688968774290eac8dc615aaa1476a2ec75d976981aed"
+    },
+    {
+      "name": "sqm",
+      "file": "assets/lcd/en/sqm.png",
+      "ui_class": "UISQM",
+      "title": "SQM",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "aab628e5d57bc8ddca5a10b2afc0259ca3dfa48d585d41fa152b25a0c6292bf5"
+    },
+    {
+      "name": "sqm_calibration",
+      "file": "assets/lcd/en/sqm_calibration.png",
+      "ui_class": "UISQMCalibration",
+      "title": "SQM Calibration",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "19028ea341aa2e8a74d0061607dfcb84038e7e631a64d28ffbbdc3341434fd45"
+    },
+    {
+      "name": "sqm_sweep",
+      "file": "assets/lcd/en/sqm_sweep.png",
+      "ui_class": "UISQMSweep",
+      "title": "SQM Sweep",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "959f05f1cad54477bab32c57adf725d436c8d0d4dd96e7d2d1a317e5068183f9"
+    },
+    {
+      "name": "settings_menu",
+      "file": "assets/lcd/en/settings_menu.png",
+      "ui_class": "UITextMenu",
+      "title": "Settings",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "ef0044882e49a652056f1e4dd8db674efb7f4466df3dac116d4187492810be81"
+    },
+    {
+      "name": "setting_select",
+      "file": "assets/lcd/en/setting_select.png",
+      "ui_class": "UITextMenu",
+      "title": "Language",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "3f4713c810dd77871baffdd792cc33414429605182a4c24f868c02579cdb2133"
+    },
+    {
+      "name": "indi_status",
+      "file": "assets/lcd/en/indi_status.png",
+      "ui_class": "UIIndiStatus",
+      "title": "STATUS",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "0228e6a45e69a3b63c80aebe33630b4c48f94d1f5c333a6b1564c282738de078"
+    },
+    {
+      "name": "indi_init",
+      "file": "assets/lcd/en/indi_init.png",
+      "ui_class": "UITextMenu",
+      "title": "INIT",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "73c499d90ba7fe423705edf873e8b29599dc9df54206be3ff5639a7617b5b904"
+    },
+    {
+      "name": "indi_guide",
+      "file": "assets/lcd/en/indi_guide.png",
+      "ui_class": "UIIndiGuide",
+      "title": "Guide",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "972bd6da8fbb84983cfa3bf17ff94d5da930a151c55928148935c1e299a9557f"
+    },
+    {
+      "name": "multi_points",
+      "file": "assets/lcd/en/multi_points.png",
+      "ui_class": "UIIndiMultiPointAlign",
+      "title": "Multi Align",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "8a7e16d4f3602a925d14f26605fb3e7abcd6c37c59fc84a8215fc29cf8649d35"
+    },
+    {
+      "name": "multi_mode",
+      "file": "assets/lcd/en/multi_mode.png",
+      "ui_class": "UIIndiMultiPointAlign",
+      "title": "Multi Align",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "3696bb251caca1f8c0cb48c58f8909b483573bddd312d87c342e1c3dcdbe62cc"
+    },
+    {
+      "name": "backlash",
+      "file": "assets/lcd/en/backlash.png",
+      "ui_class": "UIIndiBacklash",
+      "title": "Backlash",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "c87c0dde2c6ddd1336e0b9113f4ad9ffd8fc026f74534b56f6350ad94147a615"
+    },
+    {
+      "name": "advanced",
+      "file": "assets/lcd/en/advanced.png",
+      "ui_class": "UITextMenu",
+      "title": "Advanced",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "928ff9270ae10043c67818a050f1f7ee18a96f3782d0783a131694d81e42b056"
+    },
+    {
+      "name": "status",
+      "file": "assets/lcd/en/status.png",
+      "ui_class": "UIStatus",
+      "title": "Status",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "e58354dadad0c0c63c23f39c035de4e9bc751078b98a44f5009e2a05c371d55a"
+    },
+    {
+      "name": "equipment",
+      "file": "assets/lcd/en/equipment.png",
+      "ui_class": "UIEquipment",
+      "title": "Equipment",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "0bbb67b108625fb44112bb951ac48fe5f488f09120da58f9fcb51a259d5a6d49"
+    },
+    {
+      "name": "location_entry",
+      "file": "assets/lcd/en/location_entry.png",
+      "ui_class": "UILocationEntry",
+      "title": "Enter Coords",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "632867d503466a72fe4f5ead12bbc95d2966f082be93c69570268ba49c0c7e48"
+    },
+    {
+      "name": "time_entry",
+      "file": "assets/lcd/en/time_entry.png",
+      "ui_class": "UITimeEntry",
+      "title": "Set Time/Date",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "1986b3e40ec24491bae1e69098981968cce6c14e1d946370ae9eda96c11f7e86"
+    },
+    {
+      "name": "shutdown_confirm",
+      "file": "assets/lcd/en/shutdown_confirm.png",
+      "ui_class": "UITextMenu",
+      "title": "Shutdown",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "f1dd7b6b0f7f99cf65b8edcacd161ff4652929e9b22a340cda28d369c7a29bff"
+    },
+    {
+      "name": "operation_error",
+      "file": "assets/lcd/en/operation_error.png",
+      "ui_class": "UIOperationError",
+      "title": "ERROR",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "0c2c7498f62e0741431608419019c5c6fdadae082daea074ebb7fbe0674ba24c"
+    }
+  ]
+}

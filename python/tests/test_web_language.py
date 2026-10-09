@@ -134,7 +134,9 @@ def test_manual_language_is_explicit_and_public(app, language):
     page = response.text
     assert f'<html lang="{language}">' in page
     assert ("<p>목차</p>" if language == "ko" else "<p>Contents</p>") in page
-    assert page.count('src="data:image/png;base64,') == 8
+    assert page.count('src="data:image/png;base64,') == 49
+    assert page.count("<figure>") == 41
+    assert 'class="lcd-gallery"' in page
     assert "data:font/woff2;base64," in page
     for chapter in range(1, 14):
         assert f'<h2 id="chapter-{chapter}">' in page
