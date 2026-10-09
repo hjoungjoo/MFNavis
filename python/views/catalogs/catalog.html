@@ -39,7 +39,7 @@
             {% if not alt_enabled %}disabled title="{{ _('Disabled for large catalogs or without GPS lock') }}"{% endif %}>
       {{ _('Up now') }}</button>
     <button type="button" class="pfcat-chip" id="pfcat-nearby" aria-pressed="false"
-            title="{{ _('Sort this catalog by estimated visibility, then distance from current pointing') }}">
+            title="{{ _('Sort this catalog by angular distance from current pointing') }}">
       {{ _('Nearby') }}</button>
     <select class="browser-default" id="pfcat-sort">
       <option value="seq">{{ _('Sort: Number') }}</option>

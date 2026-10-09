@@ -124,7 +124,9 @@ CLIENT_MESSAGES = (
     N_("stopped"),
     N_("tracking"),
     N_("unavailable"),
-    N_("visibility, then distance"),
+    N_(" · Set telescope and eyepiece for visibility estimates"),
+    N_(" · SQM reading expired; visibility estimates unavailable"),
+    N_(" · No sky measurement or configured Bortle; visibility estimates unavailable"),
     N_("waiting"),
 )
 

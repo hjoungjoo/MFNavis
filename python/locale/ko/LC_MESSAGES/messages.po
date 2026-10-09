@@ -5834,8 +5834,8 @@ msgstr "좌표 해석 기준별(검출 / 대응)"
 msgid "Solver preprocessing"
 msgstr "천구 좌표 해석 전처리"
 
-msgid "Sort this catalog by estimated visibility, then distance from current pointing"
-msgstr "추정 관측 용이성 및 현재 지향점과의 각거리 순으로 정렬"
+msgid "Sort this catalog by angular distance from current pointing"
+msgstr "현재 지향점과의 각거리가 가까운 순으로 정렬"
 
 msgid "Star-only preprocessing (5 frames)"
 msgstr "별 검출용 전처리(영상 5장)"
@@ -5873,20 +5873,17 @@ msgstr "조건에 맞는 천체가 없습니다"
 msgid "shown"
 msgstr "개 표시"
 
-msgid "visibility, then distance"
-msgstr "관측 용이성·각거리 순"
-
 msgid "nearest first"
 msgstr "가까운 순"
 
-msgid " · Set telescope and eyepiece for visibility ranking"
+msgid " · Set telescope and eyepiece for visibility estimates"
 msgstr " · 관측 용이성 계산을 위해 망원경과 접안렌즈를 설정하세요"
 
-msgid " · SQM reading expired; using distance"
-msgstr " · 하늘 밝기 측정값이 만료되어 각거리 순으로 표시합니다"
+msgid " · SQM reading expired; visibility estimates unavailable"
+msgstr " · 하늘 밝기 측정값이 만료되어 관측 용이성을 추정할 수 없습니다"
 
-msgid " · No sky measurement or configured Bortle; using distance"
-msgstr " · 하늘 밝기 측정값이나 보틀 등급 설정이 없어 각거리 순으로 표시합니다"
+msgid " · No sky measurement or configured Bortle; visibility estimates unavailable"
+msgstr " · 하늘 밝기 측정값이나 보틀 등급 설정이 없어 관측 용이성을 추정할 수 없습니다"
 
 msgid "Plate solve"
 msgstr "천구 좌표 해석"

@@ -601,7 +601,7 @@ def register_catalog_routes(app, server_instance):
             nearby = {
                 "center": pointing,
                 "sky": sky,
-                "ranking": "visibility_distance" if sky["enabled"] else "distance",
+                "ranking": "distance",
             }
         if catalog_code == "PL":
             return _planet_objects_response(nearby)
@@ -724,7 +724,7 @@ def register_catalog_routes(app, server_instance):
                     row["obj_type"], row["filter_mag"], row["size"], nearby["sky"]
                 )
                 ranked.append((row["co_id"], float(distance), suitability))
-            ranked.sort(key=lambda item: (item[2]["rank"], item[1]))
+            ranked.sort(key=lambda item: item[1])
             total = len(ranked)
             page_rows = ranked[(page - 1) * page_size : page * page_size]
             objects = []
@@ -1246,10 +1246,9 @@ def register_catalog_routes(app, server_instance):
                 )
         if nearby is not None:
             rows.sort(
-                key=lambda row: (
-                    row["visibility"]["rank"],
-                    row["distance"] if row["distance"] is not None else math.inf,
-                )
+                key=lambda row: row["distance"]
+                if row["distance"] is not None
+                else math.inf
             )
             for row in rows:
                 if row["distance"] is not None:

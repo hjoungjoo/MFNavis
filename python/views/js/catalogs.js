@@ -52,7 +52,7 @@ function pfcatInitHome() {
 
 function pfcatNearbyNote(data) {
   let note = `${pfT("RA")} ${data.center.ra.toFixed(3)}° / ${pfT("Dec")} ${data.center.dec.toFixed(3)}° · ` +
-    (data.ranking === "visibility_distance" ? pfT("visibility, then distance") : pfT("nearest first"));
+    pfT("nearest first");
   if (data.sky) {
     const sky = data.sky;
     if (sky.configured_bortle !== null) note += ` · ${pfT("Configured Bortle")} ${sky.configured_bortle}`;
@@ -60,9 +60,9 @@ function pfcatNearbyNote(data) {
     if (sky.enabled) {
       note += ` · ${pfT("Applied Bortle")} ≈${sky.bortle} · ${sky.aperture_mm} mm / ${sky.magnification.toFixed(0)}×`;
     } else {
-      note += sky.sqm !== null ? " · Set telescope and eyepiece for visibility ranking"
-        : sky.measurement_state === "stale" ? " · SQM reading expired; using distance"
-          : " · No sky measurement or configured Bortle; using distance";
+      note += sky.sqm !== null ? pfT(" · Set telescope and eyepiece for visibility estimates")
+        : sky.measurement_state === "stale" ? pfT(" · SQM reading expired; visibility estimates unavailable")
+          : pfT(" · No sky measurement or configured Bortle; visibility estimates unavailable");
     }
   }
   const sourceLabels = {

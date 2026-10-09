@@ -111,7 +111,7 @@ def sky_conditions(shared_state):
 
 
 def visibility(obj_type, magnitude, size_json, sky):
-    """Comparable coarse tiers; angular distance orders each tier."""
+    """Estimate visibility for display alongside the angular distance."""
     if not sky["enabled"]:
         return {"rank": 0, "label": "—"}
     rank = 3

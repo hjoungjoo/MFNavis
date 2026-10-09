@@ -256,8 +256,21 @@ def test_nearby_combines_existing_filters(web_app, nearby_catalog, monkeypatch):
 
 
 @pytest.mark.unit
-def test_nearby_keeps_missing_coordinates_in_full_list(web_app, nearby_catalog):
+@pytest.mark.parametrize("sky_enabled", [False, True])
+def test_nearby_keeps_missing_coordinates_in_full_list(
+    web_app, nearby_catalog, monkeypatch, sky_enabled
+):
+    from PiFinder import web_catalogs
+
     nearby_catalog.execute("UPDATE objects SET ra = NULL WHERE id = 1")
+    nearby_catalog.execute(
+        "UPDATE objects SET obj_type = '*', mag = '{\"filter_mag\": 6}' WHERE id = 1"
+    )
+    monkeypatch.setattr(
+        web_catalogs,
+        "sky_conditions",
+        lambda shared: {"enabled": sky_enabled, "limiting_mag": 12},
+    )
     app, _server = web_app
     data = (
         _login(app.test_client())
@@ -309,7 +322,7 @@ def test_old_global_nearby_endpoint_removed(web_app):
 
 
 @pytest.mark.unit
-def test_nearby_visibility_ranks_before_pagination(
+def test_nearby_distance_precedes_visibility_before_pagination(
     web_app, nearby_catalog, monkeypatch
 ):
     from PiFinder import web_catalogs
@@ -320,6 +333,7 @@ def test_nearby_visibility_ranks_before_pagination(
     nearby_catalog.execute(
         'UPDATE objects SET mag = \'{"filter_mag": 6, "mags": [6]}\' WHERE id > 60'
     )
+    nearby_catalog.execute("UPDATE objects SET mag = NULL WHERE id = 11")
     monkeypatch.setattr(
         web_catalogs,
         "sky_conditions",
@@ -335,24 +349,30 @@ def test_nearby_visibility_ranks_before_pagination(
         .get_json()
     )
     assert data["sort"] == "nearby"
-    assert data["ranking"] == "visibility_distance"
+    assert data["ranking"] == "distance"
     assert len(data["objects"]) == 50
-    # These targets lay beyond the old nearest-50 cutoff. Within each tier,
-    # distance still determines order, and the cross-catalog duplicate is one row.
-    assert [o["object_id"] for o in data["objects"][:5]] == list(range(61, 66))
-    assert all(o["visibility"]["label"] == "Favorable" for o in data["objects"][:5])
-    assert [o["object_id"] for o in data["objects"][5:]] == list(range(11, 56))
+    # Favorable distant targets must not displace nearer targets, including
+    # targets with unknown visibility, across the page boundary.
+    assert [o["object_id"] for o in data["objects"]] == list(range(11, 61))
+    assert data["objects"][0]["visibility"]["label"] == "Unknown"
+    assert all(o["visibility"]["label"] == "Unlikely" for o in data["objects"][1:])
     second = (
         _login(app.test_client())
         .get("/catalogs/api/objects?catalog=NGC&sort=nearby&up_now=1&page=2")
         .get_json()
     )
     assert second["total"] == 55
-    assert [o["object_id"] for o in second["objects"]] == list(range(56, 61))
+    assert [o["object_id"] for o in second["objects"]] == list(range(61, 66))
+    assert all(o["visibility"]["label"] == "Favorable" for o in second["objects"])
+    assert [o["distance"] for o in data["objects"] + second["objects"]] == list(
+        range(11, 66)
+    )
 
 
 @pytest.mark.unit
-def test_nearby_planets_use_same_visibility_rank(web_app, nearby_catalog, monkeypatch):
+def test_nearby_planets_distance_precedes_visibility(
+    web_app, nearby_catalog, monkeypatch
+):
     from PiFinder import web_catalogs
 
     monkeypatch.setattr(
@@ -378,8 +398,11 @@ def test_nearby_planets_use_same_visibility_rank(web_app, nearby_catalog, monkey
         .get_json()
     )
     assert len(data["objects"]) == 2
-    assert data["objects"][0]["display"] == "Moon"
-    assert data["objects"][1]["display"] == "Pluto"
+    assert data["ranking"] == "distance"
+    assert data["objects"][0]["display"] == "Pluto"
+    assert data["objects"][0]["visibility"]["label"] == "Unlikely"
+    assert data["objects"][1]["display"] == "Moon"
+    assert data["objects"][1]["visibility"]["label"] == "Favorable"
 
 
 @pytest.mark.unit
