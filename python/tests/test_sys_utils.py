@@ -402,7 +402,10 @@ try:
         assert result["error"] == "invalid_version"
 
     @pytest.mark.unit
-    def test_discover_onstep_serial_uses_baud_pass_and_unique_verified_device():
+    @pytest.mark.parametrize("actual_baud", [115200, 230400])
+    def test_discover_onstep_serial_uses_baud_pass_and_unique_verified_device(
+        actual_baud,
+    ):
         calls = []
         ports = [
             {"path": "/dev/onstep", "resolved": "/dev/ttyUSB0"},
@@ -411,7 +414,7 @@ try:
 
         def fake_probe(path, baud):
             calls.append((path, baud))
-            if path == "/dev/onstep" and baud == 115200:
+            if path == "/dev/onstep" and baud == actual_baud:
                 return {
                     "status": "verified",
                     "path": path,
@@ -427,13 +430,18 @@ try:
 
         assert result["ok"] is True
         assert result["selected"]["stable_path"] == "/dev/onstep"
-        assert result["selected"]["baud"] == 115200
+        assert result["selected"]["baud"] == actual_baud
         assert calls[:2] == [
             ("/dev/onstep", 115200),
             ("/dev/other", 115200),
         ]
         assert calls.count(("/dev/onstep", 115200)) == 1
-        assert not any(path == "/dev/onstep" and baud != 115200 for path, baud in calls)
+        assert calls.count(("/dev/onstep", actual_baud)) == 1
+        assert ("/dev/onstep", 460800) not in calls
+        if actual_baud == 230400:
+            assert calls.index(("/dev/onstep", 115200)) < calls.index(
+                ("/dev/onstep", 230400)
+            )
 
     @pytest.mark.unit
     def test_discover_onstep_serial_does_not_choose_multiple_verified_devices():

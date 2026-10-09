@@ -1891,8 +1891,9 @@ def test_connection_reconcile_uses_pifinder_only_when_indi_is_missing(
     assert mount._connection_config_status["connection_config_source"] == "indi_live"
 
 
+@pytest.mark.parametrize("discovered_baud", [115200, 230400])
 def test_serial_discovery_saves_unique_verified_port_after_fresh_telemetry(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, discovered_baud
 ):
     data_dir = tmp_path / "PiFinder_data"
     data_dir.mkdir()
@@ -1950,7 +1951,7 @@ def test_serial_discovery_saves_unique_verified_port_after_fresh_telemetry(
             "verified_count": 1,
             "selected": {
                 "stable_path": "/dev/serial/by-id/onstep",
-                "baud": 115200,
+                "baud": discovered_baud,
                 "product": "On-Step",
                 "version": "10.24c",
             },
@@ -2001,7 +2002,7 @@ def test_serial_discovery_saves_unique_verified_port_after_fresh_telemetry(
         event for event in events if isinstance(event, tuple) and event[0] == "apply"
     )
     assert apply_event[1]["serial_port"] == "/dev/serial/by-id/onstep"
-    assert apply_event[1]["serial_baud"] == 115200
+    assert apply_event[1]["serial_baud"] == discovered_baud
     assert apply_event[1]["save_config"] is False
     assert events.index("fresh_telemetry") < events.index("restore_state")
     save_index = next(
@@ -2012,7 +2013,7 @@ def test_serial_discovery_saves_unique_verified_port_after_fresh_telemetry(
     assert events.index("restore_state") < save_index
     saved = json.loads((data_dir / "config.json").read_text(encoding="utf-8"))
     assert saved["onstep_serial_port"] == "/dev/serial/by-id/onstep"
-    assert saved["onstep_serial_baud"] == 115200
+    assert saved["onstep_serial_baud"] == discovered_baud
     assert mount._serial_discovery_status["serial_discovery_state"] == "success"
 
 
