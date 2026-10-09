@@ -1525,7 +1525,7 @@ class IndiGotoGuideService:
                 ):
                     return None
                 solved = solution.pointing.aligned.solve
-                raw = {
+                raw: dict[str, Any] = {
                     "ra": self._finite_float(solved.RA),
                     "dec": self._finite_float(solved.Dec),
                     "timestamp": self._finite_float(solution.last_solve_success),
