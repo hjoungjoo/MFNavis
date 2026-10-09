@@ -139,7 +139,14 @@ def test_manual_language_is_explicit_and_public(app, language):
     assert 'class="lcd-gallery"' in page
     assert page.count('class="web-gallery"') == 10
     assert "INDI MOUNT" in page
-    assert "LX200 OnStepX Driver Connection(LX200 OnStepX 드라이버 연결)" in page
+    assert (
+        "LX200 OnStepX Driver Connection(LX200 OnStepX 드라이버 연결)"
+        if language == "ko"
+        else "LX200 OnStepX Driver Connection"
+    ) in page
+    if language == "en":
+        assert not re.search(r"[\u1100-\u11ff\u3130-\u318f\uac00-\ud7a3]", page)
+        assert ">Korean</a>" in page
     assert "data:font/woff2;base64," in page
     for chapter in range(1, 15):
         assert f'<h2 id="chapter-{chapter}">' in page

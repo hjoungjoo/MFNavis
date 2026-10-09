@@ -296,6 +296,8 @@ def make_html(language):
             "print": "인쇄 또는 PDF 저장",
             "download": "PDF 내려받기",
             "home": "웹 화면으로 돌아가기",
+            "language": "Language / 언어",
+            "korean": "한국어",
             "footer": "MFNavis · 사용자 매뉴얼 초안 · 2026년 10월 9일",
         },
         "en": {
@@ -304,12 +306,19 @@ def make_html(language):
             "print": "Print or save as PDF",
             "download": "Download PDF",
             "home": "Back to web interface",
+            "language": "Language",
+            "korean": "Korean",
             "footer": "MFNavis · Draft user manual · October 9, 2026",
         },
     }[language]
     source = (HERE / f"user_manual_{language}.md").read_text(encoding="utf-8")
     content = markdown.markdown(source, extensions=["tables", "toc", "fenced_code"])
     import re
+
+    if language == "en" and re.search(
+        r"[\u1100-\u11ff\u3130-\u318f\uac00-\ud7a3]", source
+    ):
+        raise ValueError("The English manual must use English labels and prose")
 
     # Keep short instructions together so a heading does not land on a page
     # with only the start of its procedure or table.
@@ -463,16 +472,16 @@ button { border: 0; border-radius: 5px; background: #982d3b; color: white; paddi
     first = content.index("<h2 ")
     content = content[:first] + nav + content[first:]
     language_links = "".join(
-        f'<a href="user_manual_{code}.html" lang="{code}" hreflang="{code}"'
+        f'<a href="user_manual_{code}.html" lang="{code if language == "ko" else "en"}" hreflang="{code}"'
         + (' aria-current="page"' if code == language else "")
         + f">{name}</a>"
-        for code, name in (("ko", "한국어"), ("en", "English"))
+        for code, name in (("ko", labels["korean"]), ("en", "English"))
     )
     output = (
         f'<!doctype html><html lang="{language}"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f'<title>{labels["title"]}</title><style>' + css + "</style></head><body>"
-        '<div class="tools"><div class="languages" role="navigation" aria-label="Language / 언어">'
+        f'<div class="tools"><div class="languages" role="navigation" aria-label="{labels["language"]}">'
         + language_links
         + f'</div><a href="user_manual_{language}.pdf" download>{labels["download"]}</a>'
         + f'<button onclick="window.print()">{labels["print"]}</button>'
