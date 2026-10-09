@@ -38,7 +38,7 @@ class Commands:
 
 class Config:
     def __init__(self):
-        self.options = {"mount_control": True, "indi_goto_method": "pifinder"}
+        self.options = {"mount_control": True, "indi_goto_method": "mfnavis"}
 
     def get_option(self, key, default=None):
         return self.options.get(key, default)
@@ -180,7 +180,7 @@ def test_alignment_replaces_active_guide_target_and_waits_for_publication(monkey
     mount = Commands()
     service = IndiGotoGuideService(Commands(), mount, state)
     service.config_values = {
-        "indi_goto_method": "pifinder",
+        "indi_goto_method": "mfnavis",
         "indi_tracking_guide_enabled": True,
     }
     service.tracking_guide_active_sent = True
@@ -348,6 +348,54 @@ def test_pulse_completion_waits_for_a_solve_after_the_last_pulse(monkeypatch):
     assert service.phase == "complete"
     assert service.final_sync_sent
     assert (service.tracking_target_ra, service.tracking_target_dec) == (p.RA, p.Dec)
+
+
+def test_pulse_completion_uses_unsmoothed_optical_axes(monkeypatch):
+    from PiFinder import indi_goto_guide_service as iggs
+
+    state, _ = make_state()
+    measured = state.solution().pointing.aligned.solve
+    # The IMU estimate and moving average still show an earlier 6 arcmin error.
+    state.solution().pointing.aligned = PointingAxis(
+        solve=measured,
+        estimate=Pointing(RA=measured.RA, Dec=measured.Dec + 0.1, Roll=measured.Roll),
+    )
+    service = IndiGotoGuideService(Commands(), Commands(), state)
+    service.config_values = {"mount_type": "EQ"}
+    service.phase = "pifinder_pulse_align"
+    service.pulse_align_sent = True
+    service.active_target_ra, service.active_target_dec = measured.RA, measured.Dec
+    service.pulse_align_started_at = DT.timestamp()
+    monkeypatch.setattr(iggs.time, "time", lambda: DT.timestamp() + 0.2)
+    monkeypatch.setattr(iggs.time, "monotonic", lambda: DT.timestamp() + 0.2)
+    monkeypatch.setattr(
+        service,
+        "_mount_status_summary",
+        lambda: {"available": True, "guide_pulse_until_wall": DT.timestamp()},
+    )
+    monkeypatch.setattr(
+        service,
+        "_refresh_pointing_status",
+        lambda: {
+            "usable_for_goto": True,
+            "current": {
+                "source": "solve",
+                "quality": "high",
+                "timestamp": DT.timestamp(),
+                "ra": measured.RA,
+                "dec": measured.Dec + 0.1,
+            },
+        },
+    )
+    service._tick_pulse_align()
+    assert service.phase == "complete"
+    assert service.last_error_arcmin < 1.0
+    assert service.current_dec == measured.Dec
+    assert service.final_sync_sent
+    assert (service.tracking_target_ra, service.tracking_target_dec) == (
+        measured.RA,
+        measured.Dec,
+    )
 
 
 @pytest.mark.parametrize(

@@ -544,7 +544,7 @@ def test_skysafari_guide_stop_queues_indi_stop(monkeypatch):
 
 
 @pytest.mark.unit
-def test_skysafari_sync_arms_tracking_target_in_pifinder_mode(monkeypatch):
+def test_skysafari_sync_arms_tracking_target_in_mfnavis_mode(monkeypatch):
     mount_commands = queue.Queue()
     guide_commands = queue.Queue()
     monkeypatch.setattr(pos_server, "mountcontrol_queue", mount_commands)
@@ -560,7 +560,7 @@ def test_skysafari_sync_arms_tracking_target_in_pifinder_mode(monkeypatch):
         DummyConfig(
             {
                 "mount_control": True,
-                "indi_goto_method": "pifinder",
+                "indi_goto_method": "mfnavis",
                 "skysafari_pifinder_align": False,
             }
         ),
@@ -1455,9 +1455,9 @@ def test_resync_mount_on_clock_jump_queues_commands(monkeypatch):
 
 
 @pytest.mark.unit
-def test_skysafari_sync_runs_pifinder_align_only_in_pifinder_mode(monkeypatch):
+def test_skysafari_sync_runs_pifinder_align_only_in_mfnavis_mode(monkeypatch):
     # B6: with a solve present, :CM# performs the PiFinder align only when
-    # indi_goto_method is "pifinder" (plus the INDI mount sync, tested below).
+    # indi_goto_method is "mfnavis" (plus the INDI mount sync, tested below).
     align_calls = []
     monkeypatch.setattr(pos_server, "last_target_coordinates", (100.0, -20.0))
     monkeypatch.setattr(pos_server, "sr_result", None)
@@ -1473,7 +1473,7 @@ def test_skysafari_sync_runs_pifinder_align_only_in_pifinder_mode(monkeypatch):
         DummyConfig(
             {
                 "mount_control": False,
-                "indi_goto_method": "pifinder",
+                "indi_goto_method": "mfnavis",
                 "skysafari_indi_sync": False,
             }
         ),

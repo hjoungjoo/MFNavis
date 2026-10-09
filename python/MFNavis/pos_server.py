@@ -925,7 +925,7 @@ def _queue_indi_goto_if_enabled(shared_state, ra_deg: float, dec_deg: float) -> 
     elif not _goto_guide_enabled():
         return False
 
-    goto_method = str(_get_config_option("indi_goto_method", "pifinder"))
+    goto_method = str(_get_config_option("indi_goto_method", "mfnavis"))
     if goto_method == "off" and not multipoint_active:
         logger.info("SkySafari INDI GoTo skipped; GoTo Type is off")
         return False
@@ -978,7 +978,7 @@ def _queue_indi_goto_if_enabled(shared_state, ra_deg: float, dec_deg: float) -> 
     else:
         if guide_queue is None:
             return False
-        if goto_method == "pifinder":
+        if goto_method == "mfnavis":
             ra_deg, dec_deg = _catalog_target(shared_state, ra_deg, dec_deg)
         command = {
             "type": "goto_target",
@@ -1414,9 +1414,9 @@ def handle_sync_command(shared_state, _input_str: str):
     if _queue_multipoint_align_confirm_if_active(ra_deg, dec_deg):
         return "Coordinates matched."
 
-    goto_method = str(_get_config_option("indi_goto_method", "pifinder"))
+    goto_method = str(_get_config_option("indi_goto_method", "mfnavis"))
     if (
-        goto_method == "pifinder"
+        goto_method == "mfnavis"
         and goto_guide_queue is not None
         and _get_config_option("skysafari_pifinder_align", True)
         and _get_config_option("smooth_tracking_target_integration_enabled", False)
@@ -1438,11 +1438,11 @@ def handle_sync_command(shared_state, _input_str: str):
     if has_solved_pointing:
         _reset_imu_alignment_correction("SkySafari sync with solved pointing")
         # B6 mode routing (docs/mf_report/mf_field_test_20260724_analysis_ko.md): in
-        # pifinder mode a SkySafari Align performs BOTH the PiFinder align
+        # mfnavis mode a SkySafari Align performs BOTH the PiFinder align
         # (same as LCD Start > Align) and the INDI mount sync below. In
         # indi_mount mode only the mount sync goes out; the PiFinder align
         # (target_pixel) changes through the LCD menu alone.
-        if goto_method == "pifinder":
+        if goto_method == "mfnavis":
             ra_deg, dec_deg = _catalog_target(shared_state, ra_deg, dec_deg)
             pifinder_aligned = _align_pifinder_if_enabled(shared_state, ra_deg, dec_deg)
             if (
@@ -1470,7 +1470,7 @@ def handle_sync_command(shared_state, _input_str: str):
     indi_synced = _queue_indi_sync_if_enabled(ra_deg, dec_deg)
     tracking_target_set = False
     if (
-        goto_method == "pifinder"
+        goto_method == "mfnavis"
         and goto_guide_queue is not None
         and (pifinder_aligned or imu_aligned or indi_synced)
     ):

@@ -119,7 +119,7 @@ def test_serial_auto_does_not_start_a_second_scan(serial_client):
 @pytest.mark.parametrize("enabled", [True, False])
 def test_provisional_imu_goto_setting_is_visible_and_saved(serial_client, enabled):
     client, _, _, _ = serial_client
-    form = {"indi_goto_method": "pifinder"}
+    form = {"indi_goto_method": "mfnavis"}
     if enabled:
         form["indi_goto_allow_unaligned_imu"] = "on"
     response = client.post("/indi/goto_guide", data=form)
@@ -127,3 +127,16 @@ def test_provisional_imu_goto_setting_is_visible_and_saved(serial_client, enable
     cfg = module.config.Config()
     assert cfg.get_option("indi_goto_allow_unaligned_imu") is enabled
     assert 'name="indi_goto_allow_unaligned_imu"' in response.text
+
+
+@pytest.mark.parametrize("method", ["mfnavis", "pifinder"])
+def test_mfnavis_goto_setting_accepts_legacy_form_and_renders_canonical_value(
+    serial_client, method
+):
+    client, _, _, _ = serial_client
+    response = client.post("/indi/goto_guide", data={"indi_goto_method": method})
+    assert response.status_code == 200
+    cfg = module.config.Config()
+    assert cfg.get_stored_option("indi_goto_method") == "mfnavis"
+    assert '<option value="mfnavis" selected>MFNavis</option>' in response.text
+    assert '<option value="pifinder"' not in response.text

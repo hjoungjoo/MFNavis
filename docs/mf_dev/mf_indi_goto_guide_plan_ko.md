@@ -1,5 +1,43 @@
 # MF PiFinder INDI GoTo / Guide 설정 설계 및 구현
 
+2026-10-09 GoTo 방식 이름 변경: `indi_goto_method`의 기본값과 새 저장값은
+`mfnavis`이며 웹/LCD에는 **MFNavis**로 표시한다. LCD 방식 표시 문자는
+`M`이다. 기존 `pifinder` 값은 읽을 때 같은 방식으로 해석하고 다음 설정
+저장 시 `mfnavis`로 변환한다. 예전 웹 폼과 런타임 명령도 호환한다.
+`indi_pifinder_goto_*` 설정 키와 내부 단계 식별자는 호환성을 위해 유지한다.
+
+2026-10-09 GoTo 도착 지연 개선:
+
+- 마운트 상태는 같은 연결에서 받은 최신 서버 콜백(유효기간 5초)을 우선한다.
+  `ON_COORD_SET`의 Busy는 더 새로운 정상 좌표 콜백과 최신 OnStep 종료 응답이
+  모두 있을 때만 대체한다. 좌표/수동 이동의 Busy는 계속 정지를 막는다.
+- INDI가 idle이고, 같은 연결의 정상 좌표 콜백 두 개가 1초 이상 간격으로
+  0.02° 안에 유지되며 최신 OnStep 종료 응답이 있으면 안정화 창을 2.5초에서
+  1초로 단축한다. 최신 정보(2초 이내)가 부족하거나 캐시만 반복해서 읽으면
+  2.5초를 유지한다. Busy/재이동은 안정화 판정을 초기화한다.
+  마운트 좌표의 타겟 거리는 정지 조건에서 제외하고 광학 도착 판정에서 보정한다.
+- 정상 정지 확인 시 `goto_completed_wall`을 전달한다. 같은 GoTo의 유효한
+  확인 시각이 있으면 서비스의 추가 1초 정착 대기를 생략하고, 그 시각 이후의
+  solve를 사용한다. 타임아웃으로 가정한 완료에는 이 시각을 부여하지 않는다.
+- GoTo/펄스/복구 진행 중 서비스 확인 주기는 0.2초, 일반 대기와 상태 파일 기록은
+  1초다. 펄스 단계는 평균 좌표 대신 최신 성공 solve의 실제 좌표를 우선한다.
+  이동 중 새 solve도 오차/진행 표시에 반영하며, 실행 계층이 이미 소비한 solve는
+  새 펄스 전송 시각보다 앞서더라도 중간 평가에 사용할 수 있다. 최종 Sync와
+  다음 GoTo는 펄스 종료 이후 solve로만 전환하며 추가 안정화 대기는 없다.
+  최신 시도 실패가 기존 성공 결과를 폐기하지 않는다. 타겟 픽셀 불일치와
+  오래된/미래 시각은 제외한다.
+- OnStep은 새 solve마다 축별 PID로 진행 중 타이머를 교체한다(대기열 누적 없음).
+  거리가 멀면 최대 2.5초 펄스, 가까워지면 smoothstep으로 보정량을 줄인다.
+  P/I/D=1.0/0.05/0.25, D 필터 0.3초, 적분 포화 방지와 타겟 통과 시 초기화를
+  사용한다. 1배/저장된 미세 속도의 전환에는 10% 히스테리시스를 두고,
+  드라이버가 지원하지 않는 중간 속도를 요청하지 않는다. 일반 드라이버는 검증된
+  타이머 교체 동작이 없어 기존 펄스 종료를 기다린다.
+- `goto_completion`에 속성별 상태·콜백 나이·정지 차단 이유를,
+  `goto_timing`에 정지 전달·solve 대기·도착 평가 시각을 기록한다. 새 solve 대기가
+  12초 이상이면 12초 간격으로 경고를 남긴다. 타겟을 유지하며 복구를 기다린다.
+- 큰 이동의 별도 프레임 solve 재확인은 유지한다. 지연 단축은 자동 테스트로
+  검증했고 실기기에서의 개선 시간은 아직 측정하지 않았다.
+
 작성 기준: `main` 브랜치, 2026-07-19 소스와 대조해 갱신.
 
 이 문서는 INDI 마운트의 `Goto/Guide` 설정 UI와 동작 방식을 기술한다. 최초에는
@@ -66,7 +104,7 @@ Web UI를 통한 target 설정
 ```
 
 세 입력 경로는 모두 같은 mount-control target 처리로 모이고, 선택된
-`GoTo Type`에 따라 `INDI Mount` 또는 `PiFinder` 절차를 수행한다.
+`GoTo Type`에 따라 `INDI Mount` 또는 `MFNavis` 절차를 수행한다.
 
 ## 현재 관련 구현
 
@@ -91,7 +129,7 @@ python/views/indi_mount.html
   skysafari_indi_sync
   skysafari_planet_track_freq
   GoTo / Guide 설정
-  indi_goto_method (off | indi_mount | pifinder)
+  indi_goto_method (off | indi_mount | mfnavis)
   indi_goto_refine_accuracy_arcmin
 
 python/PiFinder/pointing_coordinate_service.py
@@ -218,11 +256,12 @@ updated
 
 ```text
 HEARTBEAT_SECONDS = 1.0
-  서비스 루프/명령 반응 주기. 큐에 명령(예: Stop)이 들어오면 이 대기는 즉시
-  깨어난다. sync + GoTo 대기와 pulse-align 대기 모두 이 1초 tick으로 돈다.
+  일반 대기 주기. 큐 명령(예: Stop)은 즉시 대기를 깨운다.
+ACTIVE_GOTO_POLL_SECONDS = 0.2
+  GoTo, 펄스 보정, solve 복구, 추적 복구 GoTo 중 상태 확인 주기.
 STATUS_WRITE_SECONDS = 1.0
   indi_goto_guide_status.json 기록 최소 간격(tmpfs). 웹이 ~1초로 폴링하므로 거기
-  맞춰 2.0→1.0 하향(루프도 1초라 그 이상은 무의미, tmpfs라 SD 마모 없음).
+  맞춰 2.0→1.0 하향. 진행 중 0.2초 확인과 파일 기록 주기는 별개다.
 CONFIG_RELOAD_SECONDS = 2.0
   config 자동 재로딩 주기. 서비스는 명시적 reload 명령을 받지 않으므로 이 자동
   재로딩이 설정 반영의 유일 경로다. load_config는 읽기 전용(되쓰기 없음)이라
@@ -238,6 +277,8 @@ PIFINDER_FINAL_GOTO_SETTLE_SECONDS = 1.0
   4초, 이후 2.5초로 하향) 창을 거친 뒤에만 모션 플래그를 내려 이 서비스가 무모션을
   보는 시점엔 마운트가 이미 물리적으로 정지한 상태였다. 1.0s는 명령 픽업 지연·단일
   샘플 글리치만 흡수하면 되므로 안전 마진이 충분하다(상세: [실장비 정착 시간 측정](#실장비-정착-시간-측정-2026-07-18)).
+  현재 이름은 MFNAVIS_FINAL_GOTO_SETTLE_SECONDS다. 최신 마운트 정지 확인
+  시각이 있으면 추가 무모션 유지 창을 생략한다. 레거시 상태에서는 1초를 유지한다.
 PIFINDER_DEFAULT_MAX_GOTOS = 10
   config에 indi_pifinder_goto_max_gotos가 없을 때의 상한 폴백.
 PIFINDER_MIN_ERROR_IMPROVEMENT_ARCMIN = 1.0
@@ -261,31 +302,34 @@ TRACKING_IMU_QUIET_OVERRIDE_MULTIPLE = 2.0
 
 ```text
 GOTO_COMPLETE_STABLE_SECONDS = 2.5
-  GoTo 완료 1차 판정 창. 완료 조건(INDI busy=False, OnStep `:GU#` 'N', 타겟
-  0.5°(GOTO_COMPLETE_TARGET_TOLERANCE_DEG) 이내, 위치 변화<0.02°
+  GoTo 완료 1차 판정 창. 완료 조건(INDI busy=False, OnStep이 진행 중이 아님,
+  위치 변화<0.02°
   (GOTO_COMPLETE_POSITION_STABLE_DEG))이 이 시간 연속 참이어야 goto_motion을
   종료(플래그 해제)한다. 조건 하나라도 깨지면 타이머 리셋. 실측(2026-07-18)으로
   4.0→2.5 하향(조건이 정지 후 ~1.2초에 굳음, ~1초 마진). 최소 대기
   GOTO_COMPLETE_MIN_SECONDS=1.0, 상태 못 읽을 때의 하드 폴백
   GOTO_COMPLETE_FALLBACK_SECONDS=180.0.
-GUIDE_CORRECTION_INTERVAL_SECONDS = 3.0
-  guide correction 닫힌 루프 주기. fresh plate solve가 있을 때만 펄스(같은 solve로
-  두 번 안 쏨)이며 최대 timed pulse 2.5초보다 긴 정착 마진이다. 6.0→3.0으로
-  하향해 새 solve마다 다음 보정을 걸되 펄스가 겹치지 않게 한다.
-GUIDE_CORRECTION_PULSE_SECONDS = 0.4
-  timed guide pulse 미지원 드라이버의 manual-move fallback lease 길이.
+GOTO_COMPLETE_FAST_STABLE_SECONDS = 1.0
+  새 좌표 콜백 두 개와 최신 OnStep 종료 신호가 있으면 사용하는 단축 창.
+  콜백 유효기간 2초, 좌표 샘플 간격 최소 1초. 캐시 반복은 샘플로 세지 않는다.
+GUIDE_TRACKING_INTERVAL_SECONDS = 1.0
+  수렴/악화 평가 간격. 펄스 전송 제한 주기가 아니며 실행 루프는 약 0.1초마다
+  새 solve를 확인한다. OnStep에서는 진행 중 펄스도 교체한다. 같은 solve는 한 번만
+  소비한다. timed guide 미지원 드라이버에서는 자동 보정을 중단한다.
 SIDEREAL_ARCSEC_PER_SEC = 15.041
   펄스 시간 계산에 쓰는 항성 속도(arcsec/s).
 DEFAULT_GUIDE_RATE_X = 0.5
   드라이버가 GUIDE_RATE를 못 주면 쓰는 기본 가이드레이트(sidereal 배수).
 GUIDE_RATE_FAST_X = 1.0 / GUIDE_RATE_FINE_X = 0.5
   복귀(fast) / 정밀(fine) 가이드레이트. 오차가 정확도 x
-  GUIDE_RATE_FAST_MIN_ERROR_MULTIPLE(=2.0)를 넘는 동안 1.0x, 밴드 안에서는 0.5x.
-GUIDE_PULSE_AGGRESSIVENESS = 0.5
-  한 펄스로 오차의 절반만 닫는 보수 계수(실이동이 공칭 레이트의 ~1.6배로 측정됨).
+  GUIDE_RATE_FAST_MIN_ERROR_MULTIPLE(=2.0)를 넘으면 1.0x, 복귀는 1.8배 이하에서
+  저장된 미세 속도(기본 0.5x). 히스테리시스로 경계의 반복 속도 변경을 방지한다.
+GUIDE_PULSE_AGGRESSIVENESS = 1.0
+  PID 출력에 적용하는 시간 변환 계수. 축 오차/(정확도*2)의 smoothstep 비율로
+  최대 펄스를 포함한 PID 보정량을 0.5~1.0배 조절하여 근접 접근을 완화한다.
 GUIDE_PULSE_MIN_MS = 20 / GUIDE_PULSE_MAX_MS = 2500
   한 펄스 지속시간(ms) clamp 범위.
-component_threshold = max(0.5, accuracy_arcmin / 2.0)
+component_threshold = max(0.01, accuracy_arcmin / 2.0 * axis_scale)
   축별(NS/WE) 데드밴드. 이보다 작은 축 오차에는 그 축 펄스를 보내지 않는다.
 DEFAULT_GOTO_REFINE_ACCURACY_ARCMIN = 3.0
   caller가 정확도를 안 주면 쓰는 solve 보정 목표 정확도(= 0.05도).
@@ -299,8 +343,8 @@ GOTO_REFINE_DELAY_SECONDS = 8.0 / GOTO_REFINE_SOLVE_TIMEOUT_SECONDS = 45.0
 아래 값들은 `default_config.json`의 기본값과 일치한다.
 
 ```text
-indi_goto_method = "indi_mount" | "pifinder"
-  기본값: "indi_mount"
+indi_goto_method = "off" | "indi_mount" | "mfnavis"
+  기본값: "mfnavis"
   웹 UI 라벨: **GoTo Type** (2026-07-17에 "GoTo Method"에서 변경)
 
 indi_tracking_guide_enabled = false | true
@@ -437,7 +481,7 @@ Settings
 
 ```text
 Goto/Guide
-  GoTo Type           -> indi_goto_method            [INDI Mount | PiFinder]
+  GoTo Type           -> indi_goto_method            [INDI Mount | MFNavis]
   Tracking Guide      -> indi_tracking_guide_enabled           [Off | On]
   GoTo Recovery       -> indi_tracking_guide_goto_recovery_enabled  [Off | On]
   Recovery Range      -> indi_tracking_guide_goto_threshold_deg
@@ -466,7 +510,7 @@ Goto/Guide
 표시 항목 (현재 구현):
 
 ```text
-GoTo Type                          select  -> indi_goto_method [INDI Mount | PiFinder]
+GoTo Type                          select  -> indi_goto_method [INDI Mount | MFNavis]
 Tracking Guide                     checkbox-> indi_tracking_guide_enabled
 Tracking Guide GoTo Recovery       checkbox-> indi_tracking_guide_goto_recovery_enabled
 Manual Re-target                   checkbox-> indi_tracking_guide_manual_retarget_enabled
@@ -509,11 +553,11 @@ flowchart TD
 - 마운트 driver가 target 좌표로 이동한다.
 - PiFinder는 진행 중 mount readback을 좌표 서비스에 제공한다.
 - solve 기반 1회 refine 옵션(`indi_goto_refine_once`)은 2026-07-19에 제거되었다.
-  GoTo 후 정밀 접근이 필요하면 `GoTo Type = PiFinder`를 사용한다.
+  GoTo 후 정밀 접근이 필요하면 `GoTo Type = MFNavis`를 사용한다.
 - 추적 가이드가 On이면 GoTo 이후 target을 기준으로 주기적 guide correction을
   수행한다.
 
-## GoTo Type: PiFinder
+## GoTo Type: MFNavis
 
 PiFinder가 `PointingCoordinateService` 좌표를 기준으로, mount sync와 INDI GoTo를
 반복해 target에 접근하고, 마지막 1도 이내에서는 pulse guide로 0.05도 미만까지
@@ -651,7 +695,7 @@ sync + GoTo 복구 대기가 공유하는 정착 시간이다.
 - 플래그 해제 직후 readback은 즉시 안정(정지 구간 vmax ≈ 항성시 수준).
 ```
 
-결론(두 상수 조정):
+당시 결론(두 상수 조정; 2026-10-09 최신 콜백 기반 1초 경로 추가):
 
 - **`PIFINDER_FINAL_GOTO_SETTLE_SECONDS` 2.0 → 1.0s**: 완료 판정용 idle 창은
   bounce가 없고 mount_control이 이미 정착을 보장하므로 짧아도 안전하다. 명령→슬루
@@ -1107,7 +1151,7 @@ tracking_guide_manual_retarget    (신규) 마지막 재타겟 발생 여부/시
 
 체크리스트:
 
-- `indi_goto_method` 기본값이 `pifinder`인가.
+- `indi_goto_method` 기본값이 `mfnavis`인가.
 - `indi_tracking_guide_enabled` 기본값이 `true`인가(2026-07-19에 변경).
 - Web에서 설정 변경 후 재로딩해도 값이 유지되는가.
 - LCD에서 설정 변경 후 재시작해도 값이 유지되는가.
@@ -1234,7 +1278,7 @@ tracking_guide_manual_retarget    (신규) 마지막 재타겟 발생 여부/시
 체크리스트:
 
 - `indi_goto_method = indi_mount`에서 기존 SkySafari GoTo가 동일하게 동작하는가.
-- `indi_goto_method = pifinder`에서 target/current/error/status가 안정적으로 표시되는가.
+- `indi_goto_method = mfnavis`에서 target/current/error/status가 안정적으로 표시되는가.
 - Stop/Abort가 모든 단계에서 최우선인가.
 - 서비스 재시작 후 status가 꼬이지 않는가.
 - INDI mount disconnect/reconnect 상황에서 새 서비스가 안전하게 대기하는가.

@@ -549,7 +549,7 @@
           <select id="indi_goto_method" name="indi_goto_method">
             <option value="off" {% if indi_goto_method == "off" %}selected{% endif %}>{{ _('Off') }}</option>
             <option value="indi_mount" {% if indi_goto_method == "indi_mount" %}selected{% endif %}>{{ _('INDI Mount') }}</option>
-            <option value="pifinder" {% if indi_goto_method == "pifinder" %}selected{% endif %}>{{ _('MFNavis') }}</option>
+            <option value="mfnavis" {% if indi_goto_method == "mfnavis" %}selected{% endif %}>{{ _('MFNavis') }}</option>
           </select>
           <label class="active">{{ _('GoTo Type') }}</label>
         </div>

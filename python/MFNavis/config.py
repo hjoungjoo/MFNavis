@@ -23,6 +23,11 @@ logger = logging.getLogger("config")
 REFRESH_INTERVAL = 0.25
 
 
+def normalize_goto_method(value: Any) -> Any:
+    """Accept the legacy GoTo mode while exposing the MFNavis setting value."""
+    return "mfnavis" if value == "pifinder" else value
+
+
 class Config:
     def __init__(self):
         """
@@ -198,6 +203,10 @@ class Config:
         Writes to a temporary file and renames it into place so a reader in
         another process never sees a half-written config.json.
         """
+        if "indi_goto_method" in self._config_dict:
+            self._config_dict["indi_goto_method"] = normalize_goto_method(
+                self._config_dict["indi_goto_method"]
+            )
         tmp_path = self.config_file_path.with_name(
             f"{self.config_file_path.name}.{os.getpid()}.tmp"
         )
@@ -256,6 +265,8 @@ class Config:
         return self._config_dict.get(option, default)
 
     def set_option(self, option, value):
+        if option in {"indi_goto_method", "session.indi_goto_method"}:
+            value = normalize_goto_method(value)
         if option.startswith("session."):
             self._session_config_dict[option] = value
         elif option.startswith("equipment."):
@@ -277,6 +288,17 @@ class Config:
             self.set_options({option: value})
 
     def get_option(self, option, default: Any = None):
+        if option in {"indi_goto_method", "session.indi_goto_method"}:
+            if option.startswith("session."):
+                return normalize_goto_method(
+                    self._session_config_dict.get(option, default)
+                )
+            self._refresh_if_file_changed()
+            return normalize_goto_method(
+                self._config_dict.get(
+                    option, self._default_config_dict.get(option, default)
+                )
+            )
         if option.startswith("session."):
             return self._session_config_dict.get(option, default)
         elif option.startswith("equipment."):

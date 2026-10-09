@@ -16,7 +16,7 @@ def rig(monkeypatch):
     monkeypatch.setattr(mod.time, "monotonic", lambda: clock[0])
     service = mod.IndiGotoGuideService(Queue(), Queue(), None)
     service.config_values = {
-        "indi_goto_method": "pifinder",
+        "indi_goto_method": "mfnavis",
         "mount_control": True,
         "indi_tracking_guide_enabled": False,
         "indi_goto_allow_unaligned_imu": True,
@@ -58,6 +58,26 @@ def commands(service):
     while not service.mountcontrol_queue.empty():
         result.append(service.mountcontrol_queue.get_nowait())
     return result
+
+
+def test_post_pulse_recovery_cannot_reuse_the_previous_coarse_stop(rig):
+    service, clock, mount, _ = rig
+    start(rig, optical=True)
+    service.sync_goto_request_id = None
+    service.phase = "native_pending"
+    service.solve_fallback_since_wall = 1000.1
+    mount.update(
+        updated=1002.0, goto_completed_wall=1000.0, guide_pulse_until_wall=1001.5
+    )
+    clock[0] = 1002.0
+    solve(rig, timestamp=1001.4)
+    service._tick_state_machine()
+    assert not service.final_sync_sent
+    assert service.solve_anchor_required_after_wall == 1001.5
+    solve(rig, timestamp=1001.5)
+    service._tick_state_machine()
+    assert service.phase == "complete"
+    assert service.final_sync_sent
 
 
 def solve(rig, ra=110.0, dec=30.0, timestamp=None):

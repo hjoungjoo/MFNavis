@@ -24,8 +24,8 @@ def _make_service(monkeypatch, clock):
     monkeypatch.setattr(iggs.time, "time", lambda: clock[0])
     service = IndiGotoGuideService(Queue(), DummyMountQueue(), None)
     service.config_values = {
-        # B4: the tracking guide only runs in pifinder mode.
-        "indi_goto_method": "pifinder",
+        # B4: the tracking guide only runs in mfnavis mode.
+        "indi_goto_method": "mfnavis",
         "indi_tracking_guide_enabled": True,
         "indi_tracking_guide_settle_seconds": 4.0,
         "indi_tracking_guide_motion_arcmin": 15.0,
@@ -97,6 +97,15 @@ def test_runtime_goto_type_changes_without_config_write(monkeypatch):
 
     assert service.runtime_goto_method == "indi_mount"
     assert service.config_values["indi_goto_method"] == "indi_mount"
+
+
+@pytest.mark.parametrize("method", ["mfnavis", "pifinder"])
+def test_mfnavis_runtime_goto_type_accepts_legacy_alias(monkeypatch, method):
+    service = _make_service(monkeypatch, [1000.0])
+    service.handle_command({"type": "set_goto_method", "goto_method": method})
+    assert service.runtime_goto_method == "mfnavis"
+    assert service.config_values["indi_goto_method"] == "mfnavis"
+    assert service._status_payload()["goto_method"] == "mfnavis"
 
 
 def test_pulse_align_threshold_is_capped_to_reachable_error(monkeypatch):
@@ -551,7 +560,7 @@ def test_initial_goto_wait_is_canceled_by_config_mode_change(monkeypatch):
     service.config_values["indi_goto_method"] = "off"
     service._pointing["current"].update(source="solve", quality="high")
     service._tick_state_machine()
-    service.config_values["indi_goto_method"] = "pifinder"
+    service.config_values["indi_goto_method"] = "mfnavis"
     service._tick_state_machine()
     assert service.initial_goto_deadline is None
     assert not service.mountcontrol_queue.commands
@@ -799,7 +808,7 @@ def test_indi_mount_mode_deactivates_tracking_guide_entirely(monkeypatch):
     # Simulate a previously armed correction that must be switched off.
     service.tracking_guide_active_sent = True
 
-    # A full settle window with a 2 deg error: in pifinder mode this fires a
+    # A full settle window with a 2 deg error: in mfnavis mode this fires a
     # sync + GoTo recovery, in indi_mount mode nothing may move the mount.
     service._tick_tracking_guide()
     for _ in range(5):
@@ -1007,6 +1016,170 @@ def test_recent_post_idle_solve_can_finish_goto_without_extra_wait(monkeypatch):
     assert service.phase == "complete"
     assert service.final_sync_sent is True
     assert [c["type"] for c in service.mountcontrol_queue.commands] == ["sync"]
+
+
+@pytest.mark.parametrize("phase", ["pifinder_goto", "native_goto"])
+def test_verified_stop_reuses_solve_before_service_observed_idle(monkeypatch, phase):
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    service.active_target_ra, service.active_target_dec = 100.0, 22.0
+    service.phase = phase
+    service.final_goto_sent_at = 990.0
+    service.solve_fallback_armed = phase == "native_goto"
+    service.solve_fallback_since_wall = 991.0
+    mount = {
+        "available": True,
+        "state": "connected",
+        "updated": 1000.0,
+        "goto_completed_wall": 999.0,
+        "tracking_enabled": True,
+    }
+    monkeypatch.setattr(service, "_mount_status_summary", lambda: mount)
+    service._pointing["current"]["timestamp"] = 999.1
+    monkeypatch.setattr(service, "_tracking_target_altitude_deg", lambda: 45.0)
+    service._tick_state_machine()
+    assert service.phase == "complete"
+    assert service.solve_anchor_required_after_wall == 999.0
+    assert [c["type"] for c in service.mountcontrol_queue.commands] == ["sync"]
+
+
+@pytest.mark.parametrize(
+    "completed,updated",
+    [(989.0, 1000.0), (999.0, 990.0), (1001.0, 1000.0), (0.0, 1000.0)],
+)
+def test_unverified_stop_keeps_service_settle(monkeypatch, completed, updated):
+    service = _make_service(monkeypatch, [1000.0])
+    service.active_target_ra, service.active_target_dec = 100.0, 22.0
+    service.phase = "pifinder_goto"
+    service.final_goto_sent_at = 990.0
+    monkeypatch.setattr(
+        service,
+        "_mount_status_summary",
+        lambda: {
+            "available": True,
+            "state": "connected",
+            "updated": updated,
+            "goto_completed_wall": completed,
+        },
+    )
+    service._tick_goto_wait()
+    assert service.phase == "pifinder_goto"
+    assert service.solve_anchor_required_after_wall == 1000.0
+    assert not service.mountcontrol_queue.commands
+
+
+def test_verified_stop_does_not_accept_pre_stop_solve(monkeypatch):
+    service = _make_service(monkeypatch, [1000.0])
+    service.active_target_ra, service.active_target_dec = 100.0, 22.0
+    service.phase = "pifinder_goto"
+    service.final_goto_sent_at = 990.0
+    monkeypatch.setattr(
+        service,
+        "_mount_status_summary",
+        lambda: {
+            "available": True,
+            "state": "connected",
+            "updated": 1000.0,
+            "goto_completed_wall": 999.0,
+        },
+    )
+    service._pointing["current"]["timestamp"] = 998.9
+    service._tick_goto_wait()
+    assert service.goto_timing["stage"] == "waiting_solve"
+    assert not service.mountcontrol_queue.commands
+
+
+@pytest.mark.parametrize(
+    "sample_time,expected",
+    [(999.49, False), (999.5, True), (900.0, False), (1001.0, False)],
+)
+def test_pulse_arrival_uses_raw_solve_at_pulse_end(monkeypatch, sample_time, expected):
+    from types import SimpleNamespace
+
+    service = _make_service(monkeypatch, [1000.0])
+    service.phase = "pifinder_pulse_align"
+    service.active_target_ra, service.active_target_dec = 100.0, 22.0
+    # The published pointing file still has the earlier averaged coordinate.
+    service._pointing["current"].update(timestamp=999.0, dec=22.1)
+    raw = SimpleNamespace(RA=100.0, Dec=22.0)
+    solution = SimpleNamespace(
+        last_solve_success=sample_time,
+        last_solve_attempt=1000.0,
+        pointing=SimpleNamespace(aligned=SimpleNamespace(solve=raw)),
+    )
+    service.shared_state = SimpleNamespace(solution=lambda: solution)
+    monkeypatch.setattr(
+        service,
+        "_mount_status_summary",
+        lambda: {
+            "available": True,
+            "state": "connected",
+            "guide_pulse_until_wall": 999.5,
+        },
+    )
+    monkeypatch.setattr(service, "_target_error_arcmin", lambda *args, **kw: 0.0)
+    service._tick_state_machine()
+    assert service.final_sync_sent is expected
+    if expected:
+        assert service.current_dec == 22.0
+        assert service.phase == "complete"
+
+
+def test_pulse_arrival_rejects_observation_for_previous_target_pixel(monkeypatch):
+    from types import SimpleNamespace
+
+    service = _make_service(monkeypatch, [1000.0])
+    service.shared_state = SimpleNamespace(
+        solution=lambda: SimpleNamespace(alignment_projection={"target_pixel": (1, 2)}),
+        target_pixel=lambda: (3, 4),
+    )
+    assert service._pulse_solve_current(service._pointing) is None
+
+
+@pytest.mark.parametrize("error", [0.0, 8.0, 25.0])
+def test_live_pulse_observation_updates_error_without_sync_during_motion(
+    monkeypatch, error
+):
+    service = _make_service(monkeypatch, [1000.0])
+    service.phase = "pifinder_pulse_align"
+    service.active_target_ra, service.active_target_dec = 100.0, 22.0
+    service.pulse_align_started_at = 999.0
+    service._pointing["current"]["timestamp"] = 999.8
+    mount = {
+        "available": True,
+        "state": "connected",
+        "guide_pulse_until_wall": 1002.0,
+        "guide_observation_after_wall": 999.9,
+        "guide_last_solve_timestamp": 999.8,
+    }
+    monkeypatch.setattr(service, "_mount_status_summary", lambda: mount)
+    monkeypatch.setattr(service, "_target_error_arcmin", lambda *args, **kwargs: error)
+    service._tick_pulse_align()
+    assert service.last_error_arcmin == error
+    assert "live" in service.last_action
+    assert service.phase == "pifinder_pulse_align"
+    assert not service.mountcontrol_queue.commands
+    assert service.goto_timing["pulse_solve_timestamp"] == 999.8
+    assert service._pulse_solve_current(service._pointing, mount) is None
+
+
+def test_live_pulse_rejects_old_unconsumed_observation(monkeypatch):
+    service = _make_service(monkeypatch, [1000.0])
+    service._pointing["current"]["timestamp"] = 999.7
+    mount = {"guide_observation_after_wall": 999.9, "guide_last_solve_timestamp": 999.8}
+    assert (
+        service._pulse_solve_current(service._pointing, mount, require_finished=False)
+        is None
+    )
+
+
+def test_active_goto_polls_quickly_and_idle_keeps_heartbeat(monkeypatch):
+    service = _make_service(monkeypatch, [1000.0])
+    for phase in ["pifinder_goto", "pifinder_pulse_align", "native_goto"]:
+        service.phase = phase
+        assert service._loop_timeout() == 0.2
+    service.phase = "idle"
+    assert service._loop_timeout() == 1.0
 
 
 def test_goto_timeout_and_tracking_failure_notify_lcd(monkeypatch, tmp_path):

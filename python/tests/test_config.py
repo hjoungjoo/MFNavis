@@ -157,11 +157,54 @@ def test_get_stored_option_does_not_use_default_config(config_dir):
 
 
 @pytest.mark.unit
-def test_goto_method_defaults_to_pifinder(config_dir):
+def test_goto_method_defaults_to_mfnavis(config_dir):
     """New and legacy configs without the key use MFNavis GoTo."""
     cfg = config.Config()
     assert cfg.get_stored_option("indi_goto_method") is None
-    assert cfg.get_option("indi_goto_method") == "pifinder"
+    assert cfg.get_option("indi_goto_method") == "mfnavis"
+
+
+@pytest.mark.unit
+def test_legacy_goto_method_reads_without_write_and_migrates_on_save(config_dir):
+    saved = {"indi_goto_method": "pifinder", "camera_exp": 123000}
+    path = config_dir / "config.json"
+    path.write_text(json.dumps(saved))
+    stamp = path.stat().st_mtime_ns
+
+    cfg = config.Config()
+    assert cfg.get_option("indi_goto_method") == "mfnavis"
+    assert _on_disk(config_dir) == saved
+    assert path.stat().st_mtime_ns == stamp
+
+    cfg.set_option("camera_exp", 200000)
+    assert _on_disk(config_dir) == {
+        "indi_goto_method": "mfnavis",
+        "camera_exp": 200000,
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("method", ["pifinder", "mfnavis", "off", "indi_mount"])
+@pytest.mark.parametrize("batch", [False, True])
+def test_goto_method_saves_canonical_value(config_dir, method, batch):
+    cfg = config.Config()
+    if batch:
+        cfg.set_options({"indi_goto_method": method})
+    else:
+        cfg.set_option("indi_goto_method", method)
+    expected = "mfnavis" if method == "pifinder" else method
+    assert _on_disk(config_dir)["indi_goto_method"] == expected
+    assert cfg.get_option("indi_goto_method") == expected
+
+
+@pytest.mark.unit
+def test_legacy_session_goto_method_is_canonical_and_not_persisted(config_dir):
+    cfg = config.Config()
+    cfg.set_option("session.indi_goto_method", "pifinder")
+    assert cfg.get_option("session.indi_goto_method") == "mfnavis"
+    assert _on_disk(config_dir) == {}
+    cfg.set_option("session.indi_goto_method", None)
+    assert cfg.get_option("session.indi_goto_method") is None
 
 
 @pytest.mark.unit

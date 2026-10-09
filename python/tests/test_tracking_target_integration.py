@@ -692,6 +692,8 @@ def test_aborted_goto_aligns_only_after_physical_idle_without_resetting_correcti
         _manual_motion_direction=None,
         _manual_motion_origin=None,
         _cancel_sync_goto=Mock(),
+        _guide_active_pulses={},
+        _guide_pid={},
         _apply_indi_properties=Mock(return_value=True),
         _indi_property_on=lambda prop: prop,
         _clear_manual_motion_deadline=Mock(),
@@ -795,7 +797,7 @@ def test_new_session_transports_response_across_polar_tangent_axes(monkeypatch):
         smooth_tracking_mode="active",
         smooth_tracking_target_integration_enabled=True,
         smooth_tracking_profile=data,
-        indi_goto_method="pifinder",
+        indi_goto_method="mfnavis",
     )
     cfg = SimpleNamespace(
         get_option=lambda name, default=None: options.get(name, default)

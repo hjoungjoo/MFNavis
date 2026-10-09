@@ -165,8 +165,8 @@ GUIDE_PULSE_ELEMENTS: dict[str, tuple[str, str]] = {
 }
 GOTO_COMPLETE_MIN_SECONDS = 1.0
 # A GoTo is declared complete once all completion conditions (INDI not busy,
-# OnStep ':GU#' reports no goto, within GOTO_COMPLETE_TARGET_TOLERANCE_DEG of
-# target, and position stable within GOTO_COMPLETE_POSITION_STABLE_DEG) hold
+# OnStep ':GU#' reports no goto, and position stable within
+# GOTO_COMPLETE_POSITION_STABLE_DEG) hold
 # continuously for this long; any failing condition resets the timer. This is
 # the primary settle guarantee before the motion flags drop.
 # Tuned 4.0 -> 2.5 from the OnStepX field test (2026-07-18): the completion
@@ -174,10 +174,13 @@ GOTO_COMPLETE_MIN_SECONDS = 1.0
 # so 2.5 s keeps ~1 s margin over that (and over the near-arrival OnStep status
 # jitter) while trimming ~1.5 s of dead time per GoTo/corrective/recovery slew.
 GOTO_COMPLETE_STABLE_SECONDS = 2.5
+# With two fresh, stable coordinate callbacks and a fresh OnStep stop report,
+# use a shorter window. Cached/missing telemetry keeps the conservative window.
+GOTO_COMPLETE_FAST_STABLE_SECONDS = 1.0
 GOTO_COMPLETE_POSITION_STABLE_DEG = 0.02
-GOTO_COMPLETE_TARGET_TOLERANCE_DEG = 0.5
 GOTO_ONSTEP_ACTIVE_OBSERVE_GRACE_SECONDS = 3.0
 GOTO_COMPLETE_FALLBACK_SECONDS = 180.0
+MOTION_RECEIPT_MAX_AGE_SECONDS = 5.0
 GOTO_TARGET_COMMAND_ATTEMPTS = 2
 GOTO_TARGET_ACCEPT_TIMEOUT_SECONDS = 2.0
 GOTO_TARGET_ACCEPT_POLL_SECONDS = 0.1
@@ -466,7 +469,12 @@ if PyIndi is not None:
         def newSwitch(self, svp):
             if svp.name == "CONNECTION":
                 self._notify_alignment_limits(svp.name, getattr(svp, "device", None))
-            if svp.name in {"ON_COORD_SET", "TELESCOPE_SLEW_RATE"}:
+            if svp.name in {
+                "ON_COORD_SET",
+                "TELESCOPE_SLEW_RATE",
+                "TELESCOPE_MOTION_NS",
+                "TELESCOPE_MOTION_WE",
+            }:
                 self._record_sync_property(
                     svp.name,
                     svp.s,
@@ -508,7 +516,12 @@ if PyIndi is not None:
                     return
                 # Snapshot only server callbacks. set_number/set_switch mutate
                 # the local property cache before sending and cannot be ACKs.
-                if prop.getName() in {"ON_COORD_SET", "TELESCOPE_SLEW_RATE"}:
+                if prop.getName() in {
+                    "ON_COORD_SET",
+                    "TELESCOPE_SLEW_RATE",
+                    "TELESCOPE_MOTION_NS",
+                    "TELESCOPE_MOTION_WE",
+                }:
                     svp = PyIndi.PropertySwitch(prop)
                     self._record_sync_property(
                         prop.getName(),
@@ -656,6 +669,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._pending_goto_refine: Optional[dict[str, Any]] = None
         self._last_goto_target: Optional[tuple[float, float]] = None
         self._goto_motion: Optional[dict[str, Any]] = None
+        self._goto_completed_wall = 0.0
+        self._goto_completion_diagnostics: dict[str, Any] = {}
         self._guide_correction_enabled = False
         self._guide_control_epoch = 0
         self._guide_predictive_tracking = False
@@ -920,7 +935,10 @@ class MountControlIndi(BacklashCalibrationMixin):
             self._last_user_tracking_stopped_wall
         )
         payload["guide_correction_mode"] = self._guide_correction_mode
+        payload["goto_completed_wall"] = self._goto_completed_wall
+        payload["goto_completion"] = dict(self._goto_completion_diagnostics)
         payload["guide_observation_after_wall"] = self._guide_observation_after_wall
+        payload["guide_last_solve_timestamp"] = self._guide_correction_last_solve_time
         payload["guide_pulse_until_wall"] = (
             time.time() + self._guide_pulse_until - time.monotonic()
             if self._guide_pulse_until > 0
@@ -1089,7 +1107,12 @@ class MountControlIndi(BacklashCalibrationMixin):
     def _indi_property_state(self, property_name: str) -> Any:
         if self.device is None:
             return None
-
+        # Local property objects can retain Busy after the server has sent Ok.
+        # Prefer the immutable callback from this connection, never a local
+        # write or a receipt from the preceding connection.
+        receipt = self._motion_property_receipt(property_name)
+        if receipt is not None:
+            return receipt["state"]
         for getter_name in ("getProperty", "getNumber", "getSwitch", "getText"):
             getter = getattr(self.device, getter_name, None)
             if getter is None:
@@ -1101,17 +1124,32 @@ class MountControlIndi(BacklashCalibrationMixin):
             if not prop:
                 continue
 
-            state = getattr(prop, "s", None)
+            state = None
+            get_state = getattr(prop, "getState", None)
+            if callable(get_state):
+                try:
+                    state = get_state()
+                except Exception:
+                    pass
             if state is None:
-                get_state = getattr(prop, "getState", None)
-                if callable(get_state):
-                    try:
-                        state = get_state()
-                    except Exception:
-                        state = None
+                state = getattr(prop, "s", None)
             if state is not None:
                 return state
         return None
+
+    def _motion_property_receipt(self, name: str) -> Optional[dict[str, Any]]:
+        with self._sync_property_lock:
+            receipt = self._sync_property_receipts.get(name)
+        if receipt is None:
+            return None
+        age = time.monotonic() - receipt["received_monotonic"]
+        if (
+            receipt.get("client_generation", self._client_generation)
+            != self._client_generation
+            or not 0 <= age <= MOTION_RECEIPT_MAX_AGE_SECONDS
+        ):
+            return None
+        return receipt
 
     def _indi_state_is_busy(self, state: Any) -> bool:
         if state is None:
@@ -1126,6 +1164,8 @@ class MountControlIndi(BacklashCalibrationMixin):
 
     def _indi_mount_is_busy(self) -> Optional[bool]:
         saw_state = False
+        busy = False
+        properties = {}
         for property_name in (
             "EQUATORIAL_EOD_COORD",
             "ON_COORD_SET",
@@ -1133,12 +1173,53 @@ class MountControlIndi(BacklashCalibrationMixin):
             "TELESCOPE_MOTION_WE",
         ):
             state = self._indi_property_state(property_name)
+            receipt = self._motion_property_receipt(property_name)
+            with self._sync_property_lock:
+                last_callback = self._sync_property_receipts.get(property_name)
+            properties[property_name] = {
+                "state": str(state) if state is not None else None,
+                "source": "server_callback" if receipt else "property_cache",
+                "age_seconds": (
+                    round(time.monotonic() - last_callback["received_monotonic"], 3)
+                    if last_callback
+                    else None
+                ),
+                "callback_state": last_callback["state"] if last_callback else None,
+                "client_generation": (
+                    last_callback.get("client_generation") if last_callback else None
+                ),
+            }
             if state is None:
                 continue
             saw_state = True
             if self._indi_state_is_busy(state):
-                return True
-        return False if saw_state else None
+                if property_name == "ON_COORD_SET":
+                    # The command-mode vector can remain Busy after a slew.
+                    # Only newer server coordinate + OnStep end telemetry may
+                    # supersede it; coordinate/manual Busy still blocks below.
+                    coordinate = self._motion_property_receipt("EQUATORIAL_EOD_COORD")
+                    with self._sync_property_lock:
+                        command = self._sync_property_receipts.get("ON_COORD_SET")
+                    now = time.monotonic()
+                    if (
+                        command is not None
+                        and coordinate is not None
+                        and command.get("client_generation", self._client_generation)
+                        == self._client_generation
+                        and coordinate["sequence"] > command["sequence"]
+                        and coordinate["state"] in {"ok", "idle"}
+                        and self._last_fresh_onstep_status_at
+                        >= command["received_monotonic"]
+                        and 0
+                        <= now - self._last_fresh_onstep_status_at
+                        <= MOTION_RECEIPT_MAX_AGE_SECONDS
+                        and self._onstep_goto_complete() is True
+                    ):
+                        properties[property_name]["superseded_by_stop_telemetry"] = True
+                        continue
+                busy = True
+        self._goto_completion_diagnostics["properties"] = properties
+        return busy if saw_state else None
 
     def _raw_onstep_status(self) -> str:
         return self._device_text_value("OnStep Status", ":GU# return").strip()
@@ -1158,28 +1239,35 @@ class MountControlIndi(BacklashCalibrationMixin):
     ) -> bool:
         elapsed = now - float(motion.get("started_at", now))
         onstep_complete = self._onstep_goto_complete()
+        self._goto_completion_diagnostics["onstep_complete"] = onstep_complete
+
+        def blocked(reason):
+            if motion.get("wait_reason") != reason:
+                logger.info("GoTo completion waiting: %s", reason)
+            motion["wait_reason"] = reason
+            self._goto_completion_diagnostics["wait_reason"] = reason
+            self._goto_completion_diagnostics["stable_seconds"] = 0.0
+            motion["complete_ready_since"] = None
+            motion.pop("fast_stop_sample", None)
+            return False
 
         if is_busy is True:
             motion["indi_seen_busy"] = True
-            motion["complete_ready_since"] = None
-            return False
+            return blocked("indi_busy")
 
         if onstep_complete is False:
             motion["onstep_seen_goto_active"] = True
-            motion["complete_ready_since"] = None
-            return False
+            return blocked("onstep_goto_active")
 
         if onstep_complete is True:
             saw_active = bool(
                 motion.get("indi_seen_busy") or motion.get("onstep_seen_goto_active")
             )
             if not saw_active and elapsed < GOTO_ONSTEP_ACTIVE_OBSERVE_GRACE_SECONDS:
-                motion["complete_ready_since"] = None
-                return False
+                return blocked("waiting_for_motion_start")
 
         if is_busy is not False:
-            motion["complete_ready_since"] = None
-            return False
+            return blocked("indi_state_unknown")
 
         if current_position is not None:
             target_ra = motion.get("target_ra")
@@ -1195,10 +1283,9 @@ class MountControlIndi(BacklashCalibrationMixin):
                     / 60.0
                 )
                 motion["target_error_deg"] = target_error_deg
-                if target_error_deg > GOTO_COMPLETE_TARGET_TOLERANCE_DEG:
-                    motion["complete_ready_since"] = None
-                    motion["last_complete_position"] = current_position
-                    return False
+                # Stopped and accurately centered are separate questions.
+                # The optical arrival loop corrects any remaining error.
+                self._goto_completion_diagnostics["target_error_deg"] = target_error_deg
 
             last_position = motion.get("last_complete_position")
             if last_position is not None:
@@ -1213,16 +1300,80 @@ class MountControlIndi(BacklashCalibrationMixin):
                 )
                 motion["position_change_deg"] = position_change_deg
                 if position_change_deg > GOTO_COMPLETE_POSITION_STABLE_DEG:
-                    motion["complete_ready_since"] = None
                     motion["last_complete_position"] = current_position
-                    return False
+                    return blocked("position_changing")
             motion["last_complete_position"] = current_position
 
         ready_since = motion.get("complete_ready_since")
+        motion["wait_reason"] = "stabilizing"
+        self._goto_completion_diagnostics["wait_reason"] = "stabilizing"
         if ready_since is None:
             motion["complete_ready_since"] = now
+            ready_since = now
+        fast_stop = self._fresh_stable_goto_stop(motion, onstep_complete, now)
+        stable_seconds = now - float(motion["complete_ready_since"])
+        self._goto_completion_diagnostics["stable_seconds"] = round(stable_seconds, 3)
+        required = (
+            GOTO_COMPLETE_FAST_STABLE_SECONDS
+            if fast_stop
+            else GOTO_COMPLETE_STABLE_SECONDS
+        )
+        self._goto_completion_diagnostics["required_stable_seconds"] = required
+        return stable_seconds >= required
+
+    def _fresh_stable_goto_stop(self, motion, onstep_complete, now) -> bool:
+        """Require independent server samples, never repeated reads of a cache."""
+        receipt = self._motion_property_receipt("EQUATORIAL_EOD_COORD")
+        if receipt is None or receipt["state"] != "ok" or onstep_complete is not True:
+            motion.pop("fast_stop_sample", None)
             return False
-        return now - float(ready_since) >= GOTO_COMPLETE_STABLE_SECONDS
+        try:
+            position = (
+                float(receipt["values"]["RA"]) * 15,
+                float(receipt["values"]["DEC"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            motion.pop("fast_stop_sample", None)
+            return False
+        # Callbacks normally precede this event-loop check by a few ms.
+        # They must belong to this slew, not arrive after the check itself.
+        since = motion.get("started_at", motion["complete_ready_since"])
+        if (
+            not all(math.isfinite(value) for value in position)
+            or abs(position[1]) > 90
+            or receipt["received_monotonic"] < since
+            or self._last_fresh_onstep_status_at < since
+            or not 0
+            <= now - self._last_fresh_onstep_status_at
+            <= GOTO_COMPLETE_FAST_STABLE_SECONDS * 2
+            or not 0
+            <= now - receipt["received_monotonic"]
+            <= GOTO_COMPLETE_FAST_STABLE_SECONDS * 2
+        ):
+            motion.pop("fast_stop_sample", None)
+            return False
+        first = motion.get("fast_stop_sample")
+        if (
+            first is None
+            or radec_separation_arcmin(*position, *first["position"]) / 60
+            > GOTO_COMPLETE_POSITION_STABLE_DEG
+        ):
+            if first is not None:
+                # Fresh server coordinates can reveal motion before the
+                # driver's cached position catches up. Restart both windows.
+                motion["complete_ready_since"] = now
+            motion["fast_stop_sample"] = {
+                "position": position,
+                "sequence": receipt["sequence"],
+                "received": receipt["received_monotonic"],
+            }
+            return False
+        return (
+            receipt["sequence"] > first["sequence"]
+            and self._last_fresh_onstep_status_at >= first["received"]
+            and receipt["received_monotonic"] - first["received"]
+            >= GOTO_COMPLETE_FAST_STABLE_SECONDS
+        )
 
     def _write_status_heartbeat(self) -> None:
         now = time.monotonic()
@@ -3520,6 +3671,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         self, ra_deg: float, dec_deg: float, motion_purpose="observation"
     ) -> None:
         self._alignment_motion("motion_start", motion_purpose)
+        self._goto_completed_wall = 0.0
+        self._goto_completion_diagnostics = {}
         self._goto_motion = {
             "target_ra": ra_deg % 360.0,
             "target_dec": dec_deg,
@@ -3538,6 +3691,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         target_ra = self._goto_motion.get("target_ra")
         target_dec = self._goto_motion.get("target_dec")
         if "assuming complete" not in message:
+            self._goto_completed_wall = time.time()
+            self._goto_completion_diagnostics["wait_reason"] = "complete"
             self._alignment_motion(
                 "motion_complete",
                 self._goto_motion.get("motion_purpose", "observation"),
@@ -3648,8 +3803,9 @@ class MountControlIndi(BacklashCalibrationMixin):
 
         if elapsed > GOTO_COMPLETE_FALLBACK_SECONDS:
             logger.warning(
-                "Could not read INDI GoTo busy state after %.1fs; assuming complete",
+                "GoTo completion timed out after %.1fs (%s); assuming complete",
                 elapsed,
+                self._goto_completion_diagnostics,
             )
             self._complete_goto_motion("GoTo status timeout; assuming complete")
 
@@ -4021,6 +4177,11 @@ class MountControlIndi(BacklashCalibrationMixin):
         fast_band = (
             self._guide_correction_accuracy_arcmin * GUIDE_RATE_FAST_MIN_ERROR_MULTIPLE
         )
+        # OnStep supports discrete rates, not arbitrary fractional speeds.
+        # Hysteresis prevents repeated selector writes/ACK waits near the edge;
+        # continuous approach shaping is handled by each axis's PID travel.
+        if self._guide_rate_boosted:
+            fast_band *= 0.9
         return (
             max(self.guide_rate_we, GUIDE_RATE_FAST_X)
             if abs(error_arcmin) > fast_band
@@ -4282,6 +4443,9 @@ class MountControlIndi(BacklashCalibrationMixin):
             error_arcsec,
             stamp,
             requested_rate * SIDEREAL_ARCSEC_PER_SEC * GUIDE_PULSE_MAX_MS / 1000,
+            approach_band=self._guide_correction_accuracy_arcmin
+            * 60
+            * GUIDE_RATE_FAST_MIN_ERROR_MULTIPLE,
         )
         if output == 0:
             return 0
@@ -4432,6 +4596,8 @@ class MountControlIndi(BacklashCalibrationMixin):
             "TELESCOPE_SLEW_RATE",
             "GEOGRAPHIC_COORD",
             "TIME_UTC",
+            "TELESCOPE_MOTION_NS",
+            "TELESCOPE_MOTION_WE",
         }:
             return
         with self._sync_property_lock:
@@ -4441,6 +4607,7 @@ class MountControlIndi(BacklashCalibrationMixin):
                 "state": state,
                 "values": dict(values),
                 "received_monotonic": time.monotonic(),
+                "client_generation": client_generation,
             }
             self._sync_property_events.setdefault(name, deque(maxlen=32)).append(
                 self._sync_property_receipts[name]

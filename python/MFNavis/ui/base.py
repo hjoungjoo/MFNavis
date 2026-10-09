@@ -446,14 +446,14 @@ class UIModule:
         """Return the GoTo Type glyph and current INDI connection state.
 
         ``off`` deliberately has no indicator. ``I`` denotes direct INDI Mount
-        GoTo; ``P`` denotes the PiFinder GoTo procedure. The caller renders a
+        GoTo; ``M`` denotes the MFNavis GoTo procedure. The caller renders a
         connected state in bold and every
         other state in the matching regular/thin face.
         """
         goto_method = self._effective_goto_method()
         if goto_method == "off":
             return None, None
-        glyph = "I" if goto_method == "indi_mount" else "P"
+        glyph = "I" if goto_method == "indi_mount" else "M"
         return glyph, self._indi_indicator_state()
 
     def _effective_goto_method(self) -> str:
@@ -461,9 +461,9 @@ class UIModule:
         session_method = self.config_object.get_option("session.indi_goto_method")
         if session_method in self._GOTO_METHOD_CYCLE:
             return str(session_method)
-        saved_method = self.config_object.get_option("indi_goto_method", "pifinder")
+        saved_method = self.config_object.get_option("indi_goto_method", "mfnavis")
         return (
-            str(saved_method) if saved_method in self._GOTO_METHOD_CYCLE else "pifinder"
+            str(saved_method) if saved_method in self._GOTO_METHOD_CYCLE else "mfnavis"
         )
 
     def _draw_indi_indicator(self, y):
@@ -819,11 +819,11 @@ class UIModule:
     # / 3 (slower). Continuous jog is also on the keyboard letters. See
     # docs/mf_dev/mf_input_keymap_*.md.
     _MOUNT_JOG_DIRECTIONS = {2: "south", 4: "west", 6: "east", 8: "north"}
-    _GOTO_METHOD_CYCLE = ("off", "indi_mount", "pifinder")
+    _GOTO_METHOD_CYCLE = ("off", "indi_mount", "mfnavis")
     _GOTO_METHOD_LABELS = {
         "off": "Off",
         "indi_mount": "INDI Mount",
-        "pifinder": "MFNavis",
+        "mfnavis": "MFNavis",
     }
 
     def _mount_control_queue(self):
@@ -860,7 +860,7 @@ class UIModule:
         try:
             current_index = self._GOTO_METHOD_CYCLE.index(current)
         except ValueError:
-            current_index = self._GOTO_METHOD_CYCLE.index("pifinder")
+            current_index = self._GOTO_METHOD_CYCLE.index("mfnavis")
         next_method = self._GOTO_METHOD_CYCLE[
             (current_index + 1) % len(self._GOTO_METHOD_CYCLE)
         ]
@@ -918,7 +918,7 @@ class UIModule:
             # target (plain menus / status) the key is unused.
             if target is None:
                 return False
-            if self.config_object.get_option("indi_goto_method", "pifinder") == "off":
+            if self.config_object.get_option("indi_goto_method", "mfnavis") == "off":
                 self.message(_("GoTo Off"), 1)
                 return True
             command = {

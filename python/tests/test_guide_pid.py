@@ -41,3 +41,47 @@ def test_repeated_observation_cannot_integrate_and_outage_resets():
     assert pid.correction(5, 120, 40) == 5
     pid.reset()
     assert pid.correction(5, 121, 40) == 5
+
+
+def test_distance_shaping_preserves_fast_travel_and_softens_near_target():
+    outputs = [
+        GuidePID().correction(error, 100, 40, approach_band=20)
+        for error in (1, 5, 10, 20, 100)
+    ]
+    assert outputs == sorted(outputs)
+    assert outputs[-2:] == [20, 40]
+    assert 0.5 < outputs[0] < 0.6
+    assert outputs[1] < 5
+    assert outputs[2] == pytest.approx(7.5)
+    # Shape even saturated corrections: a wide accuracy band must not hide
+    # approach damping behind the 2.5 s actuator cap.
+    assert GuidePID().correction(180, 100, 40, approach_band=360) == 30
+
+
+def test_derivative_filter_reduces_response_to_fast_solve_jitter():
+    filtered, unfiltered = GuidePID(ki=0), GuidePID(ki=0, derivative_filter_seconds=0)
+    filtered.correction(10, 100, 40)
+    unfiltered.correction(10, 100, 40)
+    assert filtered.correction(9, 100.1, 40) > unfiltered.correction(9, 100.1, 40)
+    filtered.correction(-1, 100.2, 40)
+    assert filtered.filtered_derivative == 0
+
+
+@pytest.mark.parametrize("cadence", [0.1, 0.4, 1.0, 3.0])
+@pytest.mark.parametrize("response", [0.8, 1.0, 1.2])
+def test_closed_loop_pulse_replacement_converges(cadence, response):
+    # A simple timed actuator: each observation replaces its remaining timer.
+    # Exercise solves both inside a 2.5 s pulse and after it, with rate mismatch.
+    pid = GuidePID()
+    error = 150.0
+    speed = 15.041
+    for tick in range(int(40 / cadence)):
+        if abs(error) <= 1:
+            break
+        correction = pid.correction(
+            error, 100 + tick * cadence, speed * 2.5, approach_band=12
+        )
+        travel = min(abs(correction), speed * cadence) * response
+        error -= travel if correction > 0 else -travel
+        assert error >= -6  # Overshoot stays within the 0.1 arcmin guide floor.
+    assert abs(error) <= 1

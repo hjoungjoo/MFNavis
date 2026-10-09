@@ -110,7 +110,7 @@ def align_on_radec(
     guide_queue = command_queues.get("goto_guide")
     if (
         guide_queue is not None
-        and config_object.get_option("indi_goto_method", "pifinder") == "pifinder"
+        and config_object.get_option("indi_goto_method", "mfnavis") == "mfnavis"
     ):
         guide_queue.put(
             {

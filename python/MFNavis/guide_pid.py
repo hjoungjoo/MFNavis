@@ -13,13 +13,18 @@ class GuidePID:
     integral: float = 0.0
     previous_error: float = 0.0
     previous_stamp: float = 0.0
+    filtered_derivative: float = 0.0
+    derivative_filter_seconds: float = 0.3
 
     def reset(self) -> None:
         self.integral = 0.0
         self.previous_error = 0.0
         self.previous_stamp = 0.0
+        self.filtered_derivative = 0.0
 
-    def correction(self, error: float, stamp: float, limit: float) -> float:
+    def correction(
+        self, error: float, stamp: float, limit: float, *, approach_band: float = 0.0
+    ) -> float:
         """Return signed arcseconds, with anti-windup and no derivative reversal."""
         if not all(math.isfinite(v) for v in (error, stamp, limit)) or limit <= 0:
             self.reset()
@@ -27,20 +32,34 @@ class GuidePID:
         dt = stamp - self.previous_stamp
         if self.previous_stamp and dt <= 0:
             return 0.0
-        derivative = 0.0
-        if not self.previous_stamp or dt > 12 or error * self.previous_error <= 0:
+        reset_history = (
+            not self.previous_stamp or dt > 12 or error * self.previous_error <= 0
+        )
+        if reset_history:
             self.integral = 0.0
+            self.filtered_derivative = 0.0
         else:
             derivative = (error - self.previous_error) / max(dt, 0.1)
+            alpha = dt / (self.derivative_filter_seconds + dt)
+            self.filtered_derivative += alpha * (derivative - self.filtered_derivative)
         # Never accumulate bias while the actuator is saturated.
         candidate = self.integral
-        if self.previous_stamp and 0 < dt <= 12 and abs(error) < limit:
+        if not reset_history and abs(error) < limit:
             candidate += error * dt
         bound = min(limit * 0.25, abs(error) * 0.25)
-        candidate = max(-bound / self.ki, min(bound / self.ki, candidate))
+        candidate = (
+            max(-bound / self.ki, min(bound / self.ki, candidate))
+            if self.ki > 0
+            else 0.0
+        )
+        # Smoothstep blends full travel far away into half travel near the
+        # target, without requesting unsupported intermediate motor rates.
+        ratio = min(1.0, abs(error) / approach_band) if approach_band > 0 else 1.0
+        approach_gain = 0.5 + 0.5 * ratio * ratio * (3.0 - 2.0 * ratio)
         proportional = self.kp * error
         damping = max(
-            -abs(proportional) * 0.8, min(abs(proportional) * 0.8, self.kd * derivative)
+            -abs(proportional) * 0.8,
+            min(abs(proportional) * 0.8, self.kd * self.filtered_derivative),
         )
         output = proportional + self.ki * candidate + damping
         if abs(output) <= limit or output * error < 0:
@@ -49,5 +68,6 @@ class GuidePID:
         self.previous_error, self.previous_stamp = error, stamp
         # A crossing is handled by the new measured sign, never by stored I/D.
         return math.copysign(
-            min(limit, max(0.0, output * math.copysign(1, error))), error
+            min(limit, max(0.0, output * math.copysign(1, error))) * approach_gain,
+            error,
         )

@@ -187,7 +187,7 @@ def start_session(service, command):
     mode = cfg.get_option("smooth_tracking_mode", "active")
     if mode not in {"shadow", "active"}:
         raise ValueError("smooth tracking mode must be shadow or active")
-    if cfg.get_option("indi_goto_method", "pifinder") != "pifinder":
+    if cfg.get_option("indi_goto_method", "mfnavis") != "mfnavis":
         raise ValueError("MFNavis GoTo mode required")
     integrated = bool(
         cfg.get_option("smooth_tracking_target_integration_enabled", False)

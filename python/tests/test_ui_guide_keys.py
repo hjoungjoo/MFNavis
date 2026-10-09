@@ -24,7 +24,7 @@ class DummyGuideScreen(GuideKeyMixin, UIModule):
 
 def _screen(mount_control=True):
     screen = DummyGuideScreen.__new__(DummyGuideScreen)
-    values = {"mount_control": mount_control, "indi_goto_method": "pifinder"}
+    values = {"mount_control": mount_control, "indi_goto_method": "mfnavis"}
     screen.config_object = SimpleNamespace(
         get_option=lambda name, default=None: values.get(name, default),
         set_option=lambda name, value: values.__setitem__(name, value),
@@ -69,7 +69,7 @@ def test_guide_mixin_discrete_commands_and_goto_type_toggle():
         {"type": "reduce_slew_rate", "notify_ui": True},
         {"type": "increase_slew_rate", "notify_ui": True},
     ]
-    assert screen._test_config_values["indi_goto_method"] == "pifinder"
+    assert screen._test_config_values["indi_goto_method"] == "mfnavis"
     assert screen._test_config_values["session.indi_goto_method"] == "off"
     assert screen.command_queues["ui_queue"].commands == []
     assert screen.command_queues["goto_guide"].commands == [
@@ -89,7 +89,7 @@ def test_guide_mixin_goto_type_cycles_all_choices_for_plain_number_input():
     screen.key_number(1)
     assert screen._test_config_values["session.indi_goto_method"] == "indi_mount"
     screen.key_number(1)
-    assert screen._test_config_values["session.indi_goto_method"] == "pifinder"
+    assert screen._test_config_values["session.indi_goto_method"] == "mfnavis"
 
 
 def test_zero_stop_cancels_held_direction_keepalive():
@@ -107,7 +107,7 @@ def test_indi_indicator_matches_goto_type_and_connection_state():
     screen = _screen()
     screen._indi_indicator_state = lambda: "ok"
 
-    assert screen._indi_indicator_spec() == ("P", "ok")
+    assert screen._indi_indicator_spec() == ("M", "ok")
 
     screen._test_config_values["session.indi_goto_method"] = "indi_mount"
     screen._indi_indicator_state = lambda: "problem"

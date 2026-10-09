@@ -2476,6 +2476,80 @@ def test_goto_motion_completes_after_stable_idle(monkeypatch):
     assert mount.statuses[-1][1] == "GoTo complete"
 
 
+def _fresh_stop_mount(monkeypatch):
+    mount = DummyConnectedMount()
+    clock = [100.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(mount, "_onstep_goto_complete", lambda: True)
+    motion = {"started_at": 90.0, "indi_seen_busy": True}
+
+    def sample(ra=10.0):
+        mount.receive_sync_property(
+            "EQUATORIAL_EOD_COORD",
+            "ok",
+            {"RA": ra, "DEC": 20.0},
+            mount._client_generation,
+        )
+        mount.receive_onstep_status()
+
+    sample()
+    clock[0] += 0.02  # Callback precedes the executor's event-loop check.
+    assert not mount._goto_completion_ready(motion, False, clock[0], (150.0, 20.0))
+    return mount, clock, motion, sample
+
+
+def test_fresh_independent_stop_samples_shorten_settle_to_one_second(monkeypatch):
+    mount, clock, motion, sample = _fresh_stop_mount(monkeypatch)
+    clock[0] = 100.8
+    sample()
+    assert not mount._goto_completion_ready(motion, False, clock[0], (150.0, 20.0))
+    clock[0] = 101.05
+    sample()
+    assert mount._goto_completion_ready(motion, False, clock[0], (150.0, 20.0))
+    assert mount._goto_completion_diagnostics["required_stable_seconds"] == 1.0
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    ["same_sample", "old_connection", "stale_onstep", "missing_coords", "moving"],
+)
+def test_fast_stop_does_not_trust_cached_or_invalid_samples(monkeypatch, invalid):
+    mount, clock, motion, sample = _fresh_stop_mount(monkeypatch)
+    clock[0] = 101.05
+    if invalid != "same_sample":
+        sample(10.01 if invalid == "moving" else 10.0)
+    if invalid == "old_connection":
+        mount._client_generation += 1
+    elif invalid == "stale_onstep":
+        mount._last_fresh_onstep_status_at = 95.0
+    elif invalid == "missing_coords":
+        mount.receive_sync_property(
+            "EQUATORIAL_EOD_COORD", "ok", {}, mount._client_generation
+        )
+    assert not mount._goto_completion_ready(motion, False, clock[0], (150.0, 20.0))
+    assert mount._goto_completion_diagnostics["required_stable_seconds"] == 2.5
+
+
+def test_busy_bounce_restarts_fast_stop_window(monkeypatch):
+    mount, clock, motion, sample = _fresh_stop_mount(monkeypatch)
+    clock[0] = 100.8
+    assert not mount._goto_completion_ready(motion, True, clock[0])
+    clock[0] = 101.05
+    sample()
+    assert not mount._goto_completion_ready(motion, False, clock[0], (150.0, 20.0))
+    clock[0] = 102.1
+    sample()
+    assert mount._goto_completion_ready(motion, False, clock[0], (150.0, 20.0))
+
+
+def test_fresh_position_change_resets_settle_despite_stale_position_cache(monkeypatch):
+    mount, clock, motion, sample = _fresh_stop_mount(monkeypatch)
+    clock[0] = 102.6
+    sample(10.01)
+    assert not mount._goto_completion_ready(motion, False, clock[0], (150.0, 20.0))
+    assert mount._goto_completion_diagnostics["stable_seconds"] == 0
+
+
 def test_goto_motion_waits_for_stable_position(monkeypatch):
     mount = DummyConnectedMount()
     clock = [100.0]
@@ -2525,6 +2599,104 @@ def test_goto_motion_waits_while_indi_state_is_busy(monkeypatch):
 
     assert mount._goto_motion is not None
     assert mount.statuses[-1][0] == "slewing"
+
+
+def test_fresh_server_stop_overrides_busy_property_cache(monkeypatch):
+    mount = DummyConnectedMount()
+    monkeypatch.setattr(mci.time, "monotonic", lambda: 100.0)
+    prop = SimpleNamespace(s="busy", getState=lambda: "busy")
+    mount.device.getProperty = lambda name: prop
+    for name in (
+        "EQUATORIAL_EOD_COORD",
+        "ON_COORD_SET",
+        "TELESCOPE_MOTION_NS",
+        "TELESCOPE_MOTION_WE",
+    ):
+        mount.receive_sync_property(name, "ok", {}, mount._client_generation)
+    assert mount._indi_mount_is_busy() is False
+    assert all(
+        p["source"] == "server_callback"
+        for p in mount._goto_completion_diagnostics["properties"].values()
+    )
+    mount.receive_sync_property(
+        "TELESCOPE_MOTION_NS", "busy", {}, mount._client_generation
+    )
+    assert mount._indi_mount_is_busy() is True
+
+
+@pytest.mark.parametrize("expired,old_connection", [(True, False), (False, True)])
+def test_old_stop_receipt_cannot_override_busy_cache(
+    monkeypatch, expired, old_connection
+):
+    mount = DummyConnectedMount()
+    clock = [100.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    mount.device.getProperty = lambda name: SimpleNamespace(s="busy")
+    mount.receive_sync_property(
+        "EQUATORIAL_EOD_COORD", "ok", {}, mount._client_generation
+    )
+    if expired:
+        clock[0] += mci.MOTION_RECEIPT_MAX_AGE_SECONDS + 0.1
+    if old_connection:
+        mount._client_generation += 1
+    assert mount._indi_property_state("EQUATORIAL_EOD_COORD") == "busy"
+    assert mount._indi_mount_is_busy() is True
+
+
+def test_command_busy_requires_new_coordinate_and_onstep_stop(monkeypatch):
+    mount = DummyConnectedMount()
+    clock = [100.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    mount.device.getProperty = lambda name: SimpleNamespace(
+        s="busy" if name == "ON_COORD_SET" else "ok"
+    )
+    mount.receive_sync_property("ON_COORD_SET", "busy", {}, mount._client_generation)
+    monkeypatch.setattr(mount, "_onstep_goto_complete", lambda: True)
+    assert mount._indi_mount_is_busy() is True
+    clock[0] += 0.1
+    mount.receive_sync_property(
+        "EQUATORIAL_EOD_COORD", "ok", {}, mount._client_generation
+    )
+    assert mount._indi_mount_is_busy() is True
+    mount.receive_onstep_status()
+    assert mount._indi_mount_is_busy() is False
+    mount.receive_sync_property(
+        "EQUATORIAL_EOD_COORD", "busy", {}, mount._client_generation
+    )
+    assert mount._indi_mount_is_busy() is True
+
+
+def test_stopped_off_target_goto_releases_for_optical_correction(monkeypatch):
+    mount = DummyConnectedMount()
+    clock = [100.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(mci.time, "time", lambda: clock[0] + 1000)
+    monkeypatch.setattr(mount, "_indi_mount_is_busy", lambda: False)
+    monkeypatch.setattr(mount, "_read_current_position", lambda: (132.0, 47.5))
+    assert mount.goto_target(132.0, 49.5)
+    clock[0] += 2.0
+    mount._check_goto_motion()
+    assert mount._goto_motion is not None
+    clock[0] += mci.GOTO_COMPLETE_STABLE_SECONDS + 0.1
+    mount._check_goto_motion()
+    assert mount._goto_motion is None
+    assert mount._goto_completion_diagnostics["target_error_deg"] > 1.9
+    assert mount.statuses[-1][2]["goto_completed_wall"] == clock[0] + 1000
+    mount._arm_goto_motion(132.0, 49.5)
+    assert mount._goto_completed_wall == 0
+
+
+def test_completion_timeout_does_not_publish_verified_stop(monkeypatch):
+    mount = DummyConnectedMount()
+    clock = [100.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(mount, "_indi_mount_is_busy", lambda: True)
+    monkeypatch.setattr(mount, "_read_current_position", lambda: None)
+    assert mount.goto_target(132.0, 49.5)
+    clock[0] += mci.GOTO_COMPLETE_FALLBACK_SECONDS + 1
+    mount._check_goto_motion()
+    assert mount._goto_completed_wall == 0
+    assert mount._goto_completion_diagnostics["wait_reason"] == "indi_busy"
 
 
 def test_goto_motion_publishes_mount_readback_while_busy(monkeypatch):
@@ -2967,6 +3139,19 @@ def test_guide_rate_not_rewritten_when_already_at_desired(monkeypatch):
 
     assert mount.client.numbers == []
     assert mount._guide_rate_boosted
+
+
+def test_guide_rate_hysteresis_avoids_repeated_writes_at_boundary():
+    mount = DummyConnectedMount()
+    mount._guide_correction_accuracy_arcmin = 3.0
+    assert mount._select_guide_rate_for_error(6.1)
+    mount.client.numbers.clear()
+    for error in (5.9, 6.05, 5.8, 6.1):
+        assert mount._select_guide_rate_for_error(error)
+    assert not mount.client.numbers
+    assert mount._select_guide_rate_for_error(5.3)
+    assert len(mount.client.numbers) == 1
+    assert mount.client.numbers[0][2] == {"GUIDE_RATE_WE": 0.5, "GUIDE_RATE_NS": 0.5}
 
 
 def test_guide_disable_does_not_change_in_flight_pulse_speed():
@@ -4203,9 +4388,11 @@ def test_slower_axis_scales_time_for_faster_shared_rate(monkeypatch):
     slow_error = 0.5 * mci.SIDEREAL_ARCSEC_PER_SEC
     assert mount._requested_axis_guide_rate(slow_error / 60) == 0.5
     assert mount._requested_axis_guide_rate(1.0) == 1.0
-    assert mount._axis_pid_pulse_ms("ns", slow_error, 100, 1.0) == 500
+    fast_ms = mount._axis_pid_pulse_ms("ns", slow_error, 100, 1.0)
+    assert 250 < fast_ms < 500  # Smooth approach reduces near-target travel.
     mount._guide_pid["ns"].reset()
-    assert mount._axis_pid_pulse_ms("ns", slow_error, 100, 0.5) == 1000
+    fine_ms = mount._axis_pid_pulse_ms("ns", slow_error, 100, 0.5)
+    assert fine_ms == pytest.approx(fast_ms * 2, abs=1)
 
 
 def test_actual_commands_use_fastest_axis_rate_and_shorter_slow_axis(monkeypatch):
@@ -4227,7 +4414,7 @@ def test_actual_commands_use_fastest_axis_rate_and_shorter_slow_axis(monkeypatch
     we = [
         v for _, prop, v in mount.client.numbers if prop == "TELESCOPE_TIMED_GUIDE_WE"
     ][-1]
-    assert ns["TIMED_GUIDE_N"] == pytest.approx(500, abs=1)
+    assert 250 < ns["TIMED_GUIDE_N"] < 500
     assert we["TIMED_GUIDE_E"] == pytest.approx(1000, abs=1)
 
 

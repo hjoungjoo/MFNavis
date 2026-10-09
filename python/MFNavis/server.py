@@ -1488,7 +1488,7 @@ class Server:
                 "indi_goto_refine_accuracy_arcmin": float(
                     cfg.get_option("indi_goto_refine_accuracy_arcmin", 1.0)
                 ),
-                "indi_goto_method": cfg.get_option("indi_goto_method", "pifinder"),
+                "indi_goto_method": cfg.get_option("indi_goto_method", "mfnavis"),
                 "indi_goto_allow_unaligned_imu": bool(
                     cfg.get_option("indi_goto_allow_unaligned_imu", False)
                 ),
@@ -2216,8 +2216,10 @@ class Server:
         @app.route("/indi/goto_guide", methods=["POST"])
         @auth_required
         def indi_goto_guide_update():
-            goto_method = (request.form.get("indi_goto_method") or "").strip()
-            if goto_method not in ("off", "indi_mount", "pifinder"):
+            goto_method = config.normalize_goto_method(
+                (request.form.get("indi_goto_method") or "").strip()
+            )
+            if goto_method not in ("off", "indi_mount", "mfnavis"):
                 return _render_indi_page(error_message=_("Invalid INDI GoTo method"))
 
             try:

@@ -1176,7 +1176,7 @@ pifinder_menu = {
                                         },
                                         {
                                             "name": _("MFNavis"),
-                                            "value": "pifinder",
+                                            "value": "mfnavis",
                                         },
                                     ],
                                 },

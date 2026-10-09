@@ -1,5 +1,48 @@
 # MF PiFinder INDI GoTo / Guide Settings and Implementation
 
+2026-10-09 GoTo mode rename: `indi_goto_method` now defaults to and saves
+`mfnavis`, displayed as **MFNavis** on web/LCD with the `M` LCD indicator.
+Legacy `pifinder` values resolve to the same mode without a read-time write
+and migrate on the next settings save. Legacy web forms and runtime commands
+remain accepted. Existing `indi_pifinder_goto_*` keys and internal phase
+identifiers remain compatible.
+
+2026-10-09 arrival latency improvements:
+
+- Prefer immutable server callbacks from the current connection, fresh for
+  five seconds. Supersede a Busy `ON_COORD_SET` only with newer successful
+  coordinate telemetry and fresh OnStep completion telemetry. Coordinate and
+  manual-motion Busy states still prevent completion.
+- Shorten stability from 2.5 to 1 second when INDI is idle, two successful
+  coordinate callbacks from this connection stay within 0.02 degrees at least
+  one second apart, and fresh OnStep completion telemetry is present. Telemetry
+  must be at most two seconds old. Cached/missing samples retain 2.5 seconds;
+  Busy or renewed motion resets the check. Target distance no longer blocks a
+  stopped slew; the optical arrival loop evaluates remaining error.
+- Publish `goto_completed_wall` only for a verified stable stop. Acquisition,
+  native fallback and tracking recovery reuse that timestamp instead of another
+  one-second settle or a service-poll observation boundary. Timeout completion
+  carries no verified stop timestamp; legacy status retains the extra settle.
+- Poll active acquisition, pulses and recovery every 0.2 seconds; ordinary waits
+  and status-file writes remain at one second. Pulse alignment prefers the latest
+  accepted, unsmoothed optical coordinates, including observations during pulses.
+  A solve already consumed by the executor can update live progress even if it
+  predates the latest pulse submission. Final Sync and another GoTo still require
+  a post-pulse solve, with no extra settling. A newer failed attempt does not
+  discard a valid success. Old/future observations and mismatched pixels are excluded.
+- OnStep replaces each axis's active timer on fresh solves using the same PID
+  as fine correction. Far away, pulses can reach 2.5 seconds; smoothstep reduces
+  correction travel near the target. P/I/D=1.0/0.05/0.25, a 0.3-second derivative
+  filter, anti-windup and sign-crossing reset bound the response. Rate selection
+  has 10% hysteresis; no unsupported intermediate motor rates are requested.
+  Unverified drivers still wait for the previous timed pulse to finish.
+- `goto_completion` reports property states, callback ages and blocking reasons;
+  `goto_timing` reports stop observation, solve wait and arrival evaluation times.
+  Post-stop solve waits log every 12 seconds after the first 12 seconds while
+  retaining the target. Large solve jumps still require independent confirmation.
+- Automated regression tests cover these changes. Hardware latency savings have
+  not yet been measured.
+
 Baseline: `main` branch, updated against the 2026-07-19 source.
 
 This document describes the INDI mount `GoTo/Guide` settings UI and behavior. It
@@ -102,7 +145,7 @@ python/views/indi_mount.html
   skysafari_indi_sync
   skysafari_planet_track_freq
   GoTo / Guide settings
-  indi_goto_method (off | indi_mount | pifinder)
+  indi_goto_method (off | indi_mount | mfnavis)
   indi_goto_refine_accuracy_arcmin
 
 python/PiFinder/pointing_coordinate_service.py
@@ -236,13 +279,13 @@ source file noted.
 
 ```text
 HEARTBEAT_SECONDS = 1.0
-  Service-loop / command-reactivity cadence. A queued command (e.g. Stop) wakes
-  the wait immediately. The sync + GoTo and pulse-align waits both run on this
-  1 s tick.
+  Ordinary wait cadence. A queued command (e.g. Stop) wakes the wait immediately.
+ACTIVE_GOTO_POLL_SECONDS = 0.2
+  Active GoTo, pulse, solve-fallback and tracking-recovery GoTo poll cadence.
 STATUS_WRITE_SECONDS = 1.0
   Minimum interval between indi_goto_guide_status.json writes (tmpfs). The web UI
-  polls it ~every 1 s, so matched to that (2.0 -> 1.0); the loop is also 1 s, so
-  writing faster is pointless, and tmpfs means no SD wear.
+  polls it ~every 1 s, so matched to that (2.0 -> 1.0). Active polling and status
+  writes have separate cadences; tmpfs means no SD wear.
 CONFIG_RELOAD_SECONDS = 2.0
   Config auto-reload cadence. The service handles no explicit reload command, so
   this is the only path a setting change reaches it. load_config only reads
@@ -259,6 +302,8 @@ PIFINDER_FINAL_GOTO_SETTLE_SECONDS = 1.0
   GOTO_COMPLETE_STABLE_SECONDS window (4 s at measurement, since lowered to 2.5),
   so by then the mount is already settled (see "Field measurement of settle
   time" below).
+  Now named MFNAVIS_FINAL_GOTO_SETTLE_SECONDS. A verified executor stop timestamp
+  skips the extra no-motion window; legacy/unverified status still waits one second.
 PIFINDER_DEFAULT_MAX_GOTOS = 10
   Fallback cap when indi_pifinder_goto_max_gotos is missing from config.
 PIFINDER_MIN_ERROR_IMPROVEMENT_ARCMIN = 1.0
@@ -287,20 +332,21 @@ TRACKING_IMU_QUIET_OVERRIDE_MULTIPLE = 2.0
 ```text
 GOTO_COMPLETE_STABLE_SECONDS = 2.5
   Primary GoTo-completion window. goto_motion ends (flags drop) only once the
-  completion conditions (INDI busy=False, OnStep `:GU#` 'N', within 0.5 deg of
-  target = GOTO_COMPLETE_TARGET_TOLERANCE_DEG, position change <0.02 deg =
+  completion conditions (INDI busy=False, OnStep does not report an active GoTo,
+  position change <0.02 deg =
   GOTO_COMPLETE_POSITION_STABLE_DEG) hold continuously for this long; any failing
   condition resets the timer. Tuned 4.0 -> 2.5 from the field test (conditions
   harden ~1.2 s after the stop, ~1 s margin). Min wait
   GOTO_COMPLETE_MIN_SECONDS=1.0; hard fallback when status is unreadable
   GOTO_COMPLETE_FALLBACK_SECONDS=180.0.
-GUIDE_CORRECTION_INTERVAL_SECONDS = 3.0
-  Closed-loop guide-correction cadence. It only pulses when a fresh plate solve
-  is available (never twice off the same solve), and the floor remains longer
-  than the maximum 2.5 s timed pulse. Lowered 6.0 -> 3.0 so each fresh
-  post-pulse solve can drive the next correction without pulse overlap.
-GUIDE_CORRECTION_PULSE_SECONDS = 0.4
-  Manual-move fallback lease length for drivers without timed guide pulses.
+GOTO_COMPLETE_FAST_STABLE_SECONDS = 1.0
+  Shorter window with two independent coordinate callbacks and fresh OnStep stop
+  telemetry. Samples must be within two seconds and span at least one second.
+  Repeated cached reads do not count as new samples.
+GUIDE_TRACKING_INTERVAL_SECONDS = 1.0
+  Progress/worsening evaluation interval, not a pulse submission interval.
+  The executor checks fresh solves about every 0.1 s; OnStep can replace running
+  pulses. Each solve is consumed once. Drivers without timed guiding pause correction.
 SIDEREAL_ARCSEC_PER_SEC = 15.041
   Sidereal rate (arcsec/s) used in the pulse-duration math.
 DEFAULT_GUIDE_RATE_X = 0.5
@@ -308,13 +354,14 @@ DEFAULT_GUIDE_RATE_X = 0.5
   GUIDE_RATE.
 GUIDE_RATE_FAST_X = 1.0 / GUIDE_RATE_FINE_X = 0.5
   Recovery (fast) / precision (fine) guide rates. 1.0x while the error exceeds
-  accuracy x GUIDE_RATE_FAST_MIN_ERROR_MULTIPLE (=2.0), 0.5x inside the band.
-GUIDE_PULSE_AGGRESSIVENESS = 0.5
-  Conservative factor closing half the error per pulse (actual motion measured at
-  ~1.6x the nominal rate).
+  accuracy x GUIDE_RATE_FAST_MIN_ERROR_MULTIPLE (=2.0), returning to the saved
+  fine rate (default 0.5x) at 1.8x accuracy. Hysteresis avoids selector chatter.
+GUIDE_PULSE_AGGRESSIVENESS = 1.0
+  PID travel-to-time conversion factor. Smoothstep of axis error/(accuracy*2)
+  scales the bounded PID output by 0.5..1.0, including saturated pulses, to soften approach.
 GUIDE_PULSE_MIN_MS = 20 / GUIDE_PULSE_MAX_MS = 2500
   Clamp range for a single pulse duration (ms).
-component_threshold = max(0.5, accuracy_arcmin / 2.0)
+component_threshold = max(0.01, accuracy_arcmin / 2.0 * axis_scale)
   Per-axis (NS/WE) deadband; no pulse is sent on an axis whose error is smaller.
 DEFAULT_GOTO_REFINE_ACCURACY_ARCMIN = 3.0
   Solve-refine target accuracy when a caller passes none (= 0.05 deg).
@@ -328,8 +375,8 @@ The settings persist across service restarts. The values below match the
 defaults in `default_config.json`.
 
 ```text
-indi_goto_method = "indi_mount" | "pifinder"
-  default: "indi_mount"
+indi_goto_method = "off" | "indi_mount" | "mfnavis"
+  default: "mfnavis"
   web UI label: **GoTo Type** (renamed from "GoTo Method" 2026-07-17)
 
 indi_tracking_guide_enabled = false | true
@@ -471,7 +518,7 @@ Screen (current `menu_structure.py` implementation):
 
 ```text
 Goto/Guide
-  GoTo Type           -> indi_goto_method            [INDI Mount | PiFinder]
+  GoTo Type           -> indi_goto_method            [INDI Mount | MFNavis]
   Tracking Guide      -> indi_tracking_guide_enabled           [Off | On]
   GoTo Recovery       -> indi_tracking_guide_goto_recovery_enabled  [Off | On]
   Recovery Range      -> indi_tracking_guide_goto_threshold_deg
@@ -500,7 +547,7 @@ Location: the `GoTo / Guide Settings` card at the bottom of `/indi`
 Fields (current implementation):
 
 ```text
-GoTo Type                          select  -> indi_goto_method [INDI Mount | PiFinder]
+GoTo Type                          select  -> indi_goto_method [INDI Mount | MFNavis]
 Tracking Guide                     checkbox-> indi_tracking_guide_enabled
 Tracking Guide GoTo Recovery       checkbox-> indi_tracking_guide_goto_recovery_enabled
 Manual Re-target                   checkbox-> indi_tracking_guide_manual_retarget_enabled
@@ -543,11 +590,11 @@ Behavior:
 - The mount driver slews to the target coordinate.
 - PiFinder publishes mount readback to the coordinate service during motion.
 - The one-shot solve-based refine option (`indi_goto_refine_once`) was removed
-  on 2026-07-19; use `GoTo Type = PiFinder` when a precise approach is needed.
+  on 2026-07-19; use `GoTo Type = MFNavis` when a precise approach is needed.
 - If Tracking Guide is On, periodic guide correction can run against the target
   after GoTo.
 
-## GoTo Type: PiFinder
+## GoTo Type: MFNavis
 
 In this mode, PiFinder uses `PointingCoordinateService` coordinates and repeats
 mount sync + INDI GoTo to approach the target, then within the last 1 degree
@@ -681,7 +728,7 @@ Results:
 - Readback right after flag-clear is immediately stable (paused-slew vmax ~ sidereal).
 ```
 
-Conclusion (two constants tuned):
+Historical conclusion (two constants tuned; fresh-callback 1 s path added 2026-10-09):
 
 - **`PIFINDER_FINAL_GOTO_SETTLE_SECONDS` 2.0 -> 1.0 s**: the completion idle
   window can be short — there is no bounce and mount-control already guarantees
@@ -1181,7 +1228,7 @@ Goal:
 
 Checklist:
 
-- `indi_goto_method` defaults to `pifinder`.
+- `indi_goto_method` defaults to `mfnavis`.
 - `indi_tracking_guide_enabled` defaults to `true` (changed 2026-07-19).
 - Web settings persist after page reload.
 - LCD settings persist after service restart.
@@ -1313,7 +1360,7 @@ Goal:
 Checklist:
 
 - With `indi_goto_method = indi_mount`, existing SkySafari GoTo behaves the same.
-- With `indi_goto_method = pifinder`, target/current/error/status are stable.
+- With `indi_goto_method = mfnavis`, target/current/error/status are stable.
 - Stop/Abort has priority in every stage.
 - Service restart does not leave stale active state.
 - INDI mount disconnect/reconnect leaves the new service safely waiting.
