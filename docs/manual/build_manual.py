@@ -1,4 +1,4 @@
-"""Build the offline Korean user manual and its original diagram assets.
+"""Build the offline Korean and English manuals and their diagram assets.
 
 Run: python3 docs/manual/build_manual.py
 Dependencies: Pillow, Markdown. PDF printing uses Chromium separately.
@@ -288,8 +288,26 @@ def make_diagrams():
     d.save("mount_keys")
 
 
-def make_html():
-    source = (HERE / "user_manual_ko.md").read_text(encoding="utf-8")
+def make_html(language):
+    labels = {
+        "ko": {
+            "title": "MFNavis LCD 사용자 매뉴얼",
+            "contents": "목차",
+            "print": "인쇄 또는 PDF 저장",
+            "download": "PDF 내려받기",
+            "home": "웹 화면으로 돌아가기",
+            "footer": "MFNavis · 사용자 매뉴얼 초안 · 2026년 10월 9일",
+        },
+        "en": {
+            "title": "MFNavis LCD User Manual",
+            "contents": "Contents",
+            "print": "Print or save as PDF",
+            "download": "Download PDF",
+            "home": "Back to web interface",
+            "footer": "MFNavis · Draft user manual · October 9, 2026",
+        },
+    }[language]
+    source = (HERE / f"user_manual_{language}.md").read_text(encoding="utf-8")
     content = markdown.markdown(source, extensions=["tables", "toc", "fenced_code"])
     import re
 
@@ -305,6 +323,12 @@ def make_html():
         )
 
     content = re.sub(r"<h3\b.*?(?=<h[23]\b|\Z)", keep_topic, content, flags=re.S)
+    # Stable chapter anchors preserve the reading position across languages.
+    content = re.sub(
+        r'<h2 id="[^"]+">(\d+) ',
+        lambda match: f'<h2 id="chapter-{match[1]}">{match[1]} ',
+        content,
+    )
     # All assets are embedded: the HTML can be read offline as a single file.
     for path in ASSETS.glob("*.png"):
         uri = "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()
@@ -321,6 +345,8 @@ main { max-width: 960px; margin: 32px auto; background: white; padding: 60px 68p
 h1 { font-size: 34px; line-height: 1.4; color: #982d3b; margin: 0 0 16px; }
 h2 { font-size: 25px; color: #982d3b; line-height: 1.5; margin: 54px 0 22px; padding-top: 16px; border-top: 2px solid #982d3b; }
 h3 { font-size: 19px; margin: 30px 0 12px; color: #223042; }
+h1,h2,h3 { word-break: keep-all; overflow-wrap: break-word; }
+h2 { scroll-margin-top: 120px; }
 p { margin: 12px 0; }
 strong { font-weight: 700; }
 code { font-family: MFKo,Arial,sans-serif; background: #f2f4f7; color: #344459; padding: 2px 4px; border-radius: 3px; overflow-wrap: anywhere; }
@@ -334,7 +360,10 @@ li { padding-left: 3px; margin: 9px 0; }
 nav { background: #f6f8fa; border-left: 4px solid #982d3b; margin: 26px 0 38px; padding: 20px 24px; }
 nav a { color: #344459; text-decoration: none; display: block; font-size: 14px; line-height: 2.1; }
 nav p { font-size: 17px; margin: 0 0 8px; color: #982d3b; font-weight: 400; }
-.tools { max-width: 960px; margin: 24px auto 0; text-align: right; }
+.tools { position: sticky; top: 0; z-index: 10; background: #e9edf1; padding: 12px; max-width: 960px; margin: 24px auto 0; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+.tools a { color: #982d3b; }
+.languages { display: flex; gap: 16px; }
+.languages a[aria-current="page"] { font-weight: bold; text-decoration: none; }
 button { border: 0; border-radius: 5px; background: #982d3b; color: white; padding: 12px 20px; font-family: inherit; cursor: pointer; }
 .footer { margin-top: 38px; color: #617285; font-size: 12px; }
 @media(max-width:700px) { main { padding: 28px 20px; margin: 0; } h1 { font-size: 27px; } table { font-size: 11px; } th,td { padding: 6px; } .tools { padding: 10px; margin: 0; } }
@@ -344,11 +373,16 @@ button { border: 0; border-radius: 5px; background: #982d3b; color: white; paddi
 }
 @media print {
  body { background: white; font-size: 10pt; line-height: 1.75; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+ html[lang="en"] body { font-size: 9.5pt; line-height: 1.65; }
  main { width: auto; max-width: none; margin: 0; padding: 0; box-shadow: none; }
  h1 { font-size: 27pt; } h2 { font-size: 19pt; break-before: page; margin: 0 0 16pt; padding-top: 10pt; }
  h3 { font-size: 13pt; margin: 18pt 0 8pt; break-after: avoid; }
  p { orphans: 3; widows: 3; }
  table { font-size: 8.5pt; line-height: 1.65; } th,td { padding: 5.5pt; }
+ html[lang="en"] table { line-height: 1.5; }
+ html[lang="en"] p { margin: 10px 0; }
+ html[lang="en"] li { margin: 7px 0; }
+ html[lang="en"] table { margin: 14px 0 20px; }
  thead { display: table-header-group; } tr { break-inside: avoid; }
  img { max-height: 195mm; object-fit: contain; break-inside: avoid; margin: 14pt auto; }
  li { break-inside: avoid; } nav { padding: 14pt 20pt; margin: 18pt 0; }
@@ -358,7 +392,7 @@ button { border: 0; border-radius: 5px; background: #982d3b; color: white; paddi
 """.replace("FONT_DATA", font)
     headings = re.findall(r'<h2 id="([^"]+)">(.*?)</h2>', content)
     nav = (
-        '<nav aria-label="목차"><p>목차</p>'
+        f'<nav aria-label="{labels["contents"]}"><p>{labels["contents"]}</p>'
         + "".join(
             f'<a href="#{identifier}">{label}</a>' for identifier, label in headings
         )
@@ -366,25 +400,48 @@ button { border: 0; border-radius: 5px; background: #982d3b; color: white; paddi
     )
     first = content.index("<h2 ")
     content = content[:first] + nav + content[first:]
+    language_links = "".join(
+        f'<a href="user_manual_{code}.html" lang="{code}" hreflang="{code}"'
+        + (' aria-current="page"' if code == language else "")
+        + f">{name}</a>"
+        for code, name in (("ko", "한국어"), ("en", "English"))
+    )
     output = (
-        '<!doctype html><html lang="ko"><head><meta charset="utf-8">'
+        f'<!doctype html><html lang="{language}"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        "<title>MFNavis LCD 사용자 매뉴얼</title><style>"
-        + css
-        + "</style></head><body>"
-        '<div class="tools"><button onclick="window.print()">인쇄 또는 PDF 저장</button></div>'
+        f'<title>{labels["title"]}</title><style>' + css + "</style></head><body>"
+        '<div class="tools"><div class="languages" role="navigation" aria-label="Language / 언어">'
+        + language_links
+        + f'</div><a href="user_manual_{language}.pdf" download>{labels["download"]}</a>'
+        + f'<button onclick="window.print()">{labels["print"]}</button>'
+        + f'<a class="web-home" href="/" hidden>{labels["home"]}</a></div>'
         "<main>"
         + content
-        + '<p class="footer">MFNavis · 사용자 매뉴얼 초안 · 2026년 10월 9일</p>'
-        "</main></body></html>"
+        + f'<p class="footer">{labels["footer"]}</p>'
+        + """</main><script>
+if (location.protocol === 'http:' || location.protocol === 'https:') {
+  document.querySelector('.web-home').hidden = false;
+}
+document.querySelectorAll('.languages a').forEach(function(link) {
+  link.addEventListener('click', function() {
+    var chapters = Array.from(document.querySelectorAll('h2[id]'));
+    var anchorOffset = parseFloat(getComputedStyle(chapters[0]).scrollMarginTop);
+    var current = chapters.filter(function(chapter) {
+      return chapter.getBoundingClientRect().top <= anchorOffset + 2;
+    }).pop();
+    if (current) link.hash = current.id;
+  });
+});
+</script></body></html>"""
     )
-    (HERE / "user_manual_ko.html").write_text(output, encoding="utf-8")
+    (HERE / f"user_manual_{language}.html").write_text(output, encoding="utf-8")
     print(
-        f"Built {len(headings)} chapters, {len(list(ASSETS.glob('*.png')))} diagrams, offline HTML"
+        f"Built {language}: {len(headings)} chapters, {len(list(ASSETS.glob('*.png')))} diagrams, offline HTML"
     )
 
 
 if __name__ == "__main__":
     ASSETS.mkdir(exist_ok=True)
     make_diagrams()
-    make_html()
+    for language in ("ko", "en"):
+        make_html(language)

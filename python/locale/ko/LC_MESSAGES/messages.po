@@ -4126,6 +4126,9 @@ msgstr "현재 정렬 별"
 msgid "Manual"
 msgstr "수동"
 
+msgid "User manual"
+msgstr "사용자 매뉴얼"
+
 # AI-TRANSLATED (claude): needs human review
 #: views/indi_mount.html:332
 msgid "mag"

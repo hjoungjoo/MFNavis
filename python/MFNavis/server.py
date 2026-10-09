@@ -463,6 +463,21 @@ class Server:
                     )
             abort(404)
 
+        # Offline manuals are public, with only the two published editions exposed.
+        @app.route("/manual/<path:filename>")
+        def product_manual(filename):
+            from flask import abort, send_from_directory
+
+            if filename not in {
+                "user_manual_ko.html",
+                "user_manual_en.html",
+                "user_manual_ko.pdf",
+                "user_manual_en.pdf",
+            }:
+                abort(404)
+            repo = os.path.dirname(os.path.dirname(views2_path))
+            return send_from_directory(os.path.join(repo, "docs", "manual"), filename)
+
         # Static files routes
         @app.route("/images/<path:filename>")
         def send_image(filename):

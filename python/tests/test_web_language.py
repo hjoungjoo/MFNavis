@@ -107,6 +107,70 @@ def test_preferences_do_not_leak_between_browsers(app):
         assert 'value="' + expected + '" selected' in page
 
 
+@pytest.mark.parametrize("language", ["en", "ko"])
+def test_footer_offers_both_manuals_without_spa_navigation(app, language):
+    client = app.test_client()
+    client.set_cookie("mfnavis_web_language", language)
+    page = client.get("/login").text
+    footer = page.split("<footer", 1)[1].split("</footer>", 1)[0]
+    assert ("사용자 매뉴얼" if language == "ko" else "User manual") in footer
+    for edition in ("ko", "en"):
+        link = re.search(
+            rf'<a\b[^>]*href="/manual/user_manual_{edition}.html"[^>]*>', footer
+        )
+        assert link is not None
+        assert "data-pf-no-spa" in link[0]
+        assert f'hreflang="{edition}"' in link[0]
+
+
+@pytest.mark.parametrize("language", ["en", "ko"])
+def test_manual_language_is_explicit_and_public(app, language):
+    client = app.test_client()
+    # The chosen manual must remain independent of the browser UI preference.
+    client.set_cookie("mfnavis_web_language", "en" if language == "ko" else "ko")
+    response = client.get(f"/manual/user_manual_{language}.html")
+    assert response.status_code == 200
+    assert response.mimetype == "text/html"
+    page = response.text
+    assert f'<html lang="{language}">' in page
+    assert ("<p>목차</p>" if language == "ko" else "<p>Contents</p>") in page
+    assert page.count('src="data:image/png;base64,') == 8
+    assert "data:font/woff2;base64," in page
+    for chapter in range(1, 14):
+        assert f'<h2 id="chapter-{chapter}">' in page
+        assert f'href="#chapter-{chapter}"' in page
+    for edition in ("en", "ko"):
+        assert f'href="user_manual_{edition}.html"' in page
+    assert f'href="user_manual_{language}.pdf" download' in page
+    assert 'href="/" hidden' in page
+    assert "<script src=" not in page
+
+
+@pytest.mark.parametrize("language", ["en", "ko"])
+def test_manual_pdf_is_available_without_login(app, language):
+    response = app.test_client().get(f"/manual/user_manual_{language}.pdf")
+    assert response.status_code == 200
+    assert response.mimetype == "application/pdf"
+    assert response.data.startswith(b"%PDF-")
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "user_manual_fr.html",
+        "user_manual_ko.md",
+        "README.md",
+        "build_manual.py",
+        "../manual/README.md",
+        "%2e%2e/%2e%2e/CLAUDE.md",
+        "/etc/passwd",
+    ],
+)
+def test_manual_route_rejects_unpublished_files(app, filename):
+    response = app.test_client().get("/manual/" + filename, follow_redirects=True)
+    assert response.status_code == 404
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("language", ["en", "ko"])
 def test_indi_navigation_and_page_available_with_mount_control_on_or_off(

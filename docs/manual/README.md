@@ -1,4 +1,4 @@
-# MFNavis LCD 사용자 매뉴얼 작업 파일
+# MFNavis LCD 한국어·영문 사용자 매뉴얼 작업 파일
 
 일반 사용자가 관측 준비부터 천체 탐색과 종료까지 따라갈 수 있는 별도 매뉴얼이다.
 빠른 시작, 메뉴 구조 그림, 공통 키 조작, 화면별 절차와 설정표, 문제 해결,
@@ -11,14 +11,33 @@
 | [user_manual_ko.pdf](user_manual_ko.pdf) | A4 인쇄·배포·검토용 |
 | [user_manual_ko.html](user_manual_ko.html) | 목차 링크가 있는 오프라인 열람용. 한글 글꼴과 그림이 파일 안에 포함됨 |
 | [user_manual_ko.md](user_manual_ko.md) | 본문 편집 원본 |
+| [user_manual_en.pdf](user_manual_en.pdf) | 영문 A4 인쇄·배포·검토용 |
+| [user_manual_en.html](user_manual_en.html) | 영문 오프라인 열람용. 한국어판과 같은 메뉴 그림·목차·언어 선택 제공 |
+| [user_manual_en.md](user_manual_en.md) | 영문 본문 편집 원본 |
 | [menu_labels_ko.json](menu_labels_ko.json) | 메뉴·선택값·화면 문구의 정식 영문명과 실제 한국어 UI 표시명 대조표 |
 | [assets](assets) | 메뉴 구조와 조작 그림 8개. PNG와 편집 가능한 SVG를 함께 보관 |
 | [build_manual.py](build_manual.py) | 본문과 그림으로 오프라인 HTML 생성 |
-| [render_manual.py](render_manual.py) | 한글 글꼴 로딩 후 Chromium으로 PDF 인쇄 |
+| [render_manual.py](render_manual.py) | 글꼴 로딩 후 Chromium으로 양쪽 언어 PDF 인쇄 |
 
 그림은 설명용 개념도이며 실제 장비 화면 캡처가 아니다. 배포용 PDF는 사용자
 매뉴얼의 형태로 읽을 수 있도록 기존 Sphinx 문서와 독립적으로 구성했다.
-기존 사용자 문서와 장비 설정, 실행 소스는 수정하지 않았다.
+한국어·영문판은 같은 13개 장과 8개 그림을 사용한다.
+
+## 웹에서 열기
+
+MFNavis 웹 화면 하단의 **사용자 매뉴얼 / User manual**에서 한국어와 English를
+선택한다. 로그인 전에도 열 수 있으며 웹 UI 언어와 매뉴얼 언어는 각각 선택한다.
+
+- `/manual/user_manual_ko.html`: 한국어 매뉴얼.
+- `/manual/user_manual_en.html`: 영문 매뉴얼.
+- 각 HTML의 상단에서 언어 전환, 해당 언어 PDF 내려받기, 인쇄, 웹 화면 복귀 가능.
+- 언어 전환 시 현재 읽는 장으로 이동한다. 목차는 두 언어 모두 `#chapter-1`부터
+  `#chapter-13`까지 같은 앵커를 사용한다.
+- HTML과 PDF는 장비에서 직접 제공한다. 인터넷 연결이나 외부 문서 서비스가
+  필요하지 않으며, HTML에는 그림과 한국어 글꼴이 포함되어 있다.
+
+웹 경로는 배포용 HTML·PDF 네 파일만 제공한다. 편집 원본과 생성 스크립트는
+공개하지 않는다. 저장소를 배포할 때 `docs/manual/`을 함께 포함해야 한다.
 
 본문·표·진입 경로는 `Start(시작)`처럼 **영문명(한국어 UI 표시명)**으로
 표기한다. `User Pref...`, `Chart...`, `Image...`, `Align (Day)`,
@@ -42,7 +61,10 @@ python3 docs/manual/build_manual.py
 .venv-dev-trixie/bin/python docs/manual/render_manual.py
 ```
 
-브라우저로 `user_manual_ko.html`을 열고 **인쇄 또는 PDF 저장** 버튼을 눌러도
+두 명령은 한국어·영문 HTML과 PDF를 모두 생성한다. 각 `.md` 원본을 수정한 뒤
+두 명령을 순서대로 실행한다.
+
+브라우저로 HTML을 열고 **인쇄 또는 PDF 저장 / Print or save as PDF** 버튼을 눌러도
 인쇄할 수 있다. 그림을 바꾸려면 `build_manual.py`를 수정하고 다시 생성한다.
 SVG의 텍스트는 별도 벡터 편집기에서도 편집할 수 있다.
 

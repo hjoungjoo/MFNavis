@@ -20,7 +20,7 @@ from trio_websocket import open_websocket_url
 HERE = Path(__file__).resolve().parent
 
 
-async def render(ws_url):
+async def render(ws_url, language):
     async with open_websocket_url(ws_url, max_message_size=32 * 1024 * 1024) as ws:
         sequence = 0
 
@@ -39,7 +39,9 @@ async def render(ws_url):
                     return response.get("result", {})
 
         await call("Page.enable")
-        await call("Page.navigate", {"url": (HERE / "user_manual_ko.html").as_uri()})
+        await call(
+            "Page.navigate", {"url": (HERE / f"user_manual_{language}.html").as_uri()}
+        )
         await call(
             "Runtime.evaluate",
             {
@@ -56,8 +58,10 @@ async def render(ws_url):
                 "displayHeaderFooter": False,
             },
         )
-        (HERE / "user_manual_ko.pdf").write_bytes(base64.b64decode(result["data"]))
-        print("Printed user_manual_ko.pdf after document.fonts.ready")
+        (HERE / f"user_manual_{language}.pdf").write_bytes(
+            base64.b64decode(result["data"])
+        )
+        print(f"Printed user_manual_{language}.pdf after document.fonts.ready")
 
 
 def main():
@@ -100,7 +104,8 @@ def main():
             with urlopen(f"http://127.0.0.1:{port}/json") as response:
                 pages = json.load(response)
             page = next(p for p in pages if p["type"] == "page")
-            trio.run(render, page["webSocketDebuggerUrl"])
+            for language in ("ko", "en"):
+                trio.run(render, page["webSocketDebuggerUrl"], language)
         finally:
             browser.terminate()
             browser.wait(timeout=10)
