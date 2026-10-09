@@ -87,6 +87,7 @@ DM_POSS = 2  # Display mode for POSS
 DM_SDSS = 3  # Display mode for SDSS
 DM_CONTRAST = 4  # Display mode for Contrast Reserve explanation
 DM_CAMERA = 5  # Live camera with compact push guidance and alignment ring
+PUSH_MARGIN = 3  # Leave room for the two-tone tracking frame.
 
 
 class UIObjectDetails(UIModule):
@@ -582,16 +583,67 @@ class UIObjectDetails(UIModule):
         # Retain the numerical fields on narrow displays / long translations.
         # Only the movement label is shortened when the small font won't fit.
         font = self.fonts.small.font
-        width = self.display_class.resX - 2
+        width = self.display_class.resX - 2 * PUSH_MARGIN
         while movement and self.draw.textlength(movement + suffix, font=font) > width:
             movement = movement[:-1]
         text = movement + suffix
         self.draw.text(
-            (1, self.display_class.resY - self.fonts.small.height - 1),
+            (
+                PUSH_MARGIN,
+                self.display_class.resY - self.fonts.small.height - PUSH_MARGIN,
+            ),
             text,
             font=font,
             fill=self.colors.get(192),
             anchor="lt",
+        )
+
+    def _render_push_tracking_border(self):
+        """Mark confirmed mount tracking after arrival at the displayed target."""
+        mount = getattr(self, "_push_mount_status", {})
+        guide = getattr(self, "_push_guide_status", {})
+        state = str(mount.get("state", ""))
+        if (
+            guide.get("phase") not in {"complete", "tracking", "native_tracking"}
+            or mount.get("tracking_enabled") is not True
+            or mount.get("mount_motion_active")
+            or mount.get("goto_motion_active")
+            or mount.get("manual_motion_direction")
+            or state in INDI_PROBLEM_STATES | {"moving", "slewing"}
+            or state.endswith("_failed")
+            or guide.get("service_state") == "error"
+            or guide.get("tracking_guide_state") == "failed"
+        ):
+            return
+        for key in ("park_state", "driver_mount_status"):
+            value = str(mount.get(key, "")).lower()
+            if "park" in value and "unpark" not in value:
+                return
+        target_prefix = (
+            "active_target"
+            if guide.get("phase") == "native_tracking"
+            else "tracking_target"
+        )
+        try:
+            ra = float(guide[f"{target_prefix}_ra"])
+            dec = float(guide[f"{target_prefix}_dec"])
+            if not (
+                math.isfinite(ra)
+                and math.isfinite(dec)
+                and abs((ra - self.object.ra + 180) % 360 - 180) <= 1e-6
+                and abs(dec - self.object.dec) <= 1e-6
+            ):
+                return
+        except (KeyError, TypeError, ValueError):
+            return
+
+        # The dark outer edge survives bright camera backgrounds; the bright
+        # inner edge survives dark ones. Use the display palette for night mode.
+        right, bottom = self.display_class.resX - 1, self.display_class.resY - 1
+        top = self.display_class.titlebar_height + 1
+        self.draw.rectangle((0, top, right, bottom), outline=self.colors.get(0))
+        self.draw.rectangle(
+            (1, top + 1, right - 1, bottom - 1), outline=self.colors.get(255)
         )
 
     def _check_catalog_initialized(self):
@@ -609,9 +661,9 @@ class UIObjectDetails(UIModule):
         self._refresh_push_status()
         font = self.fonts.base if compact else self.fonts.large
         if compact:
-            bottom = self.display_class.resY - self.fonts.small.height - 4
-            anchor_1 = (2, bottom - 2 * (font.height + 2))
-            anchor_2 = (2, bottom - (font.height + 2))
+            bottom = self.display_class.resY - self.fonts.small.height - 2 * PUSH_MARGIN
+            anchor_1 = (PUSH_MARGIN, bottom - 2 * (font.height + 2))
+            anchor_2 = (PUSH_MARGIN, bottom - (font.height + 2))
         else:
             anchor_1 = self._pointing_msg_anchor_1
             anchor_2 = self._pointing_msg_anchor_2
@@ -727,7 +779,8 @@ class UIObjectDetails(UIModule):
             point_alt,
             indicator_color,
             self.mount_type,
-            bottom_padding=self.fonts.small.height + 2,
+            bottom_padding=self.fonts.small.height + 2 * PUSH_MARGIN,
+            horizontal_padding=PUSH_MARGIN,
         )
 
     def _render_camera_push(self):
@@ -773,24 +826,33 @@ class UIObjectDetails(UIModule):
         self.screen.paste(frame, (left, image_top))
 
         # Dim the text bands enough for readability while retaining the image.
-        header_bottom = top + self.fonts.small.height + 4
+        header_bottom = top + self.fonts.small.height + 2 * PUSH_MARGIN
         footer_top = (
-            height - self.fonts.small.height - 4 - 2 * (self.fonts.base.height + 2)
+            height
+            - self.fonts.small.height
+            - 2 * PUSH_MARGIN
+            - 2 * (self.fonts.base.height + 2)
         )
         for y0, y1 in ((top, header_bottom), (footer_top, height - 1)):
             self.draw.rectangle((0, y0, width - 1, y1), fill=(0, 0, 0, 144))
 
         def fitted_text(text, y, font):
-            while text and self.draw.textlength(text, font=font) > width - 4:
+            while (
+                text and self.draw.textlength(text, font=font) > width - 2 * PUSH_MARGIN
+            ):
                 text = text[:-1]
             self.draw.text(
-                (2, y), text, font=font, fill=self.colors.get(255), anchor="lt"
+                (PUSH_MARGIN, y),
+                text,
+                font=font,
+                fill=self.colors.get(255),
+                anchor="lt",
             )
 
         fitted_text(
             f"{zoom_factor}x  "
             f"{_(OBJ_TYPES.get(self.object.obj_type, 'Unknown'))}  {self.object.const}",
-            top + 2,
+            top + PUSH_MARGIN,
             self.fonts.small.font,
         )
         self._render_pointing_instructions(compact=True)
@@ -819,6 +881,8 @@ class UIObjectDetails(UIModule):
             )
             # Direction uses the original target pixel and full camera FOV.
             self._draw_camera_pointer((cx, cy), side, target, fov)
+
+        self._render_push_tracking_border()
 
     def _draw_camera_pointer(self, center, side, target_pixel, fov):
         solution = self.shared_state.solution()
@@ -867,16 +931,18 @@ class UIObjectDetails(UIModule):
             desig_y = self.display_class.titlebar_height + 3
             typeconst_y = desig_y + self.fonts.large.height
             desig = self.texts["designator"]
-            desig.draw((0, desig_y))
+            left = PUSH_MARGIN if self.object_display_mode == DM_LOCATE else 0
+            desig.draw((left, desig_y))
 
             # Object TYPE and Constellation i.e. 'Galaxy    PER'
             typeconst = self.texts.get("type-const")
             if typeconst:
-                typeconst.draw((0, typeconst_y))
+                typeconst.draw((left, typeconst_y))
 
         if self.object_display_mode == DM_LOCATE:
             self._render_pointing_instructions()
             self._render_push_status()
+            self._render_push_tracking_border()
 
         elif self.object_display_mode == DM_DESC:
             # Object Magnitude and size i.e. 'Mag:4.0   Sz:7"'

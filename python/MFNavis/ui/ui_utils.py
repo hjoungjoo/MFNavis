@@ -427,7 +427,13 @@ def pointing_arrows(ui, point_az, point_alt, mount_type=None):
 
 
 def draw_pointing_instructions(
-    ui, point_az, point_alt, brightness=255, mount_type=None, bottom_padding=0
+    ui,
+    point_az,
+    point_alt,
+    brightness=255,
+    mount_type=None,
+    bottom_padding=0,
+    horizontal_padding=0,
 ):
     """
     Draw the standard push-to display: the az and alt movements as two
@@ -439,8 +445,14 @@ def draw_pointing_instructions(
     )
 
     bottom = ui.display_class.resY
-    az_anchor = (0, bottom - (ui.fonts.huge.height * 2.2) - bottom_padding / 2)
-    alt_anchor = (0, bottom - (ui.fonts.huge.height * 1.2) - bottom_padding)
+    az_anchor = (
+        horizontal_padding,
+        bottom - (ui.fonts.huge.height * 2.2) - bottom_padding / 2,
+    )
+    alt_anchor = (
+        horizontal_padding,
+        bottom - (ui.fonts.huge.height * 1.2) - bottom_padding,
+    )
     for anchor, arrow, value in (
         (az_anchor, az_arrow, point_az),
         (alt_anchor, alt_arrow, point_alt),
