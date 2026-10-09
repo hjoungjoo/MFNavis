@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1380" height="648" viewBox="0 0 1380 648" role="img">
+<title>MFNavis menu structure</title>
+<rect width="1380" height="648" fill="white"/>
+<text x="32" y="48" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="28">MFNavis / Menu overview</text>
+<rect x="32" y="296.0" width="230" height="56" rx="12" fill="#a53240" stroke="#a53240" stroke-width="2"/>
+<text x="49" y="331.0" fill="#ffffff" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">MFNavis</text>
+<polyline points="262,323.0 295,323.0" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<polyline points="295,108 295,538" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<polyline points="295,108 330,108" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="82" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="118" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Start</text>
+<polyline points="615,108 647,108" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="106" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Focus / Align / Align (Day) / GPS Status</text>
+<text x="663" y="135" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">INDI *</text>
+<polyline points="295,194 330,194" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="168" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="204" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Chart</text>
+<polyline points="615,194 647,194" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="192" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Live sky chart / Zoom / Center object</text>
+<polyline points="295,280 330,280" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="254" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="290" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Objects</text>
+<polyline points="615,280 647,280" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="278" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">All Filtered / By Catalog / Recent / Obs Lists</text>
+<text x="663" y="307" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Custom / Name Search / Set Filters</text>
+<polyline points="295,366 330,366" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="340" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="376" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">SQM</text>
+<polyline points="615,366 647,366" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="364" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Sky brightness</text>
+<text x="663" y="393" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Quick Menu: CALIB / SWEEP</text>
+<polyline points="295,452 330,452" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="426" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="462" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Settings</text>
+<polyline points="615,452 647,452" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="450" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">User / Chart / Image / Camera / WiFi / Mount</text>
+<text x="663" y="479" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">INDI Setting * / Advanced / IMU Settings</text>
+<polyline points="295,538 330,538" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="512" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="548" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Tools</text>
+<polyline points="615,538 647,538" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="536" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Status / Equipment / Place &amp; Time / Console</text>
+<text x="663" y="565" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Software Upd / Test / Experimental / Power</text>
+<text x="32" y="627" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="19">* Visible only when Mount Control is On. Child lists are abbreviated.</text>
+</svg>

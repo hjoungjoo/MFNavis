@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1380" height="562" viewBox="0 0 1380 562" role="img">
+<title>Start menu structure</title>
+<rect width="1380" height="562" fill="white"/>
+<text x="32" y="48" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="28">MFNavis / Start</text>
+<rect x="32" y="253.0" width="230" height="56" rx="12" fill="#a53240" stroke="#a53240" stroke-width="2"/>
+<text x="49" y="288.0" fill="#ffffff" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">Start</text>
+<polyline points="262,280.0 295,280.0" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<polyline points="295,108 295,452" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<polyline points="295,108 330,108" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="82" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="118" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Focus</text>
+<polyline points="615,108 647,108" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="106" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Camera focus / HFD / Exposure</text>
+<polyline points="295,194 330,194" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="168" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="204" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Align</text>
+<polyline points="615,194 647,194" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="192" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Select a star / Match eyepiece center</text>
+<polyline points="295,280 330,280" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="254" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="290" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Align (Day)</text>
+<polyline points="615,280 647,280" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="278" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Select a landmark / Save target point</text>
+<polyline points="295,366 330,366" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="340" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="376" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">GPS Status</text>
+<polyline points="615,366 647,366" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="364" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Location fix / Satellites</text>
+<polyline points="295,452 330,452" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="426" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="462" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">INDI *</text>
+<polyline points="615,452 647,452" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="450" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">STATUS / INIT / Guide</text>
+<text x="663" y="479" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">INIT: Connect / Set Location / Home / Park ...</text>
+<text x="32" y="541" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="19">* Visible only when Mount Control is On.</text>
+</svg>

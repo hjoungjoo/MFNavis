@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1380" height="782" viewBox="0 0 1380 782" role="img">
+<title>Tools menu structure</title>
+<rect width="1380" height="782" fill="white"/>
+<text x="32" y="48" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="28">MFNavis / Tools</text>
+<rect x="32" y="382.0" width="230" height="56" rx="12" fill="#a53240" stroke="#a53240" stroke-width="2"/>
+<text x="49" y="417.0" fill="#ffffff" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">Tools</text>
+<polyline points="262,409.0 295,409.0" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<polyline points="295,108 295,710" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<polyline points="295,108 330,108" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="82" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="118" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Status</text>
+<polyline points="615,108 647,108" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="106" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Solve / Network / Device status</text>
+<polyline points="295,194 330,194" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="168" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="204" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Equipment</text>
+<polyline points="615,194 647,194" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="192" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Telescope / Eyepiece</text>
+<polyline points="295,280 330,280" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="254" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="290" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Place &amp; Time</text>
+<polyline points="615,280 647,280" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="278" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">GPS Status / Time Sync / Set Location</text>
+<text x="663" y="307" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Set Time/Date / Reset Location / Reset Time/Date</text>
+<polyline points="295,366 330,366" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="340" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="376" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Console</text>
+<polyline points="615,366 647,366" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="364" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">System messages</text>
+<polyline points="295,452 330,452" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="426" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="462" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Software Upd</text>
+<polyline points="615,452 647,452" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="450" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Available update / Cancel</text>
+<polyline points="295,538 330,538" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="512" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="548" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Test Mode</text>
+<polyline points="615,538 647,538" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="536" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Indoor demonstration using a saved image</text>
+<polyline points="295,624 330,624" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="598" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="634" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Experimental</text>
+<polyline points="615,624 647,624" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="622" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Polar Align / Mount Control</text>
+<text x="663" y="651" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Dev Tools -&gt; Telemetry -&gt; Record / Images / Load</text>
+<polyline points="295,710 330,710" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="684" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="720" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Power</text>
+<polyline points="615,710 647,710" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="708" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Shutdown / Restart -&gt; Confirm / Cancel</text>
+</svg>

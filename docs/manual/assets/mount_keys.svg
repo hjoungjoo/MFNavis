@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1380" height="390" viewBox="0 0 1380 390" role="img">
+<title>INDI Guide numeric direction keys</title>
+<rect width="1380" height="390" fill="white"/>
+<text x="28" y="46" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="28">MFNavis / INDI Guide</text>
+<rect x="28" y="86" width="94" height="70" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="38" y="130" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">7</text>
+<rect x="133" y="86" width="94" height="70" rx="12" fill="#f9e9eb" stroke="#ced8e1" stroke-width="2"/>
+<text x="143" y="130" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">8 N</text>
+<rect x="238" y="86" width="94" height="70" rx="12" fill="#f9e9eb" stroke="#ced8e1" stroke-width="2"/>
+<text x="248" y="130" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">9 +</text>
+<rect x="28" y="173" width="94" height="70" rx="12" fill="#f9e9eb" stroke="#ced8e1" stroke-width="2"/>
+<text x="38" y="217" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">4 W</text>
+<rect x="133" y="173" width="94" height="70" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="143" y="217" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">5</text>
+<rect x="238" y="173" width="94" height="70" rx="12" fill="#f9e9eb" stroke="#ced8e1" stroke-width="2"/>
+<text x="248" y="217" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">6 E</text>
+<rect x="28" y="260" width="94" height="70" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="38" y="304" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">1</text>
+<rect x="133" y="260" width="94" height="70" rx="12" fill="#f9e9eb" stroke="#ced8e1" stroke-width="2"/>
+<text x="143" y="304" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">2 S</text>
+<rect x="238" y="260" width="94" height="70" rx="12" fill="#f9e9eb" stroke="#ced8e1" stroke-width="2"/>
+<text x="248" y="304" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">3 -</text>
+<text x="390" y="111" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="24">8 / 2 / 4 / 6: hold to move N / S / W / E</text>
+<text x="390" y="160" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="24">Release direction key: stop manual motion</text>
+<text x="390" y="209" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="24">9 / 3: speed up / down</text>
+<text x="390" y="258" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="24">SQUARE: Sync   0: Guide Correction toggle</text>
+<text x="390" y="307" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="24">Object details: 5 = GoTo, 0 = Stop + tracking off</text>
+</svg>

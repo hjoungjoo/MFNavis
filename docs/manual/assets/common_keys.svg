@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1380" height="365" viewBox="0 0 1380 365" role="img">
+<title>Common keypad navigation</title>
+<rect width="1380" height="365" fill="white"/>
+<text x="28" y="46" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="28">MFNavis / Common controls (schematic)</text>
+<rect x="125" y="82" width="94" height="65" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="133" y="121" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="20">UP</text>
+<rect x="25" y="167" width="94" height="65" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="33" y="206" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="20">LEFT</text>
+<rect x="125" y="252" width="94" height="65" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="133" y="291" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="20">DOWN</text>
+<rect x="225" y="167" width="94" height="65" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="233" y="206" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="20">RIGHT</text>
+<rect x="125" y="167" width="94" height="65" rx="12" fill="#a53240" stroke="#ced8e1" stroke-width="2"/>
+<text x="133" y="206" fill="#ffffff" font-family="DejaVu Sans,Arial,sans-serif" font-size="20">SQUARE</text>
+<text x="400" y="115" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">UP / DOWN: choose an item</text>
+<text x="400" y="162" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">RIGHT: open / select   LEFT: go back</text>
+<text x="400" y="209" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">Hold LEFT: return to MFNavis menu</text>
+<text x="400" y="256" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">Hold SQUARE: Quick Menu</text>
+<text x="400" y="303" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">SQUARE + PLUS / MINUS: LCD brightness</text>
+</svg>

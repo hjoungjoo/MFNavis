@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1380" height="290" viewBox="0 0 1380 290" role="img">
+<title>Observation quick start</title>
+<rect width="1380" height="290" fill="white"/>
+<text x="28" y="46" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="28">MFNavis / Observing sequence</text>
+<rect x="25" y="85" width="202" height="142" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="42" y="124" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="24">01</text>
+<text x="42" y="178" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">FOCUS</text>
+<polyline points="227,157 248,157" fill="none" stroke="#a53240" stroke-width="3"/>
+<rect x="250" y="85" width="202" height="142" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="267" y="124" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="24">02</text>
+<text x="267" y="178" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">GPS/TIME</text>
+<polyline points="452,157 473,157" fill="none" stroke="#a53240" stroke-width="3"/>
+<rect x="475" y="85" width="202" height="142" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="492" y="124" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="24">03</text>
+<text x="492" y="178" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">ALIGN</text>
+<polyline points="677,157 698,157" fill="none" stroke="#a53240" stroke-width="3"/>
+<rect x="700" y="85" width="202" height="142" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="717" y="124" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="24">04</text>
+<text x="717" y="178" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">OBJECT</text>
+<polyline points="902,157 923,157" fill="none" stroke="#a53240" stroke-width="3"/>
+<rect x="925" y="85" width="202" height="142" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="942" y="124" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="24">05</text>
+<text x="942" y="178" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">LOG</text>
+<polyline points="1127,157 1148,157" fill="none" stroke="#a53240" stroke-width="3"/>
+<rect x="1150" y="85" width="202" height="142" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="1167" y="124" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="24">06</text>
+<text x="1167" y="178" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">SHUTDOWN</text>
+</svg>

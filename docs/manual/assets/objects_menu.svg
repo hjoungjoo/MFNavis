@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1380" height="734" viewBox="0 0 1380 734" role="img">
+<title>Objects menu structure</title>
+<rect width="1380" height="734" fill="white"/>
+<text x="32" y="48" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="28">MFNavis / Objects</text>
+<rect x="32" y="339.0" width="230" height="56" rx="12" fill="#a53240" stroke="#a53240" stroke-width="2"/>
+<text x="49" y="374.0" fill="#ffffff" font-family="DejaVu Sans,Arial,sans-serif" font-size="25">Objects</text>
+<polyline points="262,366.0 295,366.0" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<polyline points="295,108 295,624" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<polyline points="295,108 330,108" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="82" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="118" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">All Filtered</text>
+<polyline points="615,108 647,108" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="106" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Filtered objects from selected catalogs</text>
+<polyline points="295,194 330,194" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="168" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="204" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">By Catalog</text>
+<polyline points="615,194 647,194" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="192" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Planets / Comets / NGC / Messier</text>
+<text x="663" y="221" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">DSO... / Stars...</text>
+<polyline points="295,280 330,280" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="254" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="290" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Recent</text>
+<polyline points="615,280 647,280" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="278" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Objects viewed during this session</text>
+<polyline points="295,366 330,366" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="340" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="376" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Obs Lists</text>
+<polyline points="615,366 647,366" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="364" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Saved observing lists</text>
+<polyline points="295,452 330,452" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="426" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="462" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Custom</text>
+<polyline points="615,452 647,452" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="450" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Enter RA / Dec</text>
+<polyline points="295,538 330,538" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="512" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="548" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Name Search</text>
+<polyline points="615,538 647,538" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="536" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Enter name / Open results</text>
+<polyline points="295,624 330,624" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<rect x="330" y="598" width="285" height="56" rx="12" fill="#f6f8fa" stroke="#ced8e1" stroke-width="2"/>
+<text x="347" y="634" fill="#243345" font-family="DejaVu Sans,Arial,sans-serif" font-size="23">Set Filters</text>
+<polyline points="615,624 647,624" fill="none" stroke="#ced8e1" stroke-width="3"/>
+<text x="663" y="622" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Reset All / Catalogs / Type</text>
+<text x="663" y="651" fill="#596a7b" font-family="DejaVu Sans,Arial,sans-serif" font-size="21">Altitude / Magnitude / Observed</text>
+<text x="32" y="713" fill="#a53240" font-family="DejaVu Sans,Arial,sans-serif" font-size="19">Object list -&gt; RIGHT -&gt; Object details -&gt; RIGHT -&gt; LOG</text>
+</svg>
