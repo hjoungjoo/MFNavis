@@ -2922,6 +2922,97 @@ def _slew_rate_ack(mount, rate, state="ok"):
     )
 
 
+def test_solver_outage_executes_residual_once_and_resumes_on_new_solve(monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(mci.time, "time", lambda: clock[0])
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    mount = DummyConnectedMount()
+    monkeypatch.setattr(mount, "_guide_pulse_supported", lambda: True)
+    monkeypatch.setattr(mount, "_select_guide_rate_for_error", lambda error: True)
+    monkeypatch.setattr(mount, "_guide_pulse_inversions", lambda: (False, False))
+    monkeypatch.setattr(mount, "_current_plate_solve", lambda: None)
+    mount._confirmed_guide_rates = (1.0, 1.0)
+    mount.toggle_guide_correction(True, 10, 20, 0.5, continue_on_solve_loss=True)
+    mount._guide_holdover.observe(1000, (100, 0))
+    for second in range(0, 100):
+        clock[0] = 1000 + second
+        mount._check_guide_correction()
+    durations = [
+        values.get("TIMED_GUIDE_N", 0) for _, _, values in mount.client.numbers
+    ]
+    assert sum(durations) * mci.SIDEREAL_ARCSEC_PER_SEC / 1000 == pytest.approx(
+        100, abs=1
+    )
+    count = len(mount.client.numbers)
+    clock[0] += 86400
+    mount._check_guide_correction()
+    assert len(mount.client.numbers) == count
+    monkeypatch.setattr(mount, "_current_plate_solve", lambda: (10, 20, clock[0]))
+    monkeypatch.setattr(mount, "_guide_axis_error", lambda *args: 0)
+    mount._check_guide_correction()
+    assert mount._guide_correction_mode == "complete"
+    assert mount._guide_holdover.residual(clock[0]) == pytest.approx((0, 0))
+    mount.toggle_guide_correction(False)
+    assert mount._guide_holdover.residual(clock[0]) is None
+
+
+def test_limit_stops_axes_and_tracking_and_latches_all_future_motion(monkeypatch):
+    from PiFinder.tracking_commands import PriorityMountQueue, stale_command
+
+    mount = DummyConnectedMount()
+    mount.mount_queue = PriorityMountQueue()
+    epoch = mount.mount_queue.control_epoch
+    mount._guide_correction_enabled = True
+    mount._guide_holdover.observe(time.monotonic(), (100, 100))
+    properties = []
+    monkeypatch.setattr(
+        mount,
+        "_apply_indi_properties",
+        lambda props, *args: properties.extend(props) or True,
+    )
+    monkeypatch.setattr(mount, "_confirm_tracking_state", lambda enabled: True)
+    reason = ["upper elevation limit"]
+    monkeypatch.setattr(mount, "_motion_limit_reason", lambda *args: reason[0])
+    mount._check_motion_limits()
+    assert any("ABORT=On" in prop for prop in properties)
+    assert any("TRACK_OFF=On" in prop for prop in properties)
+    assert mount._motion_limit["latched"]
+    assert not mount._guide_correction_enabled
+    assert mount._guide_holdover.sample is None
+    assert stale_command(
+        {"type": "goto_target", "_control_epoch": epoch}, mount.mount_queue
+    )
+    reason[0] = ""
+    assert not mount._send_guide_pulse("north", 100)
+    assert not mount.manual_move("north")
+    assert not mount.goto_target(10, 20)
+    assert not mount.set_tracking(True)
+    mount.handle_command(
+        {"type": "set_tracking", "enabled": True, "origin": "goto_guide_service"}
+    )
+    assert mount._motion_limit["latched"]
+    mount.handle_command({"type": "set_tracking", "enabled": True})
+    assert not mount._motion_limit
+
+
+def test_tracking_can_seed_the_already_consumed_arrival_frame(monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(mci.time, "time", lambda: clock[0])
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    mount = DummyConnectedMount()
+    mount.toggle_guide_correction(True, 10, 20, 0.5, continue_on_solve_loss=True)
+    mount._guide_correction_last_solve_time = 999.9
+    mount._guide_observation_after_wall = 999
+    monkeypatch.setattr(mount, "_current_plate_solve", lambda: (10, 19.999, 999.9))
+    monkeypatch.setattr(mount, "_guide_pulse_supported", lambda: False)
+    mount._check_guide_correction()
+    assert mount._guide_holdover.residual(1000) == pytest.approx((3.6, 0))
+    mount._guide_holdover.reset()
+    mount._guide_observation_after_wall = 1000.1
+    mount._check_guide_correction()
+    assert mount._guide_holdover.sample is None
+
+
 def test_tracking_guide_does_not_enable_manual_approach(monkeypatch):
     mount, _clock, _observation, _errors, motions, pulses = _pulse_correction_mount(
         monkeypatch

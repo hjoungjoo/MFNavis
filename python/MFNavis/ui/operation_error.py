@@ -23,7 +23,13 @@ class UIOperationError(UIModule):
         self.errors = (self.errors + [entry])[-10:]
         self.offset = 0
         text = "\n\n".join(
-            f"{item['source']}\n{item['code'].replace('_', ' ')}\n{item['message']}"
+            f"{item['source']}\n"
+            + (
+                _("Mount movement limit exceeded")
+                if item["code"] == "limit_exceeded"
+                else item["code"].replace("_", " ")
+            )
+            + f"\n{item['message']}"
             for item in reversed(self.errors)
         )
         self.lines = [

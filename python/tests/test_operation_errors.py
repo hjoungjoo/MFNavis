@@ -16,7 +16,11 @@ from PiFinder.keyboard_mapping import (
     KeyboardDispatcher,
     make_event,
 )
-from PiFinder.operation_errors import ErrorNotifier, mount_failure
+from PiFinder.operation_errors import (
+    ErrorNotifier,
+    mount_failure,
+    requires_error_dialog,
+)
 from PiFinder.state import UIState
 from PiFinder.ui.menu_manager import MenuManager
 
@@ -37,6 +41,8 @@ def test_failure_notifier_latches_until_new_operation():
     assert mount_failure("usb_absent")
     assert not mount_failure("connected")
     assert not mount_failure("moving")
+    assert mount_failure("limit_exceeded")
+    assert requires_error_dialog({"code": "limit_exceeded"})
 
 
 def _manager(display):

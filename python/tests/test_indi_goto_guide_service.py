@@ -432,6 +432,7 @@ def test_recovery_waits_for_post_arrival_solve_before_rearming(monkeypatch, stal
             "target_dec": 20.0,
             "accuracy_arcmin": 3.0,
             "predictive_tracking": False,
+            "continue_on_solve_loss": False,
             "observation_after_wall": 1001.1,
         }
     ]
@@ -680,19 +681,28 @@ def test_short_imu_flag_episode_extends_settle_normally(monkeypatch):
     assert service.tracking_guide_state == "recovering_goto"
 
 
-def test_target_below_altitude_limit_abandons_without_slew(monkeypatch):
+def test_live_mount_limit_disarms_tracking_without_slew(monkeypatch):
     clock = [1000.0]
     service = _make_service(monkeypatch, clock)
-    monkeypatch.setattr(service, "_tracking_target_altitude_deg", lambda: 5.0)
+    monkeypatch.setattr(
+        service,
+        "_mount_status_summary",
+        lambda: {
+            "motion_limit": {
+                "latched": True,
+                "message": "Mount movement limit exceeded",
+            }
+        },
+    )
 
     service._tick_tracking_guide()
 
-    assert service.tracking_guide_state == "failed"
+    assert service.tracking_guide_state == "limit_exceeded"
     assert service.tracking_target_ra is None
     assert service.tracking_target_dec is None
     commands = [c["type"] for c in service.mountcontrol_queue.commands]
     assert "goto_target" not in commands
-    assert "stop_movement" in commands
+    assert not service.solve_fallback_armed
 
 
 def test_target_above_altitude_limit_recovers_normally(monkeypatch):

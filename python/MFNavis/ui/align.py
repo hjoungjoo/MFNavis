@@ -52,6 +52,11 @@ def align_on_radec(
     """
 
     from PiFinder.tracking_alignment import INTEGRATION_OPTION, alignment_command
+    from PiFinder.goto_arrival import queue_unsolved_arrival
+
+    if queue_unsolved_arrival(command_queues.get("goto_guide"), shared_state, ra, dec):
+        command_queues["console"].put(_("Arrival confirmed; waiting for plate solve"))
+        return True
 
     if getattr(config_object, "get_option", lambda key, default: default)(
         INTEGRATION_OPTION, False

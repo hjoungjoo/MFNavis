@@ -647,6 +647,7 @@ def test_internal_alignment_sync_retains_epoch_and_acknowledges_real_mount_resul
         mount_queue=commands,
         _smooth_runtime=None,
         shared_state=SimpleNamespace(tracking_alignment=ledger.update),
+        _check_motion_limits=Mock(),
         sync_mount=Mock(return_value=True),
     )
     followup = dict(
@@ -694,6 +695,7 @@ def test_aborted_goto_aligns_only_after_physical_idle_without_resetting_correcti
         _cancel_sync_goto=Mock(),
         _guide_active_pulses={},
         _guide_pid={},
+        _guide_holdover=SimpleNamespace(reset=Mock()),
         _apply_indi_properties=Mock(return_value=True),
         _indi_property_on=lambda prop: prop,
         _clear_manual_motion_deadline=Mock(),
@@ -775,6 +777,7 @@ def test_align_hold_cancels_pending_recovery_and_drops_old_automatic_packets():
         _smooth_runtime=None,
         _cancel_sync_goto=Mock(),
         _pending_goto_refine="old",
+        _check_motion_limits=Mock(),
     )
     assert MountControlIndi.handle_command(mount, dict(type="tracking_alignment_hold"))
     assert (

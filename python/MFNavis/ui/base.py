@@ -38,6 +38,7 @@ CLOCK_TRUST_CHECK_SECONDS = 5.0
 INDI_STATUS_FILE = utils.runtime_dir / "mount_control_status.json"
 INDI_OK_STATES = {"connected", "moving", "slewing", "stopped"}
 INDI_PROBLEM_STATES = {
+    "limit_exceeded",
     "backlash_failed",
     "device_connect_failed",
     "disconnected",
@@ -817,7 +818,7 @@ class UIModule:
     # mount for as long as they are held (press starts motion, release stops it),
     # a few discrete commands sit on 0/1/5/7 and the slew rate is on 9 (faster)
     # / 3 (slower). Continuous jog is also on the keyboard letters. See
-    # docs/mf_dev/mf_input_keymap_*.md.
+    # docs/mf_dev/interfaces_ko.md.
     _MOUNT_JOG_DIRECTIONS = {2: "south", 4: "west", 6: "east", 8: "north"}
     _GOTO_METHOD_CYCLE = ("off", "indi_mount", "mfnavis")
     _GOTO_METHOD_LABELS = {

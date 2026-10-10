@@ -368,7 +368,7 @@ def test_imu_updates_between_successful_frames_are_not_outages(rig):
     assert not commands(service)
 
 
-def test_failure_during_fine_alignment_finishes_with_native_goto(rig):
+def test_failure_during_fine_alignment_waits_indefinitely_with_native_tracking(rig):
     service, clock, _, pointing = rig
     start(rig, optical=True)
     service.sync_goto_request_id = None
@@ -384,8 +384,12 @@ def test_failure_during_fine_alignment_finishes_with_native_goto(rig):
     clock[0] += mod.MFNAVIS_SOLVE_OUTAGE_GRACE_SECONDS + 0.1
     service._tick_state_machine()
     cmd = commands(service)
-    assert cmd[-1]["type"] == "sync_and_goto"
-    assert service.phase == "native_goto"
+    assert not cmd
+    assert service.phase == "native_pending"
+    clock[0] += 86400
+    service._tick_state_machine()
+    assert not commands(service)
+    assert service.phase == "native_pending"
 
 
 @pytest.mark.parametrize("guide_enabled", [True, False])
@@ -506,16 +510,17 @@ def test_sync_rejection_does_not_retry_on_camera_recovery(rig):
     assert not commands(service)
 
 
-def test_recovery_below_altitude_limit_is_canceled(rig, monkeypatch):
-    service, clock, _, _ = rig
+def test_live_mount_limit_cancels_recovery(rig):
+    service, clock, mount, _ = rig
     start(rig)
     acknowledge(rig)
-    monkeypatch.setattr(service, "_tracking_target_altitude_deg", lambda: -5.0)
+    mount["motion_limit"] = {"latched": True, "message": "upper elevation limit"}
     clock[0] += 1
     solve(rig)
     service._tick_state_machine()
     assert not commands(service)
     assert not service.solve_fallback_armed
+    assert service.phase == "limit_exceeded"
 
 
 @pytest.mark.parametrize("tracking_enabled", [True, False])
@@ -626,8 +631,8 @@ def test_timed_pulse_outage_waits_for_completion_and_new_exposures(
         clock[0] = 1003.5 + mod.MFNAVIS_SOLVE_OUTAGE_GRACE_SECONDS + 0.1
         pointing["imu"]["timestamp"] = clock[0]
         service._tick_state_machine()
-        assert service.phase == "native_goto"
-        assert commands(service)[-1]["type"] == "sync_and_goto"
+        assert service.phase == "native_pending"
+        assert not commands(service)
 
 
 def test_recovery_after_guide_pulse_uses_new_camera_solve(rig):
@@ -652,7 +657,7 @@ def test_recovery_after_guide_pulse_uses_new_camera_solve(rig):
     assert commands(service)[-1]["origin"] == "pifinder_final_sync"
 
 
-def test_no_imu_during_fine_alignment_can_use_existing_mount_frame(rig):
+def test_fine_alignment_outage_does_not_slew_from_mount_or_imu_frame(rig):
     service, clock, _, pointing = rig
     start(rig, optical=True)
     service.sync_goto_request_id = None
@@ -673,8 +678,8 @@ def test_no_imu_during_fine_alignment_can_use_existing_mount_frame(rig):
     assert service.phase == "native_pending"
     clock[0] += mod.MFNAVIS_SOLVE_OUTAGE_GRACE_SECONDS + 0.1
     service._tick_state_machine()
-    assert service.phase == "native_goto"
-    assert commands(service)[-1]["pointing_source"] == "mount"
+    assert service.phase == "native_pending"
+    assert all(c["type"] == "toggle_guide_correction" for c in commands(service))
 
 
 def test_stale_mount_status_cannot_authorize_recovery(rig):
@@ -802,7 +807,9 @@ def test_temporary_tracking_off_resumes_on_fresh_solve_without_user_stop(rig):
     clock[0] += 1
     solve(rig, ra=110.02)
     service._tick_state_machine()
-    assert commands(service) == [{"type": "set_tracking", "enabled": True}]
+    assert commands(service) == [
+        {"type": "set_tracking", "enabled": True, "origin": "goto_guide_service"}
+    ]
     mount["tracking_enabled"] = True
     service._tick_state_machine()
     assert not service.resume_pending
@@ -858,7 +865,7 @@ def test_explicit_stop_clears_persisted_resume_intent(rig, monkeypatch, tmp_path
     assert not commands(service)
 
 
-@pytest.mark.parametrize("blocked", ["parked", "moving", "unavailable", "below_limit"])
+@pytest.mark.parametrize("blocked", ["parked", "moving", "unavailable"])
 def test_restored_target_waits_while_mount_or_altitude_blocks_motion(
     rig, monkeypatch, blocked
 ):
@@ -904,3 +911,107 @@ def test_explicit_mount_tracking_off_does_not_get_automatically_reenabled(rig):
     commands(service)
     service._tick_state_machine()
     assert not commands(service)
+
+
+def test_unsolved_alignment_confirms_arrival_then_fixes_actual_target_once(rig):
+    service, clock, mount, pointing = rig
+    start(rig, optical=True)
+    service.sync_goto_request_id = None
+    service.phase = "native_pending"
+    pointing["current"]["metadata"]["last_solve_attempt"] = 1001
+    clock[0] = 1001
+    mount["mount_motion_active"] = True
+    mount["mount_motion_type"] = "manual"
+    service._tick_state_machine()
+    mount["mount_motion_active"] = False
+    mount["mount_motion_type"] = ""
+    clock[0] += 2
+    service.handle_command(
+        {
+            "type": "confirm_goto_arrival",
+            "ra": 110,
+            "dec": 30,
+            "requested_wall": clock[0],
+        }
+    )
+    assert service.phase == "arrived_waiting_solve"
+    commands(service)
+    clock[0] += 3600
+    service._tick_state_machine()
+    assert service.user_arrival_pending
+    assert not commands(service)
+    solve(rig, ra=123.4, dec=45.6)
+    service._tick_state_machine()
+    assert service.phase == "complete"
+    assert service.optical_arrival_confirmed
+    assert (service.tracking_target_ra, service.tracking_target_dec) == (123.4, 45.6)
+    assert not any(
+        c["type"] in {"sync", "sync_and_goto", "goto_target"} for c in commands(service)
+    )
+    clock[0] += 1
+    solve(rig, ra=124, dec=46)
+    service._tick_state_machine()
+    assert (service.tracking_target_ra, service.tracking_target_dec) == (123.4, 45.6)
+
+
+@pytest.mark.parametrize("cancel", ["stop_movement", "clear_tracking_target", "limit"])
+def test_confirmed_unsolved_arrival_never_resumes_after_cancel(rig, cancel):
+    service, clock, mount, _ = rig
+    start(rig)
+    service.handle_command({"type": "confirm_goto_arrival", "ra": 110, "dec": 30})
+    assert service.user_arrival_pending
+    if cancel == "limit":
+        mount["motion_limit"] = {"latched": True, "message": "limit exceeded"}
+        service._tick_state_machine()
+    else:
+        service.handle_command({"type": cancel})
+    commands(service)
+    clock[0] += 100
+    solve(rig)
+    service._tick_state_machine()
+    assert not service.user_arrival_pending
+    assert not any(
+        c["type"] in {"sync_and_goto", "goto_target"} for c in commands(service)
+    )
+
+
+def test_optically_confirmed_tracking_keeps_correction_through_repeated_failures(rig):
+    service, clock, _, pointing = rig
+    service.config_values["indi_tracking_guide_enabled"] = True
+    start(rig, optical=True)
+    service._send_final_sync_once()
+    service._enable_pulse_correction(service._final_accuracy_arcmin())
+    assert commands(service)[-1]["continue_on_solve_loss"]
+    for delta in (1, 30, 3600, 86400):
+        clock[0] += delta
+        pointing["current"]["metadata"]["last_solve_attempt"] = clock[0]
+        service._tick_state_machine()
+        service._tick_tracking_guide_states()
+        assert service.phase == "complete"
+        assert service.tracking_guide_state == "solve_holdover"
+        assert service.tracking_guide_active_sent
+        assert not commands(service)
+    solve(rig)
+    service._tick_state_machine()
+    assert service.phase == "complete"
+    assert service.tracking_target_ra == 110
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        {"type": "clear_tracking_target"},
+        {"type": "suspend_tracking_guide"},
+        {"type": "set_goto_method", "goto_method": "off"},
+    ],
+)
+def test_cancel_user_confirmed_arrival_also_clears_waiting_display(rig, command):
+    service, _, _, _ = rig
+    start(rig)
+    service.handle_command({"type": "confirm_goto_arrival", "ra": 110, "dec": 30})
+    assert service.phase == "arrived_waiting_solve"
+    service.handle_command(command)
+    assert not service.user_arrival_pending
+    assert service.phase == "idle"
+    assert service.service_state == "idle"
+    assert not service.wait_reason

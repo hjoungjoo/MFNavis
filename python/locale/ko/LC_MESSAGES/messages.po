@@ -6963,3 +6963,12 @@ msgstr "다운로드 재개"
 #: views/tools.html
 msgid "Recent download log"
 msgstr "최근 다운로드 로그"
+
+msgid "Mount movement limit exceeded"
+msgstr "마운트 이동 한계 초과"
+
+msgid "Arrival confirmed; waiting for plate solve"
+msgstr "도착 확인: 솔빙 대기 중"
+
+msgid "Arrived; waiting for solve"
+msgstr "도착: 솔빙 대기"

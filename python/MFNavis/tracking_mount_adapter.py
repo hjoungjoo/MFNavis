@@ -162,6 +162,9 @@ class IndiTrackingAdapter:
 
     def _send(self, plan):
         m = self.mount
+        guard = getattr(m, "_guard_motion", None)
+        if guard is not None and not guard(defer_stop=True):
+            return False
         if self.ready(
             plan.context, time.monotonic(), calibration=plan.kind == "calibration"
         ):
@@ -241,6 +244,8 @@ class IndiTrackingAdapter:
         ):
             return False
         register = getattr(m.mount_queue, "register_dispatch", None)
+        if guard is not None and not guard(defer_stop=True):
+            return False
         if register is None or not register(plan.context.control):
             return False
         names[direction].value = float(plan.duration_ms)

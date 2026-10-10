@@ -44,6 +44,7 @@ INVALIDATING_COMMANDS = frozenset(
         "smooth_tracking_start",
         "smooth_tracking_calibrate",
         "tracking_align",
+        "confirm_goto_arrival",
     }
 )
 
@@ -110,6 +111,13 @@ class PriorityMountQueue:
         with self.cancellation.get_lock():
             return self.cancellation.value == expected
 
+    def invalidate_motion(self):
+        """Publish a hardware limit stop before canceling pending execution."""
+        with self.cancellation.get_lock():
+            self.cancellation.value += 1
+            with self.stop_epoch.get_lock():
+                self.stop_epoch.value = self.cancellation.value
+
 
 def control_epoch(command_queue):
     return getattr(command_queue, "control_epoch", 0)
@@ -134,6 +142,7 @@ def stale_command(command, command_queue):
         "smooth_tracking_calibrate",
         "toggle_guide_correction",
         "tracking_align",
+        "confirm_goto_arrival",
         "tracking_alignment_hold",
         "tracking_alignment_sync",
     }:

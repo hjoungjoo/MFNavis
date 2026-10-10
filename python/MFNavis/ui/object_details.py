@@ -437,6 +437,8 @@ class UIObjectDetails(UIModule):
         self._push_solve_interval = None
 
     def _tracking_status_label(self, guide):
+        if guide.get("phase") == "arrived_waiting_solve":
+            return _("Arrived; waiting for solve")
         if (guide.get("mount_status") or {}).get("tracking_enabled") is False:
             return _("Paused")
         tracking_state = guide.get("tracking_guide_state")

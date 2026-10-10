@@ -28,6 +28,8 @@ from PiFinder import gps_time_sync
 from PiFinder import nonsidereal
 from PiFinder import sys_utils, utils
 from PiFinder.guide_pid import GuidePID
+from PiFinder.guide_holdover import GuideHoldover
+from PiFinder.mount_motion_limits import MountMotionLimitsMixin
 from PiFinder.operation_errors import ErrorNotifier, mount_failure
 from PiFinder.indi_align import (
     BRIGHT_ALIGN_STARS,
@@ -603,7 +605,7 @@ else:
         pass
 
 
-class MountControlIndi(BacklashCalibrationMixin):
+class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
     """Translate MFNavis queue commands into INDI telescope commands."""
 
     def __init__(
@@ -648,6 +650,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._guide_pulse_until = 0.0
         self._guide_active_pulses: dict[str, tuple[str, float]] = {}
         self._guide_pid = {"ns": GuidePID(), "we": GuidePID()}
+        self._guide_holdover = GuideHoldover()
+        self._guide_continue_on_solve_loss = False
         self._pending_guide_rate: Optional[dict[str, Any]] = None
         self._confirmed_guide_rates: Optional[tuple[float, float]] = None
         self.current_ra: Optional[float] = None
@@ -859,6 +863,7 @@ class MountControlIndi(BacklashCalibrationMixin):
 
     def _status_fields(self, state: str = "", **extra: Any) -> dict[str, Any]:
         payload: dict[str, Any] = {
+            "motion_limit": dict(getattr(self, "_motion_limit", {})),
             "connection_epoch": self._client_generation,
             "connection_established": self._connection_announced,
             "initial_location_sync_state": (
@@ -928,7 +933,11 @@ class MountControlIndi(BacklashCalibrationMixin):
             payload["time_sync_provisional"] = True
         payload["guide_correction_enabled"] = self._guide_correction_enabled
         payload["guide_predictive_tracking"] = self._guide_predictive_tracking
-        payload["guide_drift_arcsec_per_sec"] = (0.0, 0.0)
+        payload["guide_drift_arcsec_per_sec"] = self._guide_holdover.rate
+        payload["guide_continue_on_solve_loss"] = self._guide_continue_on_solve_loss
+        payload["guide_residual_arcsec"] = self._guide_holdover.residual(
+            time.monotonic()
+        )
         payload["last_user_motion_started_wall"] = self._last_user_motion_started_wall
         payload["last_user_motion_stopped_wall"] = self._last_user_motion_stopped_wall
         payload["last_user_tracking_stopped_wall"] = (
@@ -1052,6 +1061,9 @@ class MountControlIndi(BacklashCalibrationMixin):
     def _write_controller_status(
         self, state: str, message: str = "", **extra: Any
     ) -> None:
+        limit = getattr(self, "_motion_limit", {})
+        if limit.get("latched") and state != "stop_failed":
+            state, message = "limit_exceeded", limit["message"]
         initial_recovery_pending = self._initial_site_request is not None and not (
             self._initial_site_complete or self._initial_site_failed
         )
@@ -1429,6 +1441,21 @@ class MountControlIndi(BacklashCalibrationMixin):
         success_message: str,
         failure_state: str,
     ) -> bool:
+        moving = (
+            "TELESCOPE_MOTION_NS.MOTION_",
+            "TELESCOPE_MOTION_WE.MOTION_",
+            "TELESCOPE_TRACK_STATE.TRACK_ON",
+            "TELESCOPE_HOME.GO",
+            "TELESCOPE_PARK.PARK",
+        )
+        if (
+            any(
+                prop.endswith("=On") and any(key in prop for key in moving)
+                for prop in properties
+            )
+            and not self._guard_motion()
+        ):
+            return False
         try:
             result = sys_utils.apply_indi_onstep_properties(
                 properties,
@@ -3817,6 +3844,7 @@ class MountControlIndi(BacklashCalibrationMixin):
         accuracy_arcmin: Any = None,
         predictive_tracking: bool = False,
         observation_after_wall: float = 0.0,
+        continue_on_solve_loss: bool = False,
     ) -> bool:
         if self._smooth_runtime is not None and self._smooth_runtime.claimed:
             # A delayed legacy disable also changes the guide rate. Handover
@@ -3828,6 +3856,8 @@ class MountControlIndi(BacklashCalibrationMixin):
             enabled = not self._guide_correction_enabled
 
         if not enabled:
+            self._guide_holdover.reset()
+            self._guide_continue_on_solve_loss = False
             for controller in self._guide_pid.values():
                 controller.reset()
             self._guide_correction_enabled = False
@@ -3864,6 +3894,9 @@ class MountControlIndi(BacklashCalibrationMixin):
             accuracy = self._guide_correction_accuracy_arcmin
 
         target_changed = target != self._guide_correction_target
+        if target_changed or not self._guide_correction_enabled:
+            self._guide_holdover.reset()
+        self._guide_continue_on_solve_loss = continue_on_solve_loss
         self._guide_correction_enabled = True
         from PiFinder.tracking_commands import control_epoch
 
@@ -3928,24 +3961,59 @@ class MountControlIndi(BacklashCalibrationMixin):
 
         solved = self._current_plate_solve()
         if solved is None:
+            self._check_guide_holdover()
             return
 
         current_ra, current_dec, solve_time = solved
         if solve_time is None:
+            self._check_guide_holdover()
             return
         # Being newer than the previous pulse does not make an old camera
         # observation recent. Leave it unconsumed so a valid solve can resume.
         solve_age = time.time() - solve_time
         if not all(math.isfinite(v) for v in (current_ra, current_dec, solve_age)):
+            self._check_guide_holdover()
             return
         if not 0.0 <= solve_age <= GUIDE_CORRECTION_MAX_SOLVE_AGE_SECONDS:
+            self._check_guide_holdover()
             return
+        if (
+            self._guide_continue_on_solve_loss
+            and self._guide_holdover.sample is None
+            and now >= self._guide_pulse_until
+            and solve_time >= self._guide_observation_after_wall
+        ):
+            # Arrival may have consumed this exact observation in the fine
+            # alignment loop. Seed its residual when tracking takes ownership,
+            # without replaying the old PID update or a pre-pulse exposure.
+            target_ra, target_dec = self._guide_correction_target
+            self._guide_holdover.observe(
+                now - solve_age,
+                (
+                    (target_dec - current_dec) * 3600,
+                    shortest_ra_delta_deg(target_ra, current_ra)
+                    * 3600
+                    * math.cos(math.radians(current_dec)),
+                ),
+            )
         if solve_time <= self._guide_correction_last_solve_time:
+            self._check_guide_holdover()
             return
         if solve_time < self._guide_observation_after_wall:
+            self._check_guide_holdover()
             return
 
         target_ra, target_dec = self._guide_correction_target
+        if self._guide_continue_on_solve_loss:
+            self._guide_holdover.observe(
+                now - solve_age,
+                (
+                    (target_dec - current_dec) * 3600,
+                    shortest_ra_delta_deg(target_ra, current_ra)
+                    * 3600
+                    * math.cos(math.radians(current_dec)),
+                ),
+            )
         separation = radec_separation_arcmin(
             current_ra,
             current_dec,
@@ -4073,6 +4141,45 @@ class MountControlIndi(BacklashCalibrationMixin):
         self._write_controller_status(
             "guide_correction",
             "Timed pulse guiding unavailable; automatic correction paused",
+        )
+
+    def _check_guide_holdover(self) -> None:
+        """Spend the measured residual and keep confirmed drift compensation."""
+        now = time.monotonic()
+        if not self._guide_continue_on_solve_loss or now < max(
+            self._guide_pulse_until, self._guide_correction_next_at
+        ):
+            return
+        residual = self._guide_holdover.residual(now)
+        if residual is None or not self._guide_pulse_supported():
+            return
+        self._guide_correction_mode = "solve_holdover"
+        # No synthetic camera sample, PID integration or convergence verdict.
+        # A one-arcsecond deadband accumulates slow drift into finite pulses.
+        if max(abs(v) for v in residual) < 1.0:
+            return
+        if not self._select_guide_rate_for_error(max(abs(v) for v in residual) / 60):
+            return
+        we_rate, ns_rate = self._confirmed_guide_rates or self._current_guide_rate_x()
+        invert_ns, invert_we = self._guide_pulse_inversions()
+        for error, speed, positive, negative, invert in (
+            (residual[0], ns_rate, "north", "south", invert_ns),
+            (residual[1], we_rate, "east", "west", invert_we),
+        ):
+            if abs(error) < 1.0:
+                continue
+            duration = min(
+                GUIDE_PULSE_MAX_MS,
+                int(abs(error) / (speed * SIDEREAL_ARCSEC_PER_SEC) * 1000),
+            )
+            if duration <= 0:
+                continue
+            direction = positive if (error > 0) != invert else negative
+            self._send_guide_pulse(direction, duration)
+        self._guide_correction_next_at = now + GUIDE_TRACKING_INTERVAL_SECONDS
+        self._write_controller_status(
+            "guide_correction",
+            "Plate solve unavailable; continuing residual and drift correction",
         )
 
     def _guide_axis_error(self, ra, dec, target_ra, target_dec):
@@ -4366,6 +4473,8 @@ class MountControlIndi(BacklashCalibrationMixin):
     def _send_guide_pulse(
         self, direction: str, duration_ms: int, *, settling_seconds: float = 0.0
     ) -> bool:
+        if not self._guard_motion():
+            return False
         if self.client is None or self.device is None:
             return False
         prop_name, element = GUIDE_PULSE_ELEMENTS[direction]
@@ -4383,6 +4492,24 @@ class MountControlIndi(BacklashCalibrationMixin):
         returned_wall = time.time()
         returned_monotonic = time.monotonic()
         if accepted:
+            if self._guide_continue_on_solve_loss:
+                invert_ns, invert_we = self._guide_pulse_inversions()
+                axis = 0 if direction in {"north", "south"} else 1
+                we_rate, ns_rate = (
+                    self._confirmed_guide_rates or self._current_guide_rate_x()
+                )
+                positive = direction in {"north", "east"}
+                if invert_ns if axis == 0 else invert_we:
+                    positive = not positive
+                signed_rate = (
+                    ns_rate if axis == 0 else we_rate
+                ) * SIDEREAL_ARCSEC_PER_SEC
+                self._guide_holdover.record_pulse(
+                    axis,
+                    returned_monotonic,
+                    duration_ms / 1000.0,
+                    signed_rate if positive else -signed_rate,
+                )
             self._guide_active_pulses[prop_name] = (
                 direction,
                 returned_monotonic + duration_ms / 1000.0 + settling_seconds,
@@ -4616,6 +4743,18 @@ class MountControlIndi(BacklashCalibrationMixin):
     def receive_sync_driver_message(self, message: str, client_generation: int) -> None:
         if client_generation != self._client_generation:
             return
+        if "[ERROR]" in message and any(
+            phrase in message.lower()
+            for phrase in (
+                "below horizon",
+                "above overhead",
+                "limit exceeded",
+                "outside limits",
+                "limit switch",
+                "past meridian limit",
+            )
+        ):
+            self._pending_motion_limit = message
         with self._sync_property_lock:
             transaction = self._pending_sync_goto
             if transaction is None:
@@ -4746,6 +4885,8 @@ class MountControlIndi(BacklashCalibrationMixin):
     def _advance_pending_sync_goto(self) -> None:
         transaction = self._pending_sync_goto
         if transaction is None:
+            return
+        if not self._guard_motion():
             return
         if transaction.get("origin") == "smooth_tracking_recovery" and (
             self._smooth_runtime is None
@@ -4913,6 +5054,8 @@ class MountControlIndi(BacklashCalibrationMixin):
             return False
 
         for attempt in range(1, GOTO_TARGET_COMMAND_ATTEMPTS + 1):
+            if not self._guard_motion((target_ra, dec_deg)):
+                return False
             if not self.client.set_switch(self.device, "ON_COORD_SET", "SLEW"):
                 self._write_controller_status(
                     "goto_failed", "Could not set INDI SLEW mode"
@@ -4970,6 +5113,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         self, preserve_tracking: bool = False, *, stop_tracking: bool = False
     ) -> bool:
         self._cancel_sync_goto("stop requested")
+        self._guide_holdover.reset()
+        self._guide_continue_on_solve_loss = False
         if stop_tracking:
             # Explicit 0-key Stop cancels every source of further motion.
             # Direction-key release still stops only the manual axes below.
@@ -5056,6 +5201,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         reassert_slew_rate: bool = True,
         origin: str = "user",
     ) -> bool:
+        if not self._guard_motion():
+            return False
         direction = direction.lower()
         if direction not in MANUAL_MOTION_PROPERTIES:
             logger.warning("Unknown manual mount direction: %s", direction)
@@ -5125,6 +5272,8 @@ class MountControlIndi(BacklashCalibrationMixin):
         return True
 
     def park_action(self, action: str) -> bool:
+        if action in {"park", "return_home"} and not self._guard_motion():
+            return False
         action_map = {
             "park": ("TELESCOPE_PARK.PARK", "Mount parked"),
             "unpark": ("TELESCOPE_PARK.UNPARK", "Mount unparked"),
@@ -5459,6 +5608,8 @@ class MountControlIndi(BacklashCalibrationMixin):
             time.sleep(0.2)
 
     def set_tracking(self, enabled: bool) -> bool:
+        if enabled and not self._guard_motion():
+            return False
         property_name = (
             "TELESCOPE_TRACK_STATE.TRACK_ON"
             if enabled
@@ -6220,6 +6371,17 @@ class MountControlIndi(BacklashCalibrationMixin):
 
         if stale_command(command, getattr(self, "mount_queue", None)):
             return True
+        self._check_motion_limits()
+        if getattr(self, "_motion_limit", {}).get("latched"):
+            if (
+                command_type == "set_tracking"
+                and command.get("enabled") is True
+                and command.get("origin") in {None, "user"}
+            ):
+                if not self._acknowledge_motion_limit():
+                    return True
+            elif command_type not in {"shutdown", "stop_movement", "set_tracking"}:
+                return True
         if command_type in {
             "goto_target",
             "sync_and_goto",
@@ -6337,6 +6499,9 @@ class MountControlIndi(BacklashCalibrationMixin):
                 predictive_tracking=bool(command.get("predictive_tracking", False)),
                 observation_after_wall=float(
                     command.get("observation_after_wall", 0.0)
+                ),
+                continue_on_solve_loss=bool(
+                    command.get("continue_on_solve_loss", False)
                 ),
             )
         elif command_type == "stop_movement":
@@ -6457,10 +6622,12 @@ class MountControlIndi(BacklashCalibrationMixin):
         running = True
         next_auto_connect_at = time.monotonic() + AUTO_CONNECT_START_DELAY
         while running:
+            self._check_motion_limits()
             self._check_alignment_motion_complete()
             self._check_alignment_stop_complete()
             try:
-                self._smooth_runtime.tick()
+                if not getattr(self, "_motion_limit", {}).get("latched"):
+                    self._smooth_runtime.tick()
             except Exception:
                 logger.exception("Smooth tracking held after executor failure")
                 self._smooth_runtime.cancel("executor_error")
@@ -6482,6 +6649,7 @@ class MountControlIndi(BacklashCalibrationMixin):
                 if running:
                     self._check_pending_sync_goto()
             except queue.Empty:
+                self._check_motion_limits()
                 self._check_usb_serial_reinsert()
                 self._check_manual_motion_deadline()
                 self._publish_manual_motion_progress()

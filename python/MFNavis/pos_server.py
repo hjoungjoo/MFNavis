@@ -1415,6 +1415,15 @@ def handle_sync_command(shared_state, _input_str: str):
         return "Coordinates matched."
 
     goto_method = str(_get_config_option("indi_goto_method", "mfnavis"))
+    if goto_method == "mfnavis":
+        from PiFinder.goto_arrival import queue_unsolved_arrival
+
+        if queue_unsolved_arrival(
+            goto_guide_queue,
+            shared_state,
+            *_catalog_target(shared_state, ra_deg, dec_deg),
+        ):
+            return "Coordinates matched."
     if (
         goto_method == "mfnavis"
         and goto_guide_queue is not None

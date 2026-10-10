@@ -4,12 +4,12 @@ import time
 
 
 def requires_error_dialog(error):
-    """Only loss of control or an unrecovered stop failure interrupts the UI.
+    """Loss of control, failed stops and movement limits interrupt the UI.
 
     Other failures remain visible through the live INDI/Push status and console.
     Classify by code rather than translated or driver-specific message text.
     """
-    return error.get("code") in {"stop_failed", "process_exited"}
+    return error.get("code") in {"stop_failed", "process_exited", "limit_exceeded"}
 
 
 class ErrorNotifier:
@@ -59,6 +59,7 @@ class MountErrorGate:
 
 def mount_failure(state):
     return state.endswith("_failed") or state in {
+        "limit_exceeded",
         "error",
         "disconnected",
         "server_unavailable",
