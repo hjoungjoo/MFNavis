@@ -286,3 +286,44 @@ def test_push_arrow_uses_same_projection_as_saved_alignment(monkeypatch, frame):
     )
     ui._render_camera_push()
     assert pointer.call_args.args[3] == pytest.approx(0.0, abs=1e-8)
+
+
+@pytest.mark.parametrize(
+    "phase,confirmed,visible",
+    [
+        ("native_tracking", False, False),
+        ("native_tracking", True, False),
+        ("arrived_waiting_solve", False, False),
+        ("complete", False, False),
+        ("complete", True, True),
+        ("tracking", True, True),
+    ],
+)
+def test_arrival_border_requires_optical_confirmation(phase, confirmed, visible):
+    ui = camera_ui((176, 176), (256, 256))
+    ui.object.ra, ui.object.dec = 100.0, 20.0
+    ui._push_mount_status = {"state": "connected", "tracking_enabled": True}
+    ui._push_guide_status = {
+        "phase": phase,
+        "optical_arrival_confirmed": confirmed,
+        "active_target_ra": 100.0,
+        "active_target_dec": 20.0,
+        "tracking_target_ra": 100.0,
+        "tracking_target_dec": 20.0,
+    }
+    ui.draw = Mock(wraps=ui.draw)
+    ui._render_push_tracking_border()
+    assert ui.draw.rectangle.call_count == (2 if visible else 0)
+
+
+def test_unsolved_native_tracking_shows_wait():
+    ui = camera_ui((176, 176), (256, 256))
+    ui._refresh_push_status = Mock()
+    ui._push_mount_status = {"state": "connected", "tracking_enabled": True}
+    ui._push_guide_status = {"phase": "native_tracking"}
+    ui._push_last_attempt = None
+    ui.shared_state.imu = lambda: None
+    ui.shared_state.solution = lambda: SimpleNamespace(last_solve_attempt=None)
+    ui.draw = Mock(wraps=ui.draw)
+    UIObjectDetails._render_push_status(ui)
+    assert ui.draw.text.call_args.args[1].startswith("WAIT")

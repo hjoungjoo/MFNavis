@@ -624,6 +624,8 @@ def test_explicit_stop_disables_native_tracking_and_pending_corrections(
     mount._guide_correction_enabled = True
     mount._pending_goto_refine = {"target_ra": 10.0, "target_dec": 20.0}
     mount._pending_guide_rate = {"requested": 1.0}
+    mount._track_freq_target_hz = 60.2
+    mount._track_freq_label = "Saturn"
 
     mount.handle_command({"type": "stop_movement", "stop_tracking": True})
 
@@ -633,6 +635,14 @@ def test_explicit_stop_disables_native_tracking_and_pending_corrections(
     assert mount._guide_correction_enabled is False
     assert mount._pending_goto_refine is None
     assert mount._pending_guide_rate is None
+    assert mount._track_freq_target_hz is None
+    assert mount._track_freq_label == ""
+    frequency_writes = []
+    monkeypatch.setattr(mount, "_write_track_frequency", frequency_writes.append)
+    mount.connected = True
+    mount._track_freq_last_assert_at = -float("inf")
+    mount._reassert_track_frequency()
+    assert not frequency_writes
 
 
 def test_explicit_stop_does_not_report_success_when_tracking_off_fails(monkeypatch):
@@ -4671,3 +4681,22 @@ def test_onstepx_guide_profile_reassertion_keeps_active_pulse_timers(monkeypatch
     assert mount._guide_active_pulses == deadlines
     assert mount._guide_rate_needs_reassert is False
     assert mount.user_manual_slew_rate == 7
+
+
+def test_arrival_baseline_reset_preserves_consumed_frame_boundary(monkeypatch):
+    mount, clock, observation, _errors, _motions, pulses = _pulse_correction_mount(
+        monkeypatch
+    )
+    mount._guide_correction_last_solve_time = observation[0]
+    mount._guide_observation_after_wall = clock[0]
+    mount._guide_pulse_worsening = 3
+    mount._guide_pulse_no_progress = 5
+    mount.toggle_guide_correction(
+        True, 10, 20, 1.5, continue_on_solve_loss=True, reset_convergence=True
+    )
+    assert mount._guide_pulse_no_progress == 0
+    assert mount._guide_pulse_worsening == 0
+    assert mount._guide_correction_last_solve_time == observation[0]
+    assert mount._guide_observation_after_wall == clock[0]
+    mount._check_guide_correction()
+    assert not pulses

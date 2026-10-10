@@ -78,6 +78,7 @@ def test_mountcontrol_dispatch_routes_track_freq_commands(monkeypatch):
         mountcontrol_indi.MountControlIndi
     )
     controller._smooth_runtime = None
+    controller.connected = False
 
     calls = []
     controller.set_track_frequency = lambda hz, label="": calls.append(

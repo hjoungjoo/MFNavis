@@ -299,3 +299,34 @@ def test_limit_at_every_stage_stops_tracking_and_blocks_recovered_solve(
     rig.tick(0)
     assert len(rig.mount.client.numbers) == before
     assert not rig.mount._guide_correction_enabled
+
+
+def test_optical_arrival_after_failed_pulses_starts_new_tracking_baseline(lifecycle):
+    rig = lifecycle
+    rig.start()
+    rig.arrive()
+    rig.mount._guide_pulse_no_progress = 5
+    rig.mount._guide_pulse_worsening = 3
+    rig.mount._guide_correction_enabled = False
+    rig.mount._guide_correction_mode = "reacquire"
+    rig.service.pulse_alignment_unreliable = True
+    rig.now += 4
+    rig.solve(29.995)
+    rig.tick(0)
+    assert rig.service.optical_arrival_confirmed
+    assert not rig.service.pulse_alignment_unreliable
+    rig.tick(2)
+    assert rig.mount._guide_correction_enabled
+    assert rig.mount._guide_pulse_no_progress == 0
+    assert rig.mount._guide_pulse_worsening == 0
+    assert sum(c.get("reset_convergence", False) for c in rig.commands) == 1
+    rig.now += 2
+    rig.solve(29.96)
+    rig.tick(0)
+    assert rig.mount._guide_correction_enabled
+    assert rig.mount._guide_correction_mode == "pulse"
+    rig.fail()
+    rig.tick(4)
+    assert rig.mount._guide_correction_enabled
+    assert rig.mount._guide_continue_on_solve_loss
+    assert sum(c.get("reset_convergence", False) for c in rig.commands) == 1

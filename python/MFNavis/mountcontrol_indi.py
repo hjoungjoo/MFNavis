@@ -3845,6 +3845,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         predictive_tracking: bool = False,
         observation_after_wall: float = 0.0,
         continue_on_solve_loss: bool = False,
+        reset_convergence: bool = False,
     ) -> bool:
         if self._smooth_runtime is not None and self._smooth_runtime.claimed:
             # A delayed legacy disable also changes the guide rate. Handover
@@ -3894,7 +3895,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             accuracy = self._guide_correction_accuracy_arcmin
 
         target_changed = target != self._guide_correction_target
-        if target_changed or not self._guide_correction_enabled:
+        if target_changed or reset_convergence or not self._guide_correction_enabled:
             self._guide_holdover.reset()
         self._guide_continue_on_solve_loss = continue_on_solve_loss
         self._guide_correction_enabled = True
@@ -3908,10 +3909,11 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         # A solve outage pauses commands, not the convergence assessment.
         # Re-arming the same target must not erase evidence of guiding away
         # or allow the last pre-pulse exposure to be consumed again.
-        if target_changed:
+        if target_changed or reset_convergence:
             for controller in self._guide_pid.values():
                 controller.reset()
-            self._guide_correction_last_solve_time = 0.0
+            if target_changed:
+                self._guide_correction_last_solve_time = 0.0
             self._guide_pulse_best_error = None
             self._guide_pulse_worsening = 0
             self._guide_pulse_no_progress = 0
@@ -5123,6 +5125,10 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             self._guide_predictive_tracking = False
             self._guide_correction_mode = "off"
             self._pending_guide_rate = None
+            # OnStep can resume tracking when a target frequency is written.
+            # Full Stop must also cancel its periodic reassertion.
+            self._track_freq_target_hz = None
+            self._track_freq_label = ""
         # Releasing a direction button stops the axes, not sidereal tracking.
         # OnStep's global abort can turn tracking off, leaving the guide loop
         # trying to chase the sky's full drift after an otherwise good retarget.
@@ -6503,6 +6509,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
                 continue_on_solve_loss=bool(
                     command.get("continue_on_solve_loss", False)
                 ),
+                reset_convergence=bool(command.get("reset_convergence", False)),
             )
         elif command_type == "stop_movement":
             if command.get("stop_tracking"):

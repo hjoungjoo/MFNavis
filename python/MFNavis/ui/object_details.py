@@ -525,7 +525,9 @@ class UIObjectDetails(UIModule):
         }:
             movement = _("WAIT")
         elif phase == "native_tracking":
-            movement = _("Tracking") if mount.get("tracking_enabled") else _("WAIT")
+            movement = _("WAIT")
+        elif phase == "arrived_waiting_solve":
+            movement = _("Arrived; waiting for solve")
         elif phase == "stopped":
             movement = _("Stopped")
         elif phase in {"complete", "tracking"}:
@@ -606,7 +608,8 @@ class UIObjectDetails(UIModule):
         guide = getattr(self, "_push_guide_status", {})
         state = str(mount.get("state", ""))
         if (
-            guide.get("phase") not in {"complete", "tracking", "native_tracking"}
+            guide.get("phase") not in {"complete", "tracking"}
+            or not guide.get("optical_arrival_confirmed")
             or mount.get("tracking_enabled") is not True
             or mount.get("mount_motion_active")
             or mount.get("goto_motion_active")
@@ -621,14 +624,9 @@ class UIObjectDetails(UIModule):
             value = str(mount.get(key, "")).lower()
             if "park" in value and "unpark" not in value:
                 return
-        target_prefix = (
-            "active_target"
-            if guide.get("phase") == "native_tracking"
-            else "tracking_target"
-        )
         try:
-            ra = float(guide[f"{target_prefix}_ra"])
-            dec = float(guide[f"{target_prefix}_dec"])
+            ra = float(guide["tracking_target_ra"])
+            dec = float(guide["tracking_target_dec"])
             if not (
                 math.isfinite(ra)
                 and math.isfinite(dec)

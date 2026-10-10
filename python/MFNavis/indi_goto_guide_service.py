@@ -155,6 +155,7 @@ class IndiGotoGuideService:
         self.previous_goto_error_arcmin: Optional[float] = None
         self.final_sync_sent = False
         self.optical_arrival_confirmed = False
+        self.tracking_baseline_pending = False
         self.user_arrival_pending = False
         self.user_arrival_after_wall = 0.0
         self.pulse_align_sent = False
@@ -557,6 +558,7 @@ class IndiGotoGuideService:
 
     def _handle_goto_target(self, command: dict[str, Any]) -> None:
         self.optical_arrival_confirmed = False
+        self.tracking_baseline_pending = False
         self.user_arrival_pending = False
         self.resume_pending = False
         self.solve_fallback_armed = False
@@ -2056,6 +2058,11 @@ class IndiGotoGuideService:
         )
         self.final_sync_sent = True
         self.optical_arrival_confirmed = True
+        # A verified optical arrival ends acquisition's convergence trial.
+        # Carry neither its failure latch nor its executor budget into tracking.
+        self.pulse_alignment_unreliable = False
+        self.tracking_baseline_pending = True
+        self.tracking_guide_active_sent = False
         self.goto_timing.update(stage="complete", completed_wall=time.time())
         self.tracking_target_ra = self.active_target_ra
         self.tracking_target_dec = self.active_target_dec
@@ -2384,10 +2391,9 @@ class IndiGotoGuideService:
             self.config_values.get("indi_tracking_guide_goto_recovery_enabled", True)
         )
 
-        pulse_diverged = mount_status.get("guide_correction_mode") in {
-            "reacquire",
-            "unsupported",
-        }
+        pulse_diverged = not self.tracking_baseline_pending and mount_status.get(
+            "guide_correction_mode"
+        ) in {"reacquire", "unsupported"}
         if pulse_diverged:
             if not self.pulse_alignment_unreliable:
                 self.tracking_guide_active_sent = False
@@ -2460,7 +2466,10 @@ class IndiGotoGuideService:
     def _enable_pulse_correction(self, accuracy: float) -> None:
         target_changed = not self.tracking_guide_active_sent
         accuracy_changed = self.tracking_guide_accuracy_arcmin != accuracy
-        if target_changed or accuracy_changed:
+        reset_baseline = (
+            self.tracking_baseline_pending and self.optical_arrival_confirmed
+        )
+        if target_changed or accuracy_changed or reset_baseline:
             self._forward_to_mountcontrol(
                 {
                     "type": "toggle_guide_correction",
@@ -2471,9 +2480,11 @@ class IndiGotoGuideService:
                     "predictive_tracking": False,
                     "continue_on_solve_loss": self.optical_arrival_confirmed,
                     "observation_after_wall": self.tracking_recovery_solve_after_wall,
+                    **({"reset_convergence": True} if reset_baseline else {}),
                 }
             )
             self.tracking_guide_active_sent = True
+            self.tracking_baseline_pending = False
             self.tracking_guide_accuracy_arcmin = accuracy
             self.tracking_guide_last_action = "guide correction enabled"
 
