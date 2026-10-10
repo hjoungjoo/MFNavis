@@ -2,7 +2,7 @@
 
 > 상태: **완료된 1회성 검증 기록 (2026-07-01)** — INDI 드라이버 통합 가능성
 > 판단을 위한 사전 테스트였고 결론은 완료됐다. 이력 참고용이며 유지보수
-> 대상 아님. 운영/설치 절차는 [mf_indi_mount_install_ko.md](../mf_dev/mf_indi_mount_install_ko.md) 참조.
+> 대상 아님. 운영/설치 절차는 [mf_indi_mount_install_ko.md](../history/development/mount.md#mf_indi_mount_install_ko) 참조.
 
 이 문서는 OnStep 장비를 PiFinder에서 INDI로 사용하기 전에, 같은 기능을
 직접 LX200 명령과 `LX200 OnStepX` INDI 드라이버로 비교하기 위한 체크리스트다.

@@ -1,10 +1,10 @@
 # 2026-07-24 현장 테스트 장애 분석 및 수정 계획
 
 > 상태: **분석 완료 — 수정 진행 중** (체크리스트로 항목별 진행)
-> 관련 문서: [mf_indi_goto_guide_plan_ko.md](../mf_dev/mf_indi_goto_guide_plan_ko.md),
-> [mf_goto_mount_source_structure_ko.md](../mf_dev/mf_goto_mount_source_structure_ko.md),
-> [mf_mountcontrol_indi_flow_ko.md](../mf_dev/mf_mountcontrol_indi_flow_ko.md),
-> [mf_time_sync_ko.md](../mf_dev/mf_time_sync_ko.md),
+> 관련 문서: [mf_indi_goto_guide_plan_ko.md](../history/development/mount.md#mf_indi_goto_guide_plan_ko),
+> [mf_goto_mount_source_structure_ko.md](../history/development/mount.md#mf_goto_mount_source_structure_ko),
+> [mf_mountcontrol_indi_flow_ko.md](../history/development/mount.md#mf_mountcontrol_indi_flow_ko),
+> [mf_time_sync_ko.md](../history/development/connectivity.md#mf_time_sync_ko),
 > [mf_goto_tracking_recovery_analysis_ko.md](mf_goto_tracking_recovery_analysis_ko.md)
 >
 > 작성: 2026-07-25. 근거 로그: `~/PiFinder_data/pifinder.log`(WARNING 레벨),
@@ -167,7 +167,7 @@ Recovery Off 설정 문서화(7.B 서두).
 ### A. 시간 신뢰성 (문제 1 근본 대책)
 
 설계 원칙 (2026-07-25 사용자 결정,
-[mf_time_sync_ko.md](../mf_dev/mf_time_sync_ko.md) 기반 재정리):
+[mf_time_sync_ko.md](../history/development/connectivity.md#mf_time_sync_ko) 기반 재정리):
 
 - **현장(무네트워크): GPS가 위치와 시간을 모두 동기**해야 한다.
 - **네트워크가 있으면: GPS와 NTP 중 더 정확한 쪽을 자동 선택**한다.
@@ -202,7 +202,7 @@ time_sync_enabled = false (기본값 Off → 관찰/경고 전부 꺼짐)
     ~50ms = LST 오차 ~0.8″로 GoTo에 충분.
   - 남은 확인: 현장(무NTP) 조건에서 gps1 단독 선택 + 큰 오프셋 스텝
     리허설(다음 실외 관측 시). GPS fix 자체가 느린 문제는
-    [mf_gps_aiding_plan_ko.md](../mf_dev/mf_gps_aiding_plan_ko.md)와 연계.
+    [mf_gps_aiding_plan_ko.md](../history/development/connectivity.md#mf_gps_aiding_plan_ko)와 연계.
 - [x] **A2. chrony 큰 오프셋 스텝 보장** — `makestep 1 3` → `makestep 1 -1`
   적용(2026-07-25, 백업: `chrony.conf.bak-20260725`). RTC 없는 보드에서 부팅
   한참 뒤 GPS fix가 와도 즉시 스텝한다. 관측 중 큰 스텝은 A5 재동기 훅이
@@ -227,8 +227,8 @@ time_sync_enabled = false (기본값 Off → 관찰/경고 전부 꺼짐)
   - 기본값 변경: `time_sync_enabled` 기본 **On** (관찰 전용).
   - `selected`는 chronyd 동기 상태일 때의 Chrony 후보만 사용 — A4 게이트의
     판단 근거가 된다.
-  - 문서 갱신: [mf_time_sync_ko.md](../mf_dev/mf_time_sync_ko.md) /
-    [mf_time_sync_en.md](../mf_dev/mf_time_sync_en.md) 재작성. 단위 테스트 26개 통과.
+  - 문서 갱신: [mf_time_sync_ko.md](../history/development/connectivity.md#mf_time_sync_ko) /
+    [mf_time_sync_en.md](../history/development/connectivity.md#mf_time_sync_ko) 재작성. 단위 테스트 26개 통과.
 - [x] **A4. "시계 미신뢰" 게이트** — 2026-07-25 구현.
   - 신뢰 판정: chronyd가 이번 부팅에서 한 번이라도 동기(`stable`)되면 tmpfs
     마커 `/dev/shm/pifinder/clock_trusted.json`(boot_id 포함)을 기록.
@@ -243,7 +243,7 @@ time_sync_enabled = false (기본값 Off → 관찰/경고 전부 꺼짐)
     - **2026-08-08 완화**: 보류가 현장 세션을 통째로 묶는 문제(시간 없는
       마운트는 슬루 전면 거부 → 솔빙 가능한 하늘로 이동 불가)가 실측되어,
       일반 sync는 잠정(provisional) 시간 전송으로 변경. Multi Align만 하드
-      게이트 유지. 현행 규약은 [mf_time_sync_ko.md](../mf_dev/mf_time_sync_ko.md).
+      게이트 유지. 현행 규약은 [mf_time_sync_ko.md](../history/development/connectivity.md#mf_time_sync_ko).
   - **LCD 경고**: 타이틀바 우측에 미신뢰 동안 "T"가 점멸(INDI 문제 표시와
     같은 규칙). **웹 경고**: `/indi` 페이지 상단 빨간 배너
     (`/indi/current_values`의 `clock_trusted`).

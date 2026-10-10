@@ -14,7 +14,7 @@
 
 ## 설치·업데이트
 
-이번 버전은 Trixie 64-bit를 기본으로 합니다. 소스 업데이트가 Bookworm OS를 Trixie로 바꾸지는 않습니다. 기존 설정·관측 자료와 로컬 변경을 백업하고 [Trixie 설치 안내](../docs/mf_dev/mf_trixie_install_ko.md)를 따르세요. Trixie 실기 검증은 Pi 5에서 수행했으며 Pi 4·CM5의 별도 실기 확인은 남아 있습니다.
+이번 버전은 Trixie 64-bit를 기본으로 합니다. 소스 업데이트가 Bookworm OS를 Trixie로 바꾸지는 않습니다. 기존 설정·관측 자료와 로컬 변경을 백업하고 [Trixie 설치 안내](../docs/history/development/setup.md#mf_trixie_install_ko)를 따르세요. Trixie 실기 검증은 Pi 5에서 수행했으며 Pi 4·CM5의 별도 실기 확인은 남아 있습니다.
 
 설치 계정으로 다음 명령을 실행합니다. 설치 스크립트 내부에서 필요한 sudo 인증을 요청합니다.
 

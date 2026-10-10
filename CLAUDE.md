@@ -75,8 +75,8 @@ The installation baseline is Raspberry Pi OS Trixie 64-bit / Python 3.13.
 Setup uses `.venv-trixie` for runtime and `.venv-dev-trixie` for development.
 Activation selects Python 3.13 for Nox and changes into `python/`; dependencies
 come from `requirements_dev-trixie.txt` and `requirements_docs-trixie.txt`.
-See [Trixie installation](docs/mf_dev/mf_trixie_install_en.md) and
-[Trixie development](docs/mf_dev/TRIXIE_DEVELOPMENT_ko.md).
+See [Trixie installation](docs/mf_dev/setup_en.md) and
+[Trixie development](docs/mf_dev/setup_ko.md).
 For existing development environments, source `scripts/activate_dev_trixie.sh`.
 
 

@@ -30,7 +30,7 @@ deadband becomes the anchor, which bounds excursions (+/- 3 stops) and
 serves as the fallback when the frame is unusable (slewing, clouds,
 bright sky).
 
-Design doc: docs/mf_dev/mf_auto_exposure_plan_ko.md.
+Design doc: docs/mf_dev/camera_ko.md.
 """
 
 import logging

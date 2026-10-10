@@ -1,7 +1,7 @@
 # MF_PiFinder Update — cedar + SEP Hybrid Solving, Field-Proven Under Light Pollution (2026-07-28)
 
 > Community summary. Technical details live in the
-> [integrated implementation document](../mf_dev/mf_sep_fullframe_impl_ko.md) (Korean).
+> [integrated implementation document](../history/development/solver.md#mf_sep_fullframe_impl_ko) (Korean).
 > 한국어판: [mf_cedar_sep_hybrid_solve_20260728_ko.md](mf_cedar_sep_hybrid_solve_20260728_ko.md)
 
 ## What this project is about

@@ -52,7 +52,7 @@ def _mosaic_phase_is_rggb(profile) -> bool:
 
     MF: the format label alone is not proof of a CFA. This fork's imx462
     measures as true mono despite its SRGGB12 label (CameraProfile.mono,
-    docs/mf_dev/mf_sep_fullframe_impl_ko.md §6.4) — its R/G pins at 1.00,
+    docs/history/development/solver.md#mf_sep_fullframe_impl_ko §6.4) — its R/G pins at 1.00,
     which the colour model reads as a dark-site spectrum and rewards with
     a permanent ~+0.8 mag zero-point shift. Mono refuses colour outright.
     """

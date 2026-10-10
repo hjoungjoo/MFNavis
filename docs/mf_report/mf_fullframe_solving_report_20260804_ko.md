@@ -116,4 +116,4 @@ flowchart TB
 
 측정 원자료(시도별 CSV·코퍼스 경로)와 재현 절차는 저장소의
 [실측 리포트](mf_solver_fullframe_field_test_20260803_ko.md)와
-[설계 문서](../mf_dev/mf_cedar_sep_hybrid_design_ko.md)에 있습니다.
+[설계 문서](../history/development/solver.md#mf_cedar_sep_hybrid_design_ko)에 있습니다.

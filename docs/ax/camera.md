@@ -1,5 +1,12 @@
 # Camera architecture: exposure control
 
+MFNavis working-tree note (2026-10-10): the default `camera_exp` is `auto_star`.
+The Pi backend can use framewise Auto(Star) v2 in the camera process, without
+waiting for each solve attempt. Backend selection, control ownership and current
+limitations are maintained in [the camera reference](../mf_dev/camera_ko.md).
+The controller laws and upstream decisions below remain architectural background;
+the older "default/opt-in" labels do not describe MFNavis product defaults.
+
 This document describes how PiFinder decides the camera exposure time —
 the three exposure regimes, the feedback controllers inside
 solver-driven auto-exposure, and zero-match recovery.
@@ -114,7 +121,7 @@ solver-side failure (recovery must not run).
 
 Control law and defaults follow cedar-server's exposure servo
 (same solver stack, field-proven numbers — see
-`docs/mf_dev/mf_auto_exposure_plan_ko.md`):
+`docs/mf_dev/camera_ko.md`):
 
 - **Target** 20 detected stars, smoothed by an EMA (α = 0.5).
 - **Asymmetric deadband**: act when `ema/target` < 0.8, tolerate excess

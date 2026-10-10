@@ -47,4 +47,4 @@ Python 가상환경이나 MFDS 실행 바이너리와 별도로 설치되는 개
 이 설정은 사용자별 로컬 설정이므로 다른 장비에서도 위 명령을 실행합니다.
 
 Trixie Python 개발 도구와 환경 활성화는
-[Trixie 개발 환경](mf_dev/TRIXIE_DEVELOPMENT_ko.md)을 참조합니다.
+[Trixie 개발 환경](mf_dev/setup_ko.md)을 참조합니다.

@@ -671,7 +671,7 @@ def download_color_mode(shared_state, settings: dict[str, Any] | None = None) ->
     """Grayscale for mono frames, real colour for declared colour variants.
 
     A mono sensor's Bayer label is a driver artifact: the RGB it debayers
-    into is pure chroma noise (docs/mf_dev/mf_sep_fullframe_impl_ko.md §6.4),
+    into is pure chroma noise (docs/history/development/solver.md#mf_sep_fullframe_impl_ko §6.4),
     so luminance keeps the data and drops the artifact. A device declared as
     the real CFA variant (CameraProfile.mono False, carried on the published
     frame info) keeps its measured chroma. No frame info defaults to mono --

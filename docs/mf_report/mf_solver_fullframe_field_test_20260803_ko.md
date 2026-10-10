@@ -4,7 +4,7 @@
 > 별도 테스트에서 확정 예정). 측정은 섀도 CSV 시도별 전수 기록(총 ~2,200시도).
 > 원자료 SD 백업: `PiFinder_data/logs/saved_20260804_0035/`
 > (야간 세션 로그 + LP 곡선/타임아웃 A/B CSV 4종).
-> 계획·구현·백로그: [mf_cedar_fullframe_primary_plan_ko.md](../mf_dev/mf_cedar_fullframe_primary_plan_ko.md).
+> 계획·구현·백로그: [mf_cedar_fullframe_primary_plan_ko.md](../history/development/solver.md#mf_cedar_fullframe_primary_plan_ko).
 
 ## 1. 테스트 개요
 

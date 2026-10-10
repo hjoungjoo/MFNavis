@@ -532,7 +532,7 @@ class UIPreview(GuideKeyMixin, UIModule):
         bright background washes it out. The 12-bit raw frame still carries
         the scene; a percentile stretch of its Bayer-quad average (which also
         removes the checker pattern a mono sensor shows through an RGGB
-        driver, docs/mf_dev/mf_sep_fullframe_impl_ko.md §6.4) keeps the
+        driver, docs/history/development/solver.md#mf_sep_fullframe_impl_ko §6.4) keeps the
         Image view usable for daytime alignment without touching
         exposure/gain.
         """

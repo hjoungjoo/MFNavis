@@ -9,5 +9,5 @@ GoTo 오차 실측값이나 상세 로그가 제공되지 않았으므로 별도
 판정을 추가하지 않는다. Pi 4·CM5의 과거 Bookworm 실기 결과도 Trixie 검증 완료로
 바꾸지 않는다.
 
-현재 설치 절차는 [Trixie 설치 매뉴얼](../mf_dev/mf_trixie_install_ko.md),
+현재 설치 절차는 [Trixie 설치 매뉴얼](../history/development/setup.md#mf_trixie_install_ko),
 이전 현장 점검과 수정은 [보고서 목록](README.md)을 참고한다.

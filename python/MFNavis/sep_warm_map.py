@@ -6,7 +6,7 @@ Build the SEP warm-pixel map from stage-dump corpora.
 Warm pixels are static single-pixel sensor defects that dominate SEP's
 detection counts on empty sky (2026-07-28 bench: 19 positions accounted
 for 55% of all detections across a night of failure-streak frames --
-docs/mf_dev/mf_sep_fullframe_impl_ko.md §6.3). This tool finds them by
+docs/history/development/solver.md#mf_sep_fullframe_impl_ko §6.3). This tool finds them by
 same-channel neighbour excess recurring at a fixed position across many
 frames, and writes the map ``sep_shadow`` loads at startup.
 

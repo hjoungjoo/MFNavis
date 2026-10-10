@@ -7,7 +7,7 @@ The star-count controller is the opt-in alternative to the match-count
 controller (camera_exp = "auto_star"): feedback comes from
 detected centroids instead of catalog matches, with a bright-sky guard,
 a slewing fallback, and an anchor learned in the deadband.
-See docs/mf_dev/mf_auto_exposure_plan_ko.md.
+See docs/mf_dev/camera_ko.md.
 """
 
 import pytest

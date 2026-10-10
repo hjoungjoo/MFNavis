@@ -53,7 +53,7 @@ class CameraProfile:
     # True when the sensor delivers plain luminance (no CFA), regardless of
     # what the driver's raw format label claims. The imx462 module ships a
     # SRGGB12 label but measures as true mono: Bayer phase means are
-    # identical under every sky (docs/mf_dev/mf_sep_fullframe_impl_ko.md §6.4).
+    # identical under every sky (docs/history/development/solver.md#mf_sep_fullframe_impl_ko §6.4).
     # Debayering such data only fabricates chroma noise.
     mono: bool = False
 
@@ -464,7 +464,7 @@ CAMERA_PROFILES: Dict[str, CameraProfile] = {
 # Colour variants of the v3 sensors. Mono and colour modules share the same
 # silicon and register map; the CFA is an optical layer the sensor cannot
 # report over I2C, so the variant is declared once per device via the
-# "camera_variant" config option (docs/mf_dev/mf_camera_mono_color_plan_ko.md)
+# "camera_variant" config option (docs/mf_dev/camera_ko.md)
 # and applied with apply_variant() -- it is never detected at runtime. SQM
 # calibration constants are inherited from the mono units and are unverified
 # on colour hardware.

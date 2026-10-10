@@ -5,8 +5,8 @@
 
 관련 설계:
 
-- [`mf_indi_serial_auto_discovery_design_ko.md`](../mf_dev/mf_indi_serial_auto_discovery_design_ko.md)
-- [`mf_indi_serial_reconnect_design_ko.md`](../mf_dev/mf_indi_serial_reconnect_design_ko.md)
+- [`mf_indi_serial_auto_discovery_design_ko.md`](../history/development/connectivity.md#mf_indi_serial_auto_discovery_design_ko)
+- [`mf_indi_serial_reconnect_design_ko.md`](../history/development/connectivity.md#mf_indi_serial_reconnect_design_ko)
 - [`mf_indi_serial_port_dedup_20260813_ko.md`](mf_indi_serial_port_dedup_20260813_ko.md)
 
 ## ESP32 DTR/RTS 안전 보완

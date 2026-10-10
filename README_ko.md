@@ -23,14 +23,14 @@ Raspberry Pi Imager로 Pi 4/Pi 5/CM5의 부팅 저장장치에
 호스트명, SSH, Wi-Fi를 설정하고, 부팅 후 해당 사용자로 로그인해 인터넷 연결을
 확인하세요. 이 설치에서는 OS 버전을 Trixie로 명시적으로 선택합니다.
 운영 Python은 3.13이며 `.venv-trixie`를 사용합니다. 자세한 구성은
-[Trixie 설치 안내](docs/mf_dev/mf_trixie_install_ko.md)를 참고하세요.
+[Trixie 설치 안내](docs/mf_dev/setup_ko.md)를 참고하세요.
 
 아래 `main` 설치는 Trixie 기준입니다. 공개 태그는 해당 릴리즈의 OS 요구사항을
 따릅니다. 과거 Bookworm 릴리즈에는 그에 맞는 OS와 아카이브가 필요합니다.
 
 이미지 기록과 첫 부팅의 자세한 절차는
 [Raspberry Pi 공식 OS 설치 안내](https://www.raspberrypi.com/documentation/computers/getting-started.html#install-an-operating-system)를,
-보드별 배선 차이는 [Pi 4/Pi 5/CM5 호환성 안내](./docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_ko.md)를 참고하세요.
+보드별 배선 차이는 [Pi 4/Pi 5/CM5 호환성 안내](docs/mf_dev/setup_ko.md)를 참고하세요.
 
 ### 2. MFNavis 설치: 릴리즈 또는 main
 
@@ -123,7 +123,7 @@ sudo reboot
 설치 스크립트는 기본적으로 현재 OS에 맞는 INDI 아카이브를 필수로 검증·설치하며,
 아카이브가 없거나 호환되지 않으면 중단합니다. 앱의 마운트 제어는 별도로 켜기 전까지
 꺼져 있습니다. INDI 없는 설치를 위한 `MFNAVIS_INSTALL_INDI_ARCHIVE=false` 등은
-[INDI 설치 안내](./docs/mf_dev/mf_indi_mount_install_ko.md)를 참고하세요.
+[INDI 설치 안내](docs/mf_dev/setup_ko.md)를 참고하세요.
 
 ### 3. 오프라인 캐시 다운로드
 
@@ -154,22 +154,22 @@ python3 scripts/warm_mfnavis_caches.py --images poss
 다운로드 중에는 SSH 세션을 유지하세요. 데이터 경로를 바꿨다면 명령 앞에
 `MFNAVIS_DATA_DIR=/절대/경로`를 지정하세요.
 
-용량·진행 확인과 문제 해결은 [캐시 다운로드 가이드](./docs/mf_dev/mf_cache_download_ko.md)를 참고하세요.
+용량·진행 확인과 문제 해결은 [캐시 다운로드 가이드](docs/mf_dev/interfaces_ko.md)를 참고하세요.
 
 ### 4. 장치 기본 설정
 
 1. **부팅과 조작 확인:** 재부팅 후 LCD와 키패드가 동작하는지 확인합니다.
-   [입력 조작](./docs/mf_dev/mf_input_controls_ko.md)과
-   [키보드 매핑](./docs/mf_dev/mf_keyboard_mapping_ko.md)을 참고하세요.
+   [입력 조작](docs/mf_dev/interfaces_ko.md)과
+   [키보드 매핑](docs/mf_dev/interfaces_ko.md)을 참고하세요.
 2. **하드웨어 선택:** `Settings > Advanced`에서 장착 방향에 맞는 `MFNavis Type`,
    실제 `Camera Type`, `GPS Settings`의 GPS 종류·포트·통신 속도를 설정합니다.
    재시작 안내가 나오면 따르세요.
-   IMX678은 먼저 [공식 드라이버 기반 준비 절차](docs/mf_dev/mf_imx678_ko.md)를
+   IMX678은 먼저 [공식 드라이버 기반 준비 절차](docs/mf_dev/setup_ko.md)를
    완료한 뒤 `IMX678 (Auto)`를 선택합니다.
 3. **네트워크와 웹 UI 확인:** 같은 네트워크에서 `http://<호스트명>.local`을 엽니다.
    호스트명이 `pifinder`이면 `http://pifinder.local`입니다. AP 모드에서 이름으로
    접속되지 않으면 `http://10.10.10.1`을 사용합니다. 현장용 Wi-Fi는
-   [AP+STA 구성](./docs/mf_dev/mf_wifi_apsta_ko.md)을 참고하세요.
+   [AP+STA 구성](docs/mf_dev/connectivity_ko.md)을 참고하세요.
 4. **위치와 시간 확인:** 야외에서 `Start > GPS Status`를 열어 GPS 수신을 기다립니다.
    GPS를 사용하지 않으면 `Tools > Place & Time`에서 위치와 시간을 입력합니다.
 5. **초점 조절:** 렌즈 캡을 벗기고 별이 보이는 하늘을 향합니다. `Start > Focus`에서
@@ -189,11 +189,11 @@ python3 scripts/warm_mfnavis_caches.py --images poss
    별이 더 고르게 분포한 하늘로 방향을 바꾼 뒤 다시 고정합니다.
    Auto 측정과 왜곡 보정은 별도 작업입니다. 렌즈·카메라를 바꾸면 두 측정을 다시 하고,
    하늘 좌표가 솔빙되는지 확인하세요. 보정 프로파일의 적용 조건과 상세 설명은
-   [렌즈 보정 안내](./docs/mf_dev/mf_lens_distortion_correction_ko.md)를 참고하세요.
+   [렌즈 보정 안내](docs/mf_dev/camera_ko.md)를 참고하세요.
 8. **망원경과 정렬:** 알고 있는 별을 접안렌즈 중심에 놓고 `Start > Align`에서
    MFNavis와 망원경의 시선을 맞춥니다. 카탈로그 대상을 선택해 Push-to 방향을 확인합니다.
 9. **마운트 제어 설정(선택):** INDI는 기본으로 꺼져 있습니다.
-   [INDI 설치·설정](./docs/mf_dev/mf_indi_mount_install_ko.md)에 따라 먼저
+   [INDI 설치·설정](docs/mf_dev/setup_ko.md)에 따라 먼저
    Telescope Simulator로 연결·GoTo·Sync를 확인한 뒤 실제 마운트를 연결합니다.
 
 자세한 장치 조작은 [빠른 시작 설명서](./docs/source/quick_start.rst)와
@@ -202,8 +202,8 @@ python3 scripts/warm_mfnavis_caches.py --images poss
 ### 5. MF 추가 기능 문서
 
 웹 카탈로그, 위치 카탈로그, LiveCam, 자동 노출, MFDS, SQM, IMU 보정은
-[MF 추가 기능 안내](./docs/mf_dev/mf_additional_features_ko.md)에서 확인할 수 있습니다.
-기능별 검증 상태는 [기능 검토 체크리스트](./docs/mf_dev/mf_feature_review_checklist_ko.md)를 참고하세요.
+[MF 추가 기능 안내](docs/mf_dev/README.md)에서 확인할 수 있습니다.
+기능별 검증 상태는 [개발 검증 안내](docs/mf_dev/validation_ko.md)를 참고하세요.
 
 ---
 

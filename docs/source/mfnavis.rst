@@ -37,9 +37,9 @@ control stays disabled until selected. MFNavis, splash, and INDI Web Manager
 use the same runtime Python. Development uses ``.venv-dev-trixie``.
 
 See the repository's
-`English installation guide <https://github.com/hjoungjoo/MFNavis/blob/main/docs/mf_dev/mf_trixie_install_en.md>`_
+`English installation guide <https://github.com/hjoungjoo/MFNavis/blob/main/docs/mf_dev/setup_en.md>`_
 and
-`Korean installation guide <https://github.com/hjoungjoo/MFNavis/blob/main/docs/mf_dev/mf_trixie_install_ko.md>`_
+`Korean installation guide <https://github.com/hjoungjoo/MFNavis/blob/main/docs/mf_dev/setup_ko.md>`_
 for archive selection, custom paths, startup checks, and development commands.
 
 The 2026-09-27 GoTo field test was reported by the user to have no major

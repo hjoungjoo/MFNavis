@@ -3,7 +3,7 @@
 > Field measurement from the night of 2026-08-01 comparing three solver
 > configurations on identical frames under the same sky. For background
 > and architecture see the
-> [integrated implementation doc](../mf_dev/mf_sep_fullframe_impl_ko.md) and
+> [integrated implementation doc](../history/development/solver.md#mf_sep_fullframe_impl_ko) and
 > [ADR m0023](../adr/m0023-cedar-sep-hybrid-solving.md).
 > 한국어판: [mf_solver_3path_bench_20260801_ko.md](mf_solver_3path_bench_20260801_ko.md)
 

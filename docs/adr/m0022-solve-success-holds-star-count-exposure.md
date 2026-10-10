@@ -84,7 +84,7 @@ needs ≥4). The binding constraint moved from control to detection
 sensitivity; see
 [mf_auto_exposure_field_review_20260726_ko.md](../mf_report/mf_auto_exposure_field_review_20260726_ko.md)
 and the SEP full-frame detection path built in response
-([mf_sep_fullframe_impl_ko.md](../mf_dev/mf_sep_fullframe_impl_ko.md)).
+([mf_sep_fullframe_impl_ko.md](../history/development/solver.md#mf_sep_fullframe_impl_ko)).
 
 ## Alternatives considered
 

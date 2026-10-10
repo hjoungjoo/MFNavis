@@ -26,4 +26,4 @@ permissions. Neither action switches the active sensor or reboots.
 The official libcamera generic `uncalibrated.json` is copied unchanged to
 `imx678.json` at installation, unless a tuning file already exists. It is an
 uncalibrated starting point for RAW acquisition, not measured IMX678 colour
-or photometric calibration. See ../../docs/mf_dev/mf_imx678_ko.md.
+or photometric calibration. See ../../docs/mf_dev/setup_ko.md.

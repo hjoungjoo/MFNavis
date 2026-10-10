@@ -10,7 +10,7 @@
 - Fix web API authentication, backup restoration and Korean tracking-screen translations. Update fresh-install IMX462 Color lens defaults and alignment persistence.
 - Pin the detector to **MFDS v0.4.2**.
 
-Use Trixie 64-bit for this release. Updating source does not upgrade Bookworm to Trixie. Back up configuration, observation data and local changes, then follow the [Trixie installation guide](../docs/mf_dev/mf_trixie_install_en.md). Hardware checks were performed on Pi 5; separate Trixie checks on Pi 4 and CM5 remain outstanding.
+Use Trixie 64-bit for this release. Updating source does not upgrade Bookworm to Trixie. Back up configuration, observation data and local changes, then follow the [Trixie installation guide](../docs/history/development/setup.md#mf_trixie_install_ko). Hardware checks were performed on Pi 5; separate Trixie checks on Pi 4 and CM5 remain outstanding.
 
 Run as the intended installation user:
 

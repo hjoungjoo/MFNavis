@@ -20,7 +20,7 @@ before first boot, then log in as that user and confirm internet access.
 Choose Bookworm explicitly for this installation.
 
 See the [Raspberry Pi OS installation instructions](https://www.raspberrypi.com/documentation/computers/getting-started.html#install-an-operating-system)
-for imaging and first boot, and the [board compatibility guide](./docs/mf_dev/mf_pifinder_rpi4_pi5_compatibility_ko.md)
+for imaging and first boot, and the [board compatibility guide](docs/history/development/setup.md#mf_pifinder_rpi4_pi5_compatibility_ko)
 for Pi 4/Pi 5/CM5 wiring differences.
 
 ### 2. Install MF PiFinder: release or main
@@ -90,7 +90,7 @@ not a substitute for first-time OS and service setup.
 See the [MFDS binary installation guide](./docs/MFDS_BINARY_DISTRIBUTION_ko.md)
 for package details. INDI mount support is optional: setup installs it only
 when an INDI archive is available/configured; otherwise follow the
-[INDI installation guide](./docs/mf_dev/mf_indi_mount_install_en.md).
+[INDI installation guide](docs/history/development/mount.md#mf_indi_mount_install_ko).
 
 ### 3. Download offline caches
 
@@ -120,21 +120,21 @@ You can stop with `Ctrl-C` and rerun the same command to resume; existing images
 are skipped. Keep the SSH session open while downloading. For a custom data
 location, prefix the command with `PIFINDER_DATA_DIR=/absolute/path`.
 
-[Offline cache guide](./docs/mf_dev/mf_cache_download_en.md) |
-[한국어](./docs/mf_dev/mf_cache_download_ko.md)
+[Offline cache guide](docs/history/development/interfaces.md#mf_cache_download_ko) |
+[한국어](docs/history/development/interfaces.md#mf_cache_download_ko)
 
 ### 4. Basic device setup
 
 1. **Check startup and controls.** After reboot, confirm the LCD and keypad
-   respond. See [input controls](./docs/mf_dev/mf_input_controls_en.md) and
-   [keyboard mapping](./docs/mf_dev/mf_keyboard_mapping_en.md).
+   respond. See [input controls](docs/history/development/interfaces.md#mf_input_controls_ko) and
+   [keyboard mapping](docs/history/development/interfaces.md#mf_keyboard_mapping_ko).
 2. **Select the hardware.** In `Settings > Advanced`, set `PiFinder Type` to
    match the mounting orientation, select `Camera Type`, and check the GPS
    type, port, and baud rate in `GPS Settings`. Follow any restart prompts.
 3. **Check networking and the web UI.** On the same network, open
    `http://<hostname>.local` (`http://pifinder.local` if that is your hostname).
    In AP mode, use `http://10.10.10.1` if name resolution fails. See
-   [AP+STA setup](./docs/mf_dev/mf_wifi_apsta_ko.md) to configure field Wi-Fi.
+   [AP+STA setup](docs/history/development/connectivity.md#mf_wifi_apsta_ko) to configure field Wi-Fi.
 4. **Confirm location and time.** Outdoors, use `Start > GPS Status` and wait
    for a fix. Without GPS, enter location and time in `Tools > Place & Time`.
 5. **Focus the lens.** Remove the lens cap, point at a clear star field, and
@@ -157,13 +157,13 @@ location, prefix the command with `PIFINDER_DATA_DIR=/absolute/path`.
    more evenly populated star field and hold still again. Auto and distortion
    measurement are separate operations. Repeat both after changing the lens
    or camera, then confirm that sky positions solve. See the
-   [lens correction guide](./docs/mf_dev/mf_lens_distortion_correction_en.md)
+   [lens correction guide](docs/history/development/camera.md#mf_lens_distortion_correction_ko)
    for profile application conditions and details.
 8. **Align with the telescope.** Center a known star in the eyepiece and use
    `Start > Align` to align PiFinder's pointing with the telescope. Select a
    catalog target and check the Push-to directions.
 9. **Configure optional mount control.** INDI is disabled by default. Follow
-   the [INDI setup guide](./docs/mf_dev/mf_indi_mount_install_en.md) and verify
+   the [INDI setup guide](docs/history/development/mount.md#mf_indi_mount_install_ko) and verify
    connection, GoTo, and Sync with Telescope Simulator before a physical mount.
 
 See the [quick-start manual](./docs/source/quick_start.rst) and
@@ -171,11 +171,11 @@ See the [quick-start manual](./docs/source/quick_start.rst) and
 
 ### 5. MF feature documentation
 
-The [MF additional-features index](./docs/mf_dev/mf_additional_features_en.md)
+The [MF additional-features index](docs/history/development/maintenance.md#mf_additional_features_ko)
 covers web catalogs, location catalogs, LiveCam, automatic exposure, MFDS,
 SQM, and IMU calibration. Its Korean equivalent is
-[available here](./docs/mf_dev/mf_additional_features_ko.md). For validation
-status, see the [feature review checklist](./docs/mf_dev/mf_feature_review_checklist_en.md).
+[available here](docs/history/development/maintenance.md#mf_additional_features_ko). For validation
+status, see the [feature review checklist](docs/history/development/validation.md#mf_feature_review_checklist_ko).
 
 ---
 

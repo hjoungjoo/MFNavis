@@ -1,7 +1,7 @@
 # 2026-09-08 토성 추적 실측: 저고도 지연과 GoTo 관측 시각 보호
 
 상태: **1차 현장 수집·보호 수정 적용 완료. 솔빙 속도 최적화와 독립 정밀도 검증은 후속 과제**.
-기준: [통합 작업서](../mf_dev/mf_solver_goto_observation_workplan_20260908_ko.md).
+기준: [통합 작업서](../history/development/validation.md#mf_solver_goto_observation_workplan_20260908_ko).
 실측 시각: 2026-09-08 21:52~22:13 KST. 기준 HEAD `d9edcd72` + 기존 로컬 변경.
 
 ## 목표와 현장 조건

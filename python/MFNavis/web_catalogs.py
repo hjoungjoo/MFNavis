@@ -12,7 +12,7 @@ Usage (mirrors PiFinder.api_extensions):
         from PiFinder.web_catalogs import register_catalog_routes
         register_catalog_routes(app, self)
 
-Design notes (docs/mf_dev/mf_web_catalogs_dev_ko.md):
+Design notes (docs/mf_dev/interfaces_ko.md):
 - All functionality lives in this module + views/catalogs/* templates; the
   original sources only gain the registration hook and two nav links.
 - The objects database (astro_data/pifinder_objects.db) is opened read-only;

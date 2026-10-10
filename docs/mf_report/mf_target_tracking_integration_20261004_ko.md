@@ -4,7 +4,7 @@
 
 상태: **정렬 분기와 달·행성·상대 별의 영상 측정을 기존 부드러운 보정 엔진에 연결했다. 자동 회귀 시험을 수행했으며 실제 하늘과 장비의 최종 시험은 대기 중이다.** 운영 설정 변경, 서비스 재시작, 실제 마운트 이동은 수행하지 않았다.
 
-요구사항과 구현 전 검토는 [통합 개선 계획](../mf_dev/mf_moon_smooth_tracking_integration_plan_20261003_ko.md)을 따른다. 이전 [부드러운 보정 구현 보고서](mf_smooth_tracking_implementation_20261003_ko.md)는 기존 시험의 기록으로 유지한다. 이후 통합 수정과 결과는 이 문서에 기록한다.
+요구사항과 구현 전 검토는 [통합 개선 계획](../history/development/mount.md#mf_moon_smooth_tracking_integration_plan_20261003_ko)을 따른다. 이전 [부드러운 보정 구현 보고서](mf_smooth_tracking_implementation_20261003_ko.md)는 기존 시험의 기록으로 유지한다. 이후 통합 수정과 결과는 이 문서에 기록한다.
 
 ## 기존 최종 시험과 이번 통합 시험의 경계
 

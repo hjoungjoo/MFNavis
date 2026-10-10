@@ -4,7 +4,7 @@
 # The CYW43455 shares one 2.4 GHz radio between Wi-Fi and Bluetooth. High
 # duty-cycle BT phases (pairing, boot-time reconnect storms) can wedge the
 # firmware's STA state machine: the link drops and no supplicant retry can
-# bring it back (docs/mf_dev/mf_change_history_ko.md, 2026-08-05 incident).
+# bring it back (docs/history/development/maintenance.md#mf_change_history_ko, 2026-08-05 incident).
 # Service restarts don't help — the fault is below them. This script does the
 # only software-level fix: tear the stack down to the kernel module, reload
 # the driver (which resets the chip firmware), and bring the stack back in

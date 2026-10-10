@@ -20,7 +20,7 @@ wget -O /tmp/mfnavis-m2.6.16-setup.sh https://raw.githubusercontent.com/hjoungjo
 MFNAVIS_INSTALL_BRANCH=m2.6.16 bash /tmp/mfnavis-m2.6.16-setup.sh
 ```
 
-완료 후 재부팅하세요. 상세 절차는 [Trixie 설치 안내](../docs/mf_dev/mf_trixie_install_ko.md)를 따릅니다.
+완료 후 재부팅하세요. 상세 절차는 [Trixie 설치 안내](../docs/history/development/setup.md#mf_trixie_install_ko)를 따릅니다.
 이번 배포는 소프트웨어 소스와 설치 자료입니다.
 
 [전체 변경 비교](https://github.com/hjoungjoo/MFNavis/compare/m2.6.15...m2.6.16)

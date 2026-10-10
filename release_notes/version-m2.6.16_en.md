@@ -18,7 +18,7 @@ wget -O /tmp/mfnavis-m2.6.16-setup.sh https://raw.githubusercontent.com/hjoungjo
 MFNAVIS_INSTALL_BRANCH=m2.6.16 bash /tmp/mfnavis-m2.6.16-setup.sh
 ```
 
-Reboot after installation. See the [Trixie installation guide](../docs/mf_dev/mf_trixie_install_en.md).
+Reboot after installation. See the [Trixie installation guide](../docs/history/development/setup.md#mf_trixie_install_ko).
 This release provides software source and installation materials.
 
 [Full comparison](https://github.com/hjoungjoo/MFNavis/compare/m2.6.15...m2.6.16)

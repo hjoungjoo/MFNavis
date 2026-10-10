@@ -1,6 +1,6 @@
 # 기능 체크리스트 테스트 세션 — 자동 검증분 (2026-08-05)
 
-> [mf_feature_review_checklist_ko.md](../mf_dev/mf_feature_review_checklist_ko.md)
+> [mf_feature_review_checklist_ko.md](../history/development/validation.md#mf_feature_review_checklist_ko)
 > (2026-08-05 기준선) 전체 재테스트의 **자동/원격 검증 가능분** 실행 기록.
 > 조건: 실내, 하늘 불량(솔빙 불가), 마운트 미연결 — 야간/실외/마운트 항목은
 > 수동 테스트로 남김(§하단). 실행: Claude (자동화), 결과 기록 양식 준수.

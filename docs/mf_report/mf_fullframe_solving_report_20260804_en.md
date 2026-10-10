@@ -125,4 +125,4 @@ star-SNR limit, not a detector limit.
 Raw data (per-attempt CSVs, corpus locations) and reproduction steps are
 in the repository's
 [field-test report](mf_solver_fullframe_field_test_20260803_ko.md) and
-[design document](../mf_dev/mf_cedar_sep_hybrid_design_en.md).
+[design document](../history/development/solver.md#mf_cedar_sep_hybrid_design_ko).

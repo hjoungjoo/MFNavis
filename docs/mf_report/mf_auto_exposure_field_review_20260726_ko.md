@@ -2,10 +2,10 @@
 
 > 상태: **방향 확정·구현 반영 — 최종 방안(σ/역할 분담)만 코퍼스 대기** (2026-07-28 갱신)
 > 구현: 본 문서 §4-B+C 채택안의 상세 설계·구현·야간 검증 기록은
-> **[mf_sep_fullframe_impl_ko.md](../mf_dev/mf_sep_fullframe_impl_ko.md)** 참조.
+> **[mf_sep_fullframe_impl_ko.md](../history/development/solver.md#mf_sep_fullframe_impl_ko)** 참조.
 > 원 상태: 검토 중 — 방향 결정 대기 (2026-07-26 심야 작성)
-> 선행 문서: [mf_auto_exposure_methods_ko.md](../mf_dev/mf_auto_exposure_methods_ko.md) (방법 조사),
-> [mf_auto_exposure_plan_ko.md](../mf_dev/mf_auto_exposure_plan_ko.md) (검출 별 수 컨트롤러 설계),
+> 선행 문서: [mf_auto_exposure_methods_ko.md](../history/development/camera.md#mf_auto_exposure_methods_ko) (방법 조사),
+> [mf_auto_exposure_plan_ko.md](../history/development/camera.md#mf_auto_exposure_plan_ko) (검출 별 수 컨트롤러 설계),
 > [ADR m0020](../adr/m0020-star-count-controller-opt-in.md) ·
 > [ADR m0021](../adr/m0021-auto-exposure-reaches-fast-shutter.md) ·
 > [ADR m0022](../adr/m0022-solve-success-holds-star-count-exposure.md)
@@ -225,7 +225,7 @@ DAOFIND — 가우시안 매치드 필터 + sharpness/roundness로 점원만 선
 
 ## 7. 야간 검증 요약 (2026-07-27 밤 ~ 07-28 새벽) — 결론 갱신
 
-상세 기록은 [mf_sep_fullframe_impl_ko.md](../mf_dev/mf_sep_fullframe_impl_ko.md) §6.
+상세 기록은 [mf_sep_fullframe_impl_ko.md](../history/development/solver.md#mf_sep_fullframe_impl_ko) §6.
 요점만:
 
 - **§4의 B+C(비크롭 12-bit + SEP)가 실하늘에서 작동 확인.** 구름 틈 2분

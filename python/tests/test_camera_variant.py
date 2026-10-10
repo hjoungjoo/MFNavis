@@ -2,7 +2,7 @@
 
 The CFA is an optical layer the sensor cannot report over I2C, so the
 variant is a per-device config declaration ("camera_variant") folded into
-the profile name (docs/mf_dev/mf_camera_mono_color_plan_ko.md). These tests
+the profile name (docs/mf_dev/camera_ko.md). These tests
 pin the mapping helper, the derived colour profiles, and the settings-UI
 composition and restart behaviour.
 """

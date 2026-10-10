@@ -1,7 +1,7 @@
 # 3경로 솔빙 실측 벤치 — cedar 크롭 / cedar 풀프레임 σ8 / cedar+SEP 하이브리드 (2026-08-01)
 
 > 2026-08-01 밤, 실제 하늘에서 세 가지 솔빙 구성을 같은 프레임으로 비교한
-> 측정 기록. 배경·아키텍처는 [통합 구현 문서](../mf_dev/mf_sep_fullframe_impl_ko.md)와
+> 측정 기록. 배경·아키텍처는 [통합 구현 문서](../history/development/solver.md#mf_sep_fullframe_impl_ko)와
 > [ADR m0023](../adr/m0023-cedar-sep-hybrid-solving.md) 참조.
 > English version: [mf_solver_3path_bench_20260801_en.md](mf_solver_3path_bench_20260801_en.md)
 

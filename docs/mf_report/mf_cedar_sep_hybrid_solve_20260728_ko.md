@@ -1,7 +1,7 @@
 # MF_PiFinder 개발 소식 — cedar + SEP 하이브리드 솔빙, 광해 하늘 실증 (2026-07-28)
 
 > 커뮤니티 공유용 요약입니다. 기술 상세는
-> [통합 구현 문서](../mf_dev/mf_sep_fullframe_impl_ko.md)에 있습니다.
+> [통합 구현 문서](../history/development/solver.md#mf_sep_fullframe_impl_ko)에 있습니다.
 > English version: [mf_cedar_sep_hybrid_solve_20260728_en.md](mf_cedar_sep_hybrid_solve_20260728_en.md)
 
 ## 무엇을 하려는 프로젝트인가

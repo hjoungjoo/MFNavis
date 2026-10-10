@@ -151,7 +151,7 @@ SVG의 텍스트는 별도 벡터 편집기에서도 편집할 수 있다.
 | SQM·보정·진단 측정 | `python/MFNavis/ui/sqm.py:266`, `python/MFNavis/ui/sqm_calibration.py:1091`, `python/MFNavis/ui/sqm_sweep.py:437` |
 | 위치·시간·저장 장소 관리 | `python/MFNavis/ui/locationentry.py:263`, `python/MFNavis/ui/timeentry.py:213`, `python/MFNavis/ui/location_list.py:83` |
 | 입력장치 설정 | `python/MFNavis/ui/bluetooth_keyboard.py:534`, `python/MFNavis/ui/joystick.py:163`, `python/MFNavis/ui/keyboard_mapping.py:140` |
-| LCD 오류 알림 | `docs/mf_dev/mf_lcd_operation_errors_ko.md` |
+| LCD 오류 알림 | `docs/mf_dev/interfaces_ko.md` |
 
 ## 배포 전 실제 장비 확인
 

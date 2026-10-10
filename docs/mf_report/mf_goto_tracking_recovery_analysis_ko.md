@@ -1,9 +1,9 @@
 # SkySafari GoTo 무동작 장애 분석 및 복구 검증 (2026-07-18)
 
 > 상태: **실측 검증 완료 — 복구 성공** (15:45 KST, GoTo 0.91′ 오차로 목표 도달)
-> 관련 문서: [mf_mountcontrol_indi_flow_ko.md](../mf_dev/mf_mountcontrol_indi_flow_ko.md),
-> [mf_indi_goto_guide_plan_ko.md](../mf_dev/mf_indi_goto_guide_plan_ko.md),
-> [mf_goto_mount_source_structure_ko.md](../mf_dev/mf_goto_mount_source_structure_ko.md)
+> 관련 문서: [mf_mountcontrol_indi_flow_ko.md](../history/development/mount.md#mf_mountcontrol_indi_flow_ko),
+> [mf_indi_goto_guide_plan_ko.md](../history/development/mount.md#mf_indi_goto_guide_plan_ko),
+> [mf_goto_mount_source_structure_ko.md](../history/development/mount.md#mf_goto_mount_source_structure_ko)
 >
 > **개정 이력**: 초판(14:55)은 "재연결 시 `enable_tracking()` 레이스로 추적 OFF 방치"를
 > 원인으로 지목했다. 이후 실측 테스트(15:09~15:45)에서 이 가설이 **불완전**함이 확인됐다
