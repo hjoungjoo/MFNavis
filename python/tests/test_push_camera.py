@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 from unittest.mock import Mock
+import time
 
 import pytest
 from PIL import Image, ImageDraw, ImageFont
@@ -312,6 +313,7 @@ def test_arrival_border_requires_optical_confirmation(phase, confirmed, visible)
         "tracking_target_dec": 20.0,
     }
     ui.draw = Mock(wraps=ui.draw)
+    ui.shared_state.solution = lambda: SimpleNamespace(last_solve_success=time.time())
     ui._render_push_tracking_border()
     assert ui.draw.rectangle.call_count == (2 if visible else 0)
 
@@ -327,3 +329,72 @@ def test_unsolved_native_tracking_shows_wait():
     ui.draw = Mock(wraps=ui.draw)
     UIObjectDetails._render_push_status(ui)
     assert ui.draw.text.call_args.args[1].startswith("WAIT")
+
+
+def arrived_ui(monkeypatch, *, success=1000.0):
+    ui = camera_ui((176, 176), (256, 256))
+    ui.object.ra, ui.object.dec = 100.0, 20.0
+    ui._push_mount_status = {"state": "connected", "tracking_enabled": True}
+    ui._push_guide_status = {
+        "phase": "tracking",
+        "optical_arrival_confirmed": True,
+        "tracking_target_ra": 100.0,
+        "tracking_target_dec": 20.0,
+    }
+    # A fresh failed attempt or IMU estimate must not renew optical success.
+    solution = SimpleNamespace(last_solve_success=success, last_solve_attempt=1013.0)
+    ui.shared_state.solution = lambda: solution
+    ui.draw = Mock(wraps=ui.draw)
+    monkeypatch.setattr("PiFinder.ui.object_details.time.time", lambda: 1013.0)
+    return ui, solution
+
+
+def test_arrival_border_blinks_through_solve_loss_and_recovers(monkeypatch):
+    ui, solution = arrived_ui(monkeypatch, success=1010.0)
+
+    def visible_at(stamp):
+        monkeypatch.setattr("PiFinder.ui.object_details.time.monotonic", lambda: stamp)
+        ui.draw.reset_mock()
+        ui._render_push_tracking_border()
+        return ui.draw.rectangle.call_count == 2
+
+    # Brief failures retain the solid confirmation during the 12 s grace.
+    assert visible_at(100.1) and visible_at(100.6)
+    solution.last_solve_success = 1001.0
+    assert visible_at(100.6)  # Exactly 12 seconds is still valid.
+    solution.last_solve_success = 1000.0
+    assert visible_at(100.1)
+    assert not visible_at(100.6)
+    assert visible_at(101.1)
+    assert not visible_at(101.6)
+    # Recovery during the dark half-cycle restores a steady border at once.
+    solution.last_solve_success = solution.last_solve_attempt = 1013.0
+    assert visible_at(101.6) and visible_at(102.1)
+
+
+@pytest.mark.parametrize("success", [None, 0, float("nan"), float("inf"), 1014.0])
+def test_arrival_border_blinks_when_success_timestamp_is_unusable(monkeypatch, success):
+    ui, _ = arrived_ui(monkeypatch, success=success)
+    monkeypatch.setattr("PiFinder.ui.object_details.time.monotonic", lambda: 100.6)
+    ui._render_push_tracking_border()
+    assert not ui.draw.rectangle.called
+    monkeypatch.setattr("PiFinder.ui.object_details.time.monotonic", lambda: 101.1)
+    ui._render_push_tracking_border()
+    assert ui.draw.rectangle.call_count == 2
+
+
+@pytest.mark.parametrize("success", [1000.0, 1013.0])
+@pytest.mark.parametrize("stop", ["idle", "stopped", "tracking_off", "target_cleared"])
+def test_stop_hides_solid_and_blinking_arrival_border(monkeypatch, success, stop):
+    ui, _ = arrived_ui(monkeypatch, success=success)
+    if stop == "tracking_off":
+        ui._push_mount_status["tracking_enabled"] = False
+    elif stop == "target_cleared":
+        ui._push_guide_status["tracking_target_ra"] = None
+    else:
+        # Cancel can clear the GoTo phase before native tracking turns off.
+        ui._push_guide_status["phase"] = stop
+    for stamp in (100.1, 100.6, 101.1):
+        monkeypatch.setattr("PiFinder.ui.object_details.time.monotonic", lambda: stamp)
+        ui._render_push_tracking_border()
+    assert not ui.draw.rectangle.called

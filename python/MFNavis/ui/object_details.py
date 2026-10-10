@@ -51,6 +51,10 @@ import pydeepskylog as pds
 
 logger = logging.getLogger("UI.ObjectDetails")
 
+# Match the optical observation age accepted by mount guide correction.
+PUSH_SOLVE_STALE_SECONDS = 12.0
+PUSH_BORDER_BLINK_SECONDS = 0.5
+
 
 # Read-only handle to the catalog DB, opened once and shared across detail
 # views. Used by _other_catalog_descriptions() to pull an object's listings in
@@ -603,7 +607,7 @@ class UIObjectDetails(UIModule):
         )
 
     def _render_push_tracking_border(self):
-        """Mark confirmed mount tracking after arrival at the displayed target."""
+        """Mark optical arrival; blink while its solve confirmation is stale."""
         mount = getattr(self, "_push_mount_status", {})
         guide = getattr(self, "_push_guide_status", {})
         state = str(mount.get("state", ""))
@@ -635,6 +639,25 @@ class UIObjectDetails(UIModule):
             ):
                 return
         except (KeyError, TypeError, ValueError):
+            return
+
+        # IMU estimates may remain fresh during cloud cover. Only a successful
+        # camera solve renews the arrival indicator's optical confirmation.
+        solution = self.shared_state.solution()
+        try:
+            success = float(getattr(solution, "last_solve_success", 0.0))
+            age = time.time() - success
+            solve_fresh = (
+                math.isfinite(age)
+                and success > 0
+                and 0 <= age <= PUSH_SOLVE_STALE_SECONDS
+            )
+        except (TypeError, ValueError):
+            solve_fresh = False
+        if not solve_fresh and (
+            time.monotonic() % (2 * PUSH_BORDER_BLINK_SECONDS)
+            >= PUSH_BORDER_BLINK_SECONDS
+        ):
             return
 
         # The dark outer edge survives bright camera backgrounds; the bright
