@@ -18,6 +18,20 @@ LIMIT_ERRORS = {
 
 
 class MountMotionLimitsMixin:
+    def _mfnavis_sync_preparation(self, command=None):
+        """The incoming MFNavis frame is not usable until its Sync ACK."""
+        transaction = command or getattr(self, "_pending_sync_goto", None) or {}
+        return transaction.get("origin") in {
+            "pifinder_goto",
+            "imu_goto_fallback",
+            "tracking_recovery",
+        } and transaction.get("stage") in {
+            None,
+            "waiting_guide_idle",
+            "waiting_sync_mode",
+            "waiting_sync_coordinates",
+        }
+
     def _limit_numbers(self, name):
         if self.device is None:
             return {}
@@ -30,7 +44,8 @@ class MountMotionLimitsMixin:
         except (AttributeError, TypeError, ValueError):
             return {}
 
-    def _motion_limit_reason(self, target=None):
+    def _reported_motion_limit_reason(self):
+        """Controller-reported faults remain authoritative even before Sync."""
         pending = getattr(self, "_pending_motion_limit", "")
         if pending:
             return pending
@@ -40,12 +55,27 @@ class MountMotionLimitsMixin:
             error = LIMIT_ERRORS.get(ord(raw[-1]) - ord("0"))
             if error:
                 return error
+        return ""
+
+    def _motion_limit_reason(self, target=None, *, current_position=None):
+        reported = self._reported_motion_limit_reason()
+        if reported:
+            return reported
+        raw = self._raw_onstep_status().rstrip("#")
         limits = self._limit_numbers("Slew elevation Limit")
         if not limits and not (target is None and "E" in raw):
             return ""
-        horizontal = self._limit_numbers("HORIZONTAL_COORD") if target is None else {}
+        horizontal = (
+            self._limit_numbers("HORIZONTAL_COORD")
+            if target is None and current_position is None
+            else {}
+        )
         altitude = horizontal.get("ALT")
-        position = target or self._read_cached_current_position(write_status=False)
+        position = (
+            target
+            or current_position
+            or self._read_cached_current_position(write_status=False)
+        )
         transform = None
         if position is not None:
             lat, lon, _, dt = self._shared_location_time_values()
@@ -74,11 +104,23 @@ class MountMotionLimitsMixin:
                 return "west meridian limit"
         return ""
 
-    def _guard_motion(self, target=None, *, defer_stop=False):
+    def _guard_motion(
+        self,
+        target=None,
+        *,
+        defer_stop=False,
+        coordinate_checks=True,
+        current_position=None,
+    ):
         if getattr(self, "_motion_limit", {}).get("latched"):
             return False
-        reason = self._motion_limit_reason()
-        if not reason and target is not None:
+        if not coordinate_checks:
+            reason = self._reported_motion_limit_reason()
+        elif current_position is not None:
+            reason = self._motion_limit_reason(current_position=current_position)
+        else:
+            reason = self._motion_limit_reason()
+        if not reason and target is not None and coordinate_checks:
             reason = self._motion_limit_reason(target)
         if not reason:
             return True
@@ -108,7 +150,7 @@ class MountMotionLimitsMixin:
         self._motion_limit_retry_at = time.monotonic() + 1 if not stopped else 0.0
         self._write_controller_status("limit_exceeded", message)
 
-    def _check_motion_limits(self):
+    def _check_motion_limits(self, *, sync_preparation=False):
         if self.connected and self.device is not None:
             if getattr(self, "_motion_limit", {}).get("latched"):
                 now = time.monotonic()
@@ -119,7 +161,13 @@ class MountMotionLimitsMixin:
                         time.monotonic() + 1 if not stopped else 0.0
                     )
                 return
-            self._guard_motion()
+            transaction = getattr(self, "_pending_sync_goto", None) or {}
+            if sync_preparation or self._mfnavis_sync_preparation():
+                self._guard_motion(coordinate_checks=False)
+            elif transaction.get("verified_position") is not None:
+                self._guard_motion(current_position=transaction["verified_position"])
+            else:
+                self._guard_motion()
 
     def _acknowledge_motion_limit(self):
         """An explicit tracking-on request can release a cleared interlock."""

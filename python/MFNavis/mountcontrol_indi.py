@@ -408,15 +408,46 @@ if PyIndi is not None:
                 self.mount_control.refresh_alignment_limits(self.generation, values)
 
         def newProperty(self, prop):
-            # Definitions can arrive long after connection, without an update.
-            if prop.getName() in {"Slew elevation Limit", "CONNECTION"}:
-                self.updateProperty(prop)
+            # Definitions populate the UI, but may contain driver startup
+            # defaults. They are not a measured telemetry acknowledgement.
+            if prop.getName() == "Slew elevation Limit":
+                nvp = PyIndi.PropertyNumber(prop)
+                self._notify_alignment_limits(
+                    prop.getName(),
+                    prop.getDeviceName(),
+                    {w.getName(): w.getValue() for w in nvp},
+                )
+            elif prop.getName() == "CONNECTION":
+                self._notify_alignment_limits(prop.getName(), prop.getDeviceName())
+            elif (
+                prop.getName() == "EQUATORIAL_EOD_COORD"
+                and prop.getState() == PyIndi.IPS_OK
+                and self.mount_control is not None
+                and prop.getDeviceName() == self.mount_control._indi_device_name()
+                and self.generation == self.mount_control._client_generation
+            ):
+                # A running OnStep driver suppresses unchanged RA/Dec pushes.
+                # Its Ok definition can seed connection readiness, but must
+                # never acknowledge a new Sync or satisfy recovery telemetry.
+                nvp = PyIndi.PropertyNumber(prop)
+                self.mount_control._connection_position_definition = {
+                    "values": {w.getName(): w.getValue() for w in nvp},
+                    "state": "ok",
+                    "generation": self.generation,
+                    "received_monotonic": time.monotonic(),
+                }
 
         def removeProperty(self, prop):
             self._notify_alignment_limits(prop.getName(), prop.getDeviceName(), {})
 
         def newNumber(self, nvp):
             if nvp.name == "Slew elevation Limit":
+                self._record_sync_property(
+                    nvp.name,
+                    nvp.s,
+                    {w.name: w.value for w in nvp},
+                    getattr(nvp, "device", None),
+                )
                 self._notify_alignment_limits(
                     nvp.name,
                     getattr(nvp, "device", None),
@@ -510,6 +541,12 @@ if PyIndi is not None:
                     return
                 if prop.getName() == "Slew elevation Limit":
                     nvp = PyIndi.PropertyNumber(prop)
+                    self._record_sync_property(
+                        prop.getName(),
+                        prop.getState(),
+                        {w.getName(): w.getValue() for w in nvp},
+                        prop.getDeviceName(),
+                    )
                     self._notify_alignment_limits(
                         prop.getName(),
                         prop.getDeviceName(),
@@ -1724,12 +1761,47 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             time.sleep(0.25)
         return False
 
+    def _confirmed_connection_position(self) -> Optional[tuple[float, float]]:
+        """Require measured coordinates/OnStep limits before admitting motion.
+
+        A newly connected driver can define RA=DEC=0 and default elevation
+        limits before polling the controller. Using those cached definitions
+        can latch a false below-horizon fault before IMU Sync gets a chance.
+        """
+        receipt = self._motion_property_receipt("EQUATORIAL_EOD_COORD")
+        if receipt is None and "onstep" in self._indi_device_name().lower():
+            definition = getattr(self, "_connection_position_definition", None)
+            if (
+                definition
+                and definition["generation"] == self._client_generation
+                and 0 <= time.monotonic() - definition["received_monotonic"] <= 5.0
+            ):
+                receipt = definition
+        if receipt is None or receipt["state"] not in {"idle", "ok", "busy"}:
+            return None
+        try:
+            ra = float(receipt["values"]["RA"]) * 15.0
+            dec = float(receipt["values"]["DEC"])
+            if not (math.isfinite(ra) and math.isfinite(dec) and -90 <= dec <= 90):
+                return None
+            if "onstep" in self._indi_device_name().lower():
+                limits = self._motion_property_receipt("Slew elevation Limit")
+                if limits is None or limits["state"] not in {"idle", "ok"}:
+                    return None
+                low = float(limits["values"]["minAlt"])
+                high = float(limits["values"]["maxAlt"])
+                if not -90 <= low <= high <= 90:
+                    return None
+        except (KeyError, TypeError, ValueError):
+            return None
+        return ra % 360.0, dec
+
     def _wait_for_current_position(
         self, timeout: float
     ) -> Optional[tuple[float, float]]:
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            position = self._read_current_position()
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            position = self._confirmed_connection_position()
             if position is not None:
                 return position
             time.sleep(0.25)
@@ -1746,6 +1818,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             if (
                 self._position_update_generation > position_generation
                 and self._onstep_status_generation > status_generation
+                and self._confirmed_connection_position() is not None
             ):
                 return True
             time.sleep(0.1)
@@ -1888,7 +1961,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
                 (
                     f"{device_name} did not publish fresh telemetry"
                     if require_fresh_telemetry
-                    else f"{device_name} did not publish telescope coordinates"
+                    else f"{device_name} did not publish measured coordinates/limits"
                 ),
             )
             if announce:
@@ -4727,6 +4800,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             "TIME_UTC",
             "TELESCOPE_MOTION_NS",
             "TELESCOPE_MOTION_WE",
+            "Slew elevation Limit",
         }:
             return
         with self._sync_property_lock:
@@ -4819,6 +4893,10 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             }
             self._write_controller_status("sync_goto_failed", "INDI unavailable")
             return False
+        if not self._guard_motion(
+            coordinate_checks=not self._mfnavis_sync_preparation(command)
+        ):
+            return False
         if self._guide_correction_enabled and not self.toggle_guide_correction(False):
             self._sync_goto_status = {
                 "request_id": command["request_id"],
@@ -4888,7 +4966,10 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         transaction = self._pending_sync_goto
         if transaction is None:
             return
-        if not self._guard_motion():
+        if not self._guard_motion(
+            coordinate_checks=not self._mfnavis_sync_preparation(),
+            current_position=transaction.get("verified_position"),
+        ):
             return
         if transaction.get("origin") == "smooth_tracking_recovery" and (
             self._smooth_runtime is None
@@ -4994,6 +5075,14 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
                 ra, dec, transaction["sync_ra"], transaction["sync_dec"]
             )
             if error > SYNC_GOTO_COORD_TOLERANCE_ARCMIN:
+                return
+            # The matched driver ACK, not the pre-Sync mount frame or our
+            # outgoing cache write, establishes the coordinate-limit basis.
+            transaction["verified_position"] = (ra, dec)
+            if not self._guard_motion(
+                (transaction["ra"], transaction["dec"]),
+                current_position=(ra, dec),
+            ):
                 return
             self._record_coordinate_sync(
                 transaction["sync_ra"], transaction["sync_dec"], transaction
@@ -6377,7 +6466,10 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
 
         if stale_command(command, getattr(self, "mount_queue", None)):
             return True
-        self._check_motion_limits()
+        if command_type == "sync_and_goto" and self._mfnavis_sync_preparation(command):
+            self._check_motion_limits(sync_preparation=True)
+        else:
+            self._check_motion_limits()
         if getattr(self, "_motion_limit", {}).get("latched"):
             if (
                 command_type == "set_tracking"

@@ -1404,6 +1404,46 @@ def test_location_resync_skips_unlocked_location(location_resync):
 
 
 @pytest.mark.unit
+def test_indoor_configured_site_initializes_mount_without_gps(
+    location_resync, monkeypatch
+):
+    configured = _MutableLocation(37.5368, 127.1185, altitude=24.0)
+    monkeypatch.setattr(pos_server, "_configured_default_location", lambda: configured)
+    state = DummyState(None, location=_MutableLocation(0, 0, lock=False))
+    pos_server._sync_mount_location_on_change(state)
+    assert location_resync.get_nowait() == {
+        "type": "sync_location_time",
+        "latitude": 37.5368,
+        "longitude": 127.1185,
+        "elevation": 24.0,
+    }
+    assert not state.location().lock
+    pos_server._sync_mount_location_on_change(state)
+    assert location_resync.empty()
+    # A later live fix takes priority and can update a different observing site.
+    state._location = _MutableLocation(37.55, 127.14)
+    pos_server._next_location_resync_at = 0.0
+    pos_server._sync_mount_location_on_change(state)
+    assert location_resync.get_nowait() == {"type": "sync_location_time"}
+    state._location = _MutableLocation(0, 0, lock=False)
+    pos_server._next_location_resync_at = 0.0
+    pos_server._sync_mount_location_on_change(state)
+    assert location_resync.empty()
+    assert pos_server._mount_synced_location == (37.55, 127.14, 30.0)
+
+
+@pytest.mark.unit
+def test_live_location_precedes_indoor_default(location_resync, monkeypatch):
+    monkeypatch.setattr(
+        pos_server, "_configured_default_location", lambda: _MutableLocation(1, 2)
+    )
+    state = DummyState(None, location=_MutableLocation(37.5, 127.0))
+    pos_server._sync_mount_location_on_change(state)
+    assert pos_server._mount_synced_location == (37.5, 127.0, 30.0)
+    assert location_resync.get_nowait() == {"type": "sync_location_time"}
+
+
+@pytest.mark.unit
 def test_location_resync_skips_when_mount_control_disabled(monkeypatch):
     commands: queue.Queue = queue.Queue()
     monkeypatch.setattr(pos_server, "mountcontrol_queue", commands)

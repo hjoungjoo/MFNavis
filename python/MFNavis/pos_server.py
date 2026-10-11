@@ -372,7 +372,8 @@ def _fallback_observer_location() -> Optional[StateLocation]:
     """Use the saved default, else the last site successfully sent to OnStep.
 
     The cached site supplies a provisional frame for pointing before a GPS
-    fix. It never sets shared-state GPS lock or sends a mount site/time sync.
+    fix. It never sets shared-state GPS lock. Only the configured default,
+    not this cache, is eligible for indoor mount site/time initialization.
     A live locked location takes priority in the coordinate service.
     """
     configured = _configured_default_location()
@@ -590,8 +591,8 @@ def _location_distance_m(
 
 
 def _sync_mount_location_on_change(shared_state) -> None:
-    """Re-send site location/time to the INDI mount when the observing
-    location changes. The first locked fix is synced immediately; later
+    """Initialize from a live fix or saved site, then follow live changes.
+    The first location is synced immediately; later
     changes are rate-limited to ``_LOCATION_RESYNC_RECHECK_SECONDS`` so GPS
     jitter cannot spam the mount (and repeatedly reset the fusion anchor)."""
     global _mount_synced_location, _next_location_resync_at
@@ -603,8 +604,18 @@ def _sync_mount_location_on_change(shared_state) -> None:
         location = shared_state.location()
     except Exception:
         return
-    if not location or not getattr(location, "lock", False):
-        return
+    configured = not location or not getattr(location, "lock", False)
+    if configured:
+        if _mount_synced_location is not None:
+            # Losing GPS must not overwrite an already initialized live site
+            # with a potentially different saved default.
+            return
+        # Indoor pointing already uses the saved observing site. Initialize
+        # OnStep with the same site and MFNavis time even without a GPS fix;
+        # an unset controller clock rejects Sync as "Outside limits".
+        location = _configured_default_location()
+        if location is None:
+            return
     current = (
         float(location.lat),
         float(location.lon),
@@ -613,7 +624,11 @@ def _sync_mount_location_on_change(shared_state) -> None:
 
     if _mount_synced_location is None:
         # First locked location since the service started -> sync now.
-        _enqueue_mount_location_sync(current, "first locked location")
+        _enqueue_mount_location_sync(
+            current,
+            "first configured location" if configured else "first locked location",
+            explicit_location=configured,
+        )
         return
 
     now = time.monotonic()
@@ -624,17 +639,27 @@ def _sync_mount_location_on_change(shared_state) -> None:
         _LOCATION_RESYNC_MOVE_THRESHOLD_M
     ):
         return
-    _enqueue_mount_location_sync(current, "location changed")
+    _enqueue_mount_location_sync(
+        current, "location changed", explicit_location=configured
+    )
 
 
 def _enqueue_mount_location_sync(
-    location: Tuple[float, float, float], reason: str
+    location: Tuple[float, float, float],
+    reason: str,
+    *,
+    explicit_location: bool = False,
 ) -> None:
     global _mount_synced_location, _next_location_resync_at
     _mount_synced_location = location
     _next_location_resync_at = time.monotonic() + _LOCATION_RESYNC_RECHECK_SECONDS
     if mountcontrol_queue is not None:
-        mountcontrol_queue.put({"type": "sync_location_time"})
+        command: dict[str, Any] = {"type": "sync_location_time"}
+        if explicit_location:
+            command.update(
+                latitude=location[0], longitude=location[1], elevation=location[2]
+            )
+        mountcontrol_queue.put(command)
     logger.info(
         "Mount location/time re-sync queued (%s): lat=%.5f lon=%.5f alt=%.0f",
         reason,

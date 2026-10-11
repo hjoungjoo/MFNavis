@@ -62,6 +62,17 @@ def test_target_altitude_is_checked_even_while_current_mount_is_safe():
     assert "80.00" in mount._motion_limit_reason((ra, 35))
 
 
+def test_verified_sync_position_replaces_pre_sync_horizontal_and_equatorial_cache():
+    mount = Mount()
+    mount.numbers["Slew elevation Limit"] = {"minAlt": -10, "maxAlt": 80}
+    mount.numbers["HORIZONTAL_COORD"] = {"ALT": -49.53}
+    ra = FastAltAz(35, 127, mount.dt).local_siderial_time
+    mount.position = (ra + 180, -35)
+    assert "-49.53" in mount._motion_limit_reason()
+    assert not mount._motion_limit_reason(current_position=(ra - 60, 35))
+    assert "80.00" in mount._motion_limit_reason(current_position=(ra, 35))
+
+
 @pytest.mark.parametrize("side,ha", [("T", -6), ("W", 6)])
 def test_meridian_limits_apply_to_current_gem_side_only(side, ha):
     mount = Mount()

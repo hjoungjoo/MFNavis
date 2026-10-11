@@ -245,6 +245,126 @@ def _sync_ack(mount, name, values, state="ok", generation=None):
     mount._check_pending_sync_goto()
 
 
+def _sync_limit_test_mount(monkeypatch):
+    mount, command = _verified_goto_test_mount(monkeypatch)
+    limits = {"minAlt": -10.0, "maxAlt": 85.0}
+    monkeypatch.setattr(
+        mount,
+        "_limit_numbers",
+        lambda name: limits if name == "Slew elevation Limit" else {},
+    )
+    monkeypatch.setattr(mount, "_raw_onstep_status", lambda: "nNpHvAo160")
+    monkeypatch.setattr(
+        mount,
+        "_shared_location_time_values",
+        lambda: (
+            37.53333333333333,
+            127.115,
+            0,
+            datetime(2026, 10, 11, 1, 7, 21, tzinfo=timezone.utc),
+        ),
+    )
+    # Reproduce the indoor failure: the old frame is below -10 degrees;
+    # the MFNavis sync coordinate and target are above the horizon.
+    monkeypatch.setattr(
+        mount, "_read_cached_current_position", lambda **kwargs: (0.0, 0.0)
+    )
+    monkeypatch.setattr(mount, "_apply_indi_properties", lambda *args: {"ok": True})
+    return mount, command
+
+
+@pytest.mark.parametrize(
+    "origin", ["pifinder_goto", "imu_goto_fallback", "tracking_recovery"]
+)
+def test_mfnavis_limits_wait_for_sync_ack_before_tracking_and_goto(monkeypatch, origin):
+    mount, command = _sync_limit_test_mount(monkeypatch)
+    assert "altitude -49.53" in mount._motion_limit_reason()
+    mount.handle_command({**command, "origin": origin})
+    mount._check_motion_limits()
+    _sync_ack(mount, "ON_COORD_SET", {"SYNC": True})
+    mount._check_motion_limits()
+    # Outgoing cache writes, Busy and mismatching replies do not establish
+    # the coordinate frame or allow tracking to start.
+    _sync_ack(mount, "EQUATORIAL_EOD_COORD", {"RA": 8.8, "DEC": 49.5}, state="busy")
+    _sync_ack(mount, "EQUATORIAL_EOD_COORD", {"RA": 0.0, "DEC": 0.0})
+    assert not getattr(mount, "_motion_limit", {}).get("latched")
+    assert not any(s[2] == "TRACK_ON" for s in mount.client.switches)
+    assert mount.moves == []
+    _sync_ack(mount, "EQUATORIAL_EOD_COORD", {"RA": 8.8, "DEC": 49.5})
+    mount._check_motion_limits()
+    assert not getattr(mount, "_motion_limit", {}).get("latched")
+    assert mount._sync_goto_status["state"] == "waiting_slew_mode"
+    assert any(s[2] == "TRACK_ON" for s in mount.client.switches)
+    # The real GoTo guard sees the driver's now-synchronized live position.
+    monkeypatch.setattr(
+        mount, "_read_cached_current_position", lambda **kwargs: (132.0, 49.5)
+    )
+    monkeypatch.setattr(
+        mount, "goto_target", MountControlIndi.goto_target.__get__(mount)
+    )
+    _sync_ack(mount, "ON_COORD_SET", {"SLEW": True})
+    assert mount._sync_goto_status["state"] == "goto_sent"
+    assert mount.client.numbers[-1][2] == {"RA": 140.0 / 15.0, "DEC": 45.0}
+    # Once the verified transaction ends, normal current-position guarding resumes.
+    monkeypatch.setattr(
+        mount, "_read_cached_current_position", lambda **kwargs: (0.0, 0.0)
+    )
+    mount._check_motion_limits()
+    assert mount._motion_limit["latched"]
+
+
+@pytest.mark.parametrize("unsafe", ["current", "target"])
+def test_sync_ack_checks_both_limits_before_enabling_tracking(monkeypatch, unsafe):
+    mount, command = _sync_limit_test_mount(monkeypatch)
+    if unsafe == "current":
+        command.update(sync_ra=0.0, sync_dec=0.0)
+    else:
+        command.update(ra=0.0, dec=0.0)
+    assert mount.begin_sync_and_goto(command)
+    _sync_ack(mount, "ON_COORD_SET", {"SYNC": True})
+    _sync_ack(
+        mount,
+        "EQUATORIAL_EOD_COORD",
+        {
+            "RA": command["sync_ra"] / 15.0,
+            "DEC": command["sync_dec"],
+        },
+    )
+    assert mount._motion_limit["latched"]
+    assert mount._pending_sync_goto is None
+    assert mount._sync_goto_status["state"] == "failed"
+    assert not any(s[2] in {"TRACK_ON", "SLEW"} for s in mount.client.switches)
+    assert mount.moves == []
+
+
+@pytest.mark.parametrize(
+    "stage", ["before", "waiting_sync_mode", "waiting_sync_coordinates"]
+)
+def test_controller_limit_still_stops_mfnavis_before_sync(monkeypatch, stage):
+    mount, command = _sync_limit_test_mount(monkeypatch)
+    if stage != "before":
+        assert mount.begin_sync_and_goto(command)
+        if stage == "waiting_sync_coordinates":
+            _sync_ack(mount, "ON_COORD_SET", {"SYNC": True})
+    monkeypatch.setattr(mount, "_raw_onstep_status", lambda: "nNpHvAo163")
+    if stage == "before":
+        mount.handle_command(command)
+    else:
+        mount._check_motion_limits()
+    assert mount._motion_limit["latched"]
+    assert "hardware limit switch" in mount._motion_limit["message"]
+    assert mount._pending_sync_goto is None
+    assert mount.moves == []
+    assert not any(s[2] in {"TRACK_ON", "SLEW"} for s in mount.client.switches)
+
+
+def test_direct_goto_keeps_pre_motion_coordinate_limit_check(monkeypatch):
+    mount, _ = _sync_limit_test_mount(monkeypatch)
+    mount.handle_command({"type": "goto_target", "ra": 140.0, "dec": 45.0})
+    assert mount._motion_limit["latched"]
+    assert mount.moves == []
+
+
 def test_sync_goto_requires_new_mode_coordinate_and_slew_ack(monkeypatch):
     mount, command = _verified_goto_test_mount(monkeypatch)
     # Previously cached successful values cannot satisfy this new request.
@@ -3925,6 +4045,7 @@ def test_indi_alignment_limit_definition_update_removal_and_connection_callbacks
     prop[1].setName("maxAlt")
     prop[1].setValue(89)
     client.newProperty(prop)
+    assert mount._motion_property_receipt("Slew elevation Limit") is None
     status = json.loads(mci.STATUS_FILE.read_text())
     assert (status["alignment_min_altitude"], status["alignment_max_altitude"]) == (
         -10,
@@ -3932,6 +4053,10 @@ def test_indi_alignment_limit_definition_update_removal_and_connection_callbacks
     )
     prop[0].setValue(0)
     client.updateProperty(prop)
+    assert mount._motion_property_receipt("Slew elevation Limit")["values"] == {
+        "minAlt": 0,
+        "maxAlt": 89,
+    }
     assert json.loads(mci.STATUS_FILE.read_text())["alignment_min_altitude"] == 0
     prop.setDeviceName("Other mount")
     prop[0].setValue(15)
@@ -3968,7 +4093,12 @@ def test_legacy_indi_alignment_number_and_connection_callbacks():
     )
     vector.name = "Slew elevation Limit"
     vector.device = mount._indi_device_name()
+    vector.s = mci.PyIndi.IPS_IDLE
     client.newNumber(vector)
+    assert mount._motion_property_receipt("Slew elevation Limit")["values"] == {
+        "minAlt": 0,
+        "maxAlt": 90,
+    }
     assert json.loads(mci.STATUS_FILE.read_text())["alignment_min_altitude"] == 0
     mount.device.connected = False
     client.newSwitch(
@@ -4049,8 +4179,11 @@ def test_sync_failure_includes_controller_limit_error(monkeypatch):
     assert error in mount._sync_goto_status["reason"]
     assert mount._sync_goto_status["driver_errors"][0] == error
     assert mount.moves == []
-    # An error from an earlier request cannot contaminate the next one.
-    mount.begin_sync_and_goto({**command, "request_id": "second"})
+    # A new Sync cannot bypass an actual latched controller fault. After
+    # explicit acknowledgement, old request errors must not contaminate it.
+    assert not mount.begin_sync_and_goto({**command, "request_id": "second"})
+    assert mount._acknowledge_motion_limit()
+    assert mount.begin_sync_and_goto({**command, "request_id": "second"})
     assert mount._sync_driver_errors == []
 
 
@@ -4700,3 +4833,125 @@ def test_arrival_baseline_reset_preserves_consumed_frame_boundary(monkeypatch):
     assert mount._guide_observation_after_wall == clock[0]
     mount._check_guide_correction()
     assert not pulses
+
+
+def test_connection_waits_for_measured_position_and_elevation_limits(monkeypatch):
+    mount = DummyMountControl()
+    mount.device = ElevationLimitDevice(-30, 90)
+    clock = [100.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    # Driver definitions already exist, but are not physical measurements.
+    monkeypatch.setattr(mount, "_read_current_position", lambda: (0.0, 0.0))
+
+    def poll(seconds):
+        clock[0] += seconds
+        assert not mount.connected
+        if clock[0] == 100.25:
+            mount.receive_sync_property(
+                "EQUATORIAL_EOD_COORD",
+                "idle",
+                {"RA": 10.5, "DEC": 52},
+                mount._client_generation,
+            )
+            assert mount._confirmed_connection_position() is None
+        elif clock[0] == 100.5:
+            mount.receive_sync_property(
+                "Slew elevation Limit",
+                "idle",
+                {"minAlt": -10, "maxAlt": 85},
+                mount._client_generation,
+            )
+
+    monkeypatch.setattr(mci.time, "sleep", poll)
+    assert mount._wait_for_current_position(1) == (157.5, 52)
+    assert clock[0] == 100.5
+    assert not getattr(mount, "_motion_limit", {})
+    assert not mount.applied_properties
+
+
+def test_connection_defaults_time_out_without_latching_a_limit(monkeypatch):
+    mount = DummyMountControl()
+    mount.device = ElevationLimitDevice(-30, 90)
+    clock = [100.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        mci.time, "sleep", lambda delay: clock.__setitem__(0, clock[0] + delay)
+    )
+    monkeypatch.setattr(mount, "_read_current_position", lambda: (0.0, 0.0))
+    assert mount._wait_for_current_position(1) is None
+    assert not mount.connected
+    assert not getattr(mount, "_motion_limit", {})
+
+
+@pytest.mark.skipif(mci.PyIndi is None, reason="requires installed INDI bindings")
+@pytest.mark.parametrize(
+    "case", ["ok", "idle", "busy", "alert", "stale", "old_client", "no_limits"]
+)
+def test_unchanged_onstep_position_definition_only_seeds_connection(monkeypatch, case):
+    mount = DummyConnectedMount()
+    clock = [100.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    indi = mci.PyIndi
+    generation = mount._client_generation - (case == "old_client")
+    client = mci.PiFinderIndiClient(mount, generation=generation)
+    prop = indi.PropertyNumber(2)
+    prop.setDeviceName(mount._indi_device_name())
+    prop.setName("EQUATORIAL_EOD_COORD")
+    prop.setState(
+        {"idle": indi.IPS_IDLE, "busy": indi.IPS_BUSY, "alert": indi.IPS_ALERT}.get(
+            case, indi.IPS_OK
+        )
+    )
+    prop[0].setName("RA")
+    prop[0].setValue(8.0)
+    prop[1].setName("DEC")
+    prop[1].setValue(28.0)
+    client.newProperty(prop)
+    if case == "stale":
+        clock[0] += 6
+    if case != "no_limits":
+        mount.receive_sync_property(
+            "Slew elevation Limit",
+            "idle",
+            {"minAlt": -10, "maxAlt": 85},
+            mount._client_generation,
+        )
+    assert mount._confirmed_connection_position() == (
+        (120.0, 28.0) if case == "ok" else None
+    )
+    # Readiness is separate from measured updates, Sync ACKs and reconnect
+    # recovery evidence, even when a definition's values match a request.
+    assert mount._motion_property_receipt("EQUATORIAL_EOD_COORD") is None
+    assert not mount._sync_property_events.get("EQUATORIAL_EOD_COORD")
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    ["none", "old_client", "stale", "alert", "nan", "missing_limit", "bad_limit"],
+)
+def test_connection_rejects_unconfirmed_or_invalid_telemetry(monkeypatch, invalid):
+    mount = DummyMountControl()
+    mount.device = ElevationLimitDevice()
+    clock = [100.0]
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    generation = mount._client_generation - (invalid == "old_client")
+    mount.receive_sync_property(
+        "EQUATORIAL_EOD_COORD",
+        "alert" if invalid == "alert" else "idle",
+        {"RA": float("nan") if invalid == "nan" else 0, "DEC": 0},
+        generation,
+    )
+    if invalid != "missing_limit":
+        mount.receive_sync_property(
+            "Slew elevation Limit",
+            "idle",
+            {"minAlt": 90 if invalid == "bad_limit" else -10, "maxAlt": 85},
+            generation,
+        )
+    if invalid == "stale":
+        clock[0] += mci.MOTION_RECEIPT_MAX_AGE_SECONDS + 1
+    if invalid == "none":
+        # Zero coordinates are valid once measured; no magic zero rejection.
+        assert mount._confirmed_connection_position() == (0, 0)
+    else:
+        assert mount._confirmed_connection_position() is None
