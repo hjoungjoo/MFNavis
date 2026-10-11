@@ -81,14 +81,28 @@ def _read(path):
         return {}
 
 
-def _atomic_json(path, value):
+def _sync_directory(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _atomic_json(path, value, *, durable=False):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + f".{uuid.uuid4().hex}.tmp")
     try:
-        temporary.write_text(
-            json.dumps(json_value(value), ensure_ascii=False, allow_nan=False)
-        )
+        with temporary.open("w") as output:
+            output.write(
+                json.dumps(json_value(value), ensure_ascii=False, allow_nan=False)
+            )
+            if durable:
+                output.flush()
+                os.fsync(output.fileno())
         temporary.replace(path)
+        if durable:
+            _sync_directory(path.parent)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -233,7 +247,13 @@ def _environment(cfg, source_directory=None):
             source_directory.mkdir(parents=True, exist_ok=True)
             destination = source_directory / archive_name
             destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(content)
+            with destination.open("wb") as output:
+                output.write(content)
+                output.flush()
+                os.fsync(output.fileno())
+    if source_directory is not None:
+        _sync_directory(source_directory)
+        _sync_directory(source_directory.parent)
     try:
         revision = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
@@ -302,6 +322,7 @@ class _Writer:
     def run(self):
         try:
             self.path.mkdir(parents=True, exist_ok=True)
+            _sync_directory(self.path.parent)
             if self.role == "solver":
                 _atomic_json(
                     self.path / "manifest.json",
@@ -310,9 +331,11 @@ class _Writer:
                         "environment": _environment(self.cfg, self.path / "source"),
                         "frame_contract": "Only solver-consumed frames; RAW and 512 share frame_id. No pickle.",
                     },
+                    durable=True,
                 )
             previous_revision = None
             with (self.path / f"{self.role}.jsonl").open("x") as stream:
+                _sync_directory(self.path)
                 while not self.stop.is_set() or not self.items.empty():
                     _atomic_json(
                         self.runtime / f"solver_capture_{self.role}_status.json",
@@ -345,9 +368,16 @@ class _Writer:
                         temporary = destination.with_suffix(".part")
                         with temporary.open("wb") as output:
                             np.savez(output, **arrays)
+                            # Rename alone only commits a name to the page
+                            # cache. Persist bytes before publishing a frame;
+                            # a battery loss must not leave a logged zero-byte
+                            # artifact. This work stays on the bounded writer.
+                            output.flush()
+                            os.fsync(output.fileno())
                         digest = hashlib.sha256(temporary.read_bytes()).hexdigest()
                         size = temporary.stat().st_size
                         temporary.replace(destination)
+                        _sync_directory(self.path)
                         item["artifact"] = {
                             "file": filename,
                             "sha256": digest,
@@ -363,6 +393,7 @@ class _Writer:
                     )
                     stream.write(line)
                     stream.flush()
+                    os.fsync(stream.fileno())
                     self.bytes += len(line.encode())
                     self.count += 1
                     if self.count >= self.request["max_frames"]:
@@ -378,7 +409,9 @@ class _Writer:
                 self.items.get_nowait()
                 self.dropped += 1
             try:
-                _atomic_json(self.path / f"{self.role}_summary.json", self.status())
+                _atomic_json(
+                    self.path / f"{self.role}_summary.json", self.status(), durable=True
+                )
                 _atomic_json(
                     self.runtime / f"solver_capture_{self.role}_status.json",
                     self.status(),

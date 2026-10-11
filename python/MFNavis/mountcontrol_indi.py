@@ -21,6 +21,7 @@ from collections import deque
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from multiprocessing import Queue
+from statistics import median
 from typing import TYPE_CHECKING, Any, Optional
 
 from PiFinder import calc_utils, config
@@ -718,6 +719,12 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         self._guide_correction_target: Optional[tuple[float, float]] = None
         self._guide_correction_accuracy_arcmin = DEFAULT_GOTO_REFINE_ACCURACY_ARCMIN
         self._guide_axis_scale = 1.0
+        self._guide_centering_active = False
+        self._guide_rearm_candidate: Optional[
+            tuple[float, float, float, float, int, bool]
+        ] = None
+        self._guide_rearm_intervals: deque[float] = deque(maxlen=5)
+        self._guide_rearm_last_observation = 0.0
         self._guide_mount_type = "Alt/Az"
         self._guide_correction_next_at = 0.0
         self._guide_correction_observation: dict[str, Any] = {}
@@ -981,6 +988,15 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             self._last_user_tracking_stopped_wall
         )
         payload["guide_correction_mode"] = self._guide_correction_mode
+        payload["guide_rearm_pending"] = self._guide_rearm_candidate is not None
+        payload["guide_rearm_small_bias"] = bool(
+            self._guide_rearm_candidate and self._guide_rearm_candidate[5]
+        )
+        payload["guide_rearm_observation_span_seconds"] = (
+            self._guide_rearm_candidate[1] - self._guide_rearm_candidate[0]
+            if self._guide_rearm_candidate is not None
+            else 0.0
+        )
         payload["goto_completed_wall"] = self._goto_completed_wall
         payload["goto_completion"] = dict(self._goto_completion_diagnostics)
         payload["guide_observation_after_wall"] = self._guide_observation_after_wall
@@ -3930,6 +3946,10 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             enabled = not self._guide_correction_enabled
 
         if not enabled:
+            self._guide_centering_active = False
+            self._guide_rearm_candidate = None
+            self._guide_rearm_intervals.clear()
+            self._guide_rearm_last_observation = 0.0
             self._guide_holdover.reset()
             self._guide_continue_on_solve_loss = False
             for controller in self._guide_pid.values():
@@ -3968,6 +3988,9 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             accuracy = self._guide_correction_accuracy_arcmin
 
         target_changed = target != self._guide_correction_target
+        self._guide_rearm_candidate = None
+        self._guide_rearm_intervals.clear()
+        self._guide_rearm_last_observation = 0.0
         if target_changed or reset_convergence or not self._guide_correction_enabled:
             self._guide_holdover.reset()
         self._guide_continue_on_solve_loss = continue_on_solve_loss
@@ -3983,6 +4006,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         # Re-arming the same target must not erase evidence of guiding away
         # or allow the last pre-pulse exposure to be consumed again.
         if target_changed or reset_convergence:
+            self._guide_centering_active = True
             for controller in self._guide_pid.values():
                 controller.reset()
             if target_changed:
@@ -4005,6 +4029,82 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         )
         self._console("Guide corr\nOn")
         return True
+
+    def _guide_rearm_confirmed(
+        self, error: float, solve_time: float, ns_error: float, we_error: float
+    ) -> bool:
+        """Separate a persistent offset from transient tracking scatter.
+
+        Only re-entry after centering is gated. Initial approach, active
+        correction and a departure beyond twice the accuracy stay immediate.
+        Use distinct exposure times, never repeated reads or wall-clock waits.
+        """
+        # Learn cadence from accepted observations, not fixed camera settings.
+        # Judge this gap using earlier intervals so one missing frame cannot
+        # grant itself a longer confirmation window. Long gaps reset evidence.
+        max_gap = min(
+            6.0,
+            max(2.0, 2 * median(self._guide_rearm_intervals))
+            if self._guide_rearm_intervals
+            else 2.0,
+        )
+        if self._guide_rearm_last_observation:
+            gap = solve_time - self._guide_rearm_last_observation
+            if 0 < gap <= 6.0:
+                self._guide_rearm_intervals.append(gap)
+            else:
+                self._guide_rearm_intervals.clear()
+                self._guide_rearm_candidate = None
+        self._guide_rearm_last_observation = solve_time
+        accuracy = self._guide_correction_accuracy_arcmin
+        if (
+            not self._guide_continue_on_solve_loss
+            or self._guide_centering_active
+            or error <= 0.5 * accuracy
+            or error > 2 * accuracy
+        ):
+            self._guide_rearm_candidate = None
+            return True
+        small_bias = error <= accuracy
+        required_seconds = 4.0 if small_bias else GUIDE_TRACKING_INTERVAL_SECONDS
+        required_samples = 4 if small_bias else 2
+        direction_cosine = math.cos(math.radians(30)) if small_bias else 0.5
+        previous = self._guide_rearm_candidate
+        if previous is not None:
+            started, last, old_ns, old_we, count, was_small = previous
+            dot = ns_error * old_ns + we_error * old_we
+            norm = math.hypot(ns_error, we_error) * math.hypot(old_ns, old_we)
+            if (
+                small_bias == was_small
+                and 0 < solve_time - last <= max_gap
+                and norm > 0
+                and dot >= direction_cosine * norm
+            ):
+                if (
+                    solve_time - started >= required_seconds
+                    and count + 1 >= required_samples
+                ):
+                    self._guide_rearm_candidate = None
+                    self._guide_centering_active = True
+                    return True
+                self._guide_rearm_candidate = (
+                    started,
+                    solve_time,
+                    old_ns,
+                    old_we,
+                    count + 1,
+                    small_bias,
+                )
+                return False
+        self._guide_rearm_candidate = (
+            solve_time,
+            solve_time,
+            ns_error,
+            we_error,
+            1,
+            small_bias,
+        )
+        return False
 
     def _check_guide_correction(self) -> None:
         if self._smooth_runtime is not None and self._smooth_runtime.claimed:
@@ -4079,16 +4179,6 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             return
 
         target_ra, target_dec = self._guide_correction_target
-        if self._guide_continue_on_solve_loss:
-            self._guide_holdover.observe(
-                now - solve_age,
-                (
-                    (target_dec - current_dec) * 3600,
-                    shortest_ra_delta_deg(target_ra, current_ra)
-                    * 3600
-                    * math.cos(math.radians(current_dec)),
-                ),
-            )
         separation = radec_separation_arcmin(
             current_ra,
             current_dec,
@@ -4103,12 +4193,38 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         error = max(separation, axis_error)
         if not math.isfinite(error):
             return
+        ns_error = (target_dec - current_dec) * 3600
+        we_error = (
+            shortest_ra_delta_deg(target_ra, current_ra)
+            * 3600
+            * math.cos(math.radians(current_dec))
+        )
+        if not self._guide_rearm_confirmed(error, solve_time, ns_error, we_error):
+            self._guide_correction_last_solve_time = solve_time
+            self._guide_correction_mode = "settling"
+            self._write_controller_status(
+                "guide_correction",
+                "Confirming sustained tracking departure",
+                guide_error_arcmin=separation,
+            )
+            return
+        if self._guide_continue_on_solve_loss:
+            self._guide_holdover.observe(now - solve_age, (ns_error, we_error))
         if (
             now < self._guide_pulse_until
             and "onstep" not in self._indi_device_name().lower()
         ):
             # Only OnStep's same-axis timer replacement has been verified.
             return
+        if error <= self._guide_correction_accuracy_arcmin:
+            # Arrival takes precedence over an older stall verdict. Start a
+            # new progress window for the next tracking disturbance instead
+            # of comparing it forever with this session's historical minimum.
+            self._guide_pulse_best_error = None
+            self._guide_pulse_previous_error = None
+            self._guide_pulse_no_progress = 0
+            self._guide_pulse_worsening = 0
+            self._guide_progress_solve_time = solve_time
         # Judge progress from distinct fresh camera observations, not
         # command submission. A functioning transport can still guide away.
         if self._guide_pulse_best_error is not None:
@@ -4155,9 +4271,17 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         # At high altitude/declination a small angular distance can still be
         # a large LCD longitude error. Lower the pulse deadband accordingly.
         self._guide_axis_scale = min(1.0, separation / error) if error > 0 else 1.0
-        if error <= self._guide_correction_accuracy_arcmin:
+        if error > self._guide_correction_accuracy_arcmin:
+            self._guide_centering_active = True
+        # Finish a correction near the center, then tolerate normal solve
+        # scatter inside the user's outer accuracy before starting another.
+        finish_accuracy = self._guide_correction_accuracy_arcmin * (
+            0.5 if self._guide_centering_active else 1.0
+        )
+        if error <= finish_accuracy:
             if not self._finish_active_guide_pulses():
                 return
+            self._guide_centering_active = False
             for controller in self._guide_pid.values():
                 controller.reset()
             self._guide_correction_mode = "complete"
@@ -4220,6 +4344,10 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
 
     def _check_guide_holdover(self) -> None:
         """Spend the measured residual and keep confirmed drift compensation."""
+        # A repeated frame or cloud gap must not promote an unconfirmed gust
+        # into a correction. Native mount tracking remains enabled.
+        if self._guide_rearm_candidate is not None:
+            return
         now = time.monotonic()
         if not self._guide_continue_on_solve_loss or now < max(
             self._guide_pulse_until, self._guide_correction_next_at
@@ -4227,6 +4355,15 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             return
         residual = self._guide_holdover.residual(now)
         if residual is None or not self._guide_pulse_supported():
+            return
+        # A repeated camera frame also reaches this path. Do not turn a
+        # completed optical correction into a new pulse toward sub-arcsecond
+        # prediction noise; holdover must honor the same centering band.
+        outer = self._guide_correction_accuracy_arcmin * 60 * self._guide_axis_scale
+        if max(abs(v) for v in residual) > outer:
+            self._guide_centering_active = True
+        finish = outer * (0.5 if self._guide_centering_active else 1.0)
+        if max(abs(v) for v in residual) <= finish:
             return
         self._guide_correction_mode = "solve_holdover"
         # No synthetic camera sample, PID integration or convergence verdict.
@@ -4692,7 +4829,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         threshold_arcsec = (
             max(
                 0.01,
-                self._guide_correction_accuracy_arcmin / 2.0 * self._guide_axis_scale,
+                self._guide_correction_accuracy_arcmin / 4.0 * self._guide_axis_scale,
             )
             * 60.0
         )
@@ -4711,14 +4848,14 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             if invert_ns:
                 ns_dir = "south" if ns_dir == "north" else "north"
             ns_ms = self._axis_pid_pulse_ms("ns", dec_arcsec, stamp, guide_ns_x)
-            if ns_ms and self._send_guide_pulse(ns_dir, ns_ms):
+            if ns_ms and self._send_optical_guide_pulse(ns_dir, ns_ms, dec_arcsec):
                 pulses.append(f"{ns_dir} {ns_ms}ms")
         if abs(ra_arcsec) > threshold_arcsec:
             we_dir = "east" if ra_arcsec > 0 else "west"
             if invert_we:
                 we_dir = "west" if we_dir == "east" else "east"
             we_ms = self._axis_pid_pulse_ms("we", ra_arcsec, stamp, guide_we_x)
-            if we_ms and self._send_guide_pulse(we_dir, we_ms):
+            if we_ms and self._send_optical_guide_pulse(we_dir, we_ms, ra_arcsec):
                 pulses.append(f"{we_dir} {we_ms}ms")
 
         # Leave the guide selector in place between pulses. Manual motion
@@ -4731,6 +4868,23 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
                 guide_error_arcmin=separation,
                 guide_direction=",".join(p.split()[0] for p in pulses),
             )
+
+    def _send_optical_guide_pulse(
+        self, direction: str, duration_ms: int, error_arcsec: float
+    ) -> bool:
+        # A fresh solve can brake or reverse an OnStep pulse immediately.
+        # Merely extending the same timer every camera frame adds traffic and
+        # delays observing its end. Near center, finish before more travel;
+        # far away, renew with at most 1 s left to avoid a gap between pulses.
+        property_name = GUIDE_PULSE_ELEMENTS[direction][0]
+        active = self._guide_active_pulses.get(property_name)
+        if active is not None and active[0] == direction:
+            remaining = active[1] - time.monotonic()
+            if remaining > 0 and duration_ms / 1000.0 >= remaining - 0.15:
+                far = abs(error_arcsec) > self._guide_correction_accuracy_arcmin * 120
+                if not far or remaining > GUIDE_TRACKING_INTERVAL_SECONDS:
+                    return False
+        return self._send_guide_pulse(direction, duration_ms)
 
     def sync_mount(
         self,

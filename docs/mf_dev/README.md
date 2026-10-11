@@ -11,7 +11,7 @@
 | 정렬·백레시 | [정렬과 측정](alignment_ko.md) | LCD/웹/SkySafari 정렬, 다중 포인트, 광학 백레시 |
 | 선택형 추적 | [추적 종류와 제어권](tracking_ko.md) | 기본 guide, smooth active/shadow, visual shadow, 타겟 통합 상태 |
 | 좌표·IMU | [포인팅 계약](positioning_ko.md) | 실제 관측/추정, 좌표 선택, 이동 중 융합, 외부 프로토콜 |
-| 솔빙 | [MFDS와 전처리](solver_ko.md) | MF 주 경로, 마지막 SEP 복구, 동기/비동기, 품질·frame pairing |
+| 솔빙 | [MFDS와 전처리](solver_ko.md) | MF 주 경로, 마지막 SEP 복구, 동기/비동기, 품질·frame pairing, [별 영상 기반 상대 추적 설계](solver_ko.md#솔빙-실패-시-별-영상-기반-상대-추적-개발-설계) |
 | 카메라·영상 | [노출과 광학](camera_ko.md) | Auto(Star) framewise, 센서 변형, FOV·왜곡, RAW LiveCam/SQM |
 | 입력·웹 | [화면과 카탈로그](interfaces_ko.md) | HID 사용자 매핑, LCD 조작, 오류 알림, 카탈로그, 오프라인 캐시 |
 | 장치 연결 | [연결과 시간](connectivity_ko.md) | INDI Serial Auto/복구, UART/I2C, GPS/Chrony, AP+STA |

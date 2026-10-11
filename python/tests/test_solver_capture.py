@@ -1,6 +1,7 @@
 """Capture tests use disposable paths, fake frames and no camera or mount."""
 
 import json
+import os
 import threading
 from types import SimpleNamespace
 from pathlib import Path
@@ -116,6 +117,56 @@ def test_mismatched_raw_never_saved_under_another_frame(paths):
     rec.close()
     assert rows(rec)[0]["raw_status"] == "missing_matching_raw"
     assert not list(rec.writer.path.glob("*.npz"))
+
+
+def test_artifact_is_durable_before_its_log_record(paths, monkeypatch):
+    real_fsync = capture.os.fsync
+    events = []
+
+    def fsync(descriptor):
+        path = Path(os.readlink(f"/proc/self/fd/{descriptor}"))
+        if path.suffix == ".part":
+            assert path.stat().st_size > 0
+            events.append("frame_bytes")
+        elif path.is_dir() and list(path.glob("solver_*.npz")):
+            events.append("frame_name")
+        elif path.name == "solver.jsonl" and '"artifact"' in path.read_text():
+            events.append("record")
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(capture.os, "fsync", fsync)
+    arm(paths)
+    rec = recorder(paths)
+    attempt(rec)
+    rec.close()
+    assert (
+        events.index("frame_bytes")
+        < events.index("frame_name")
+        < events.index("record")
+    )
+    assert rec.writer.state == "complete"
+    assert capture.report_session(rec.writer.path)["integrity_errors"] == []
+
+
+def test_failed_artifact_flush_never_publishes_saved_frame(paths, monkeypatch):
+    real_fsync = capture.os.fsync
+
+    def fail_frame_flush(descriptor):
+        path = Path(os.readlink(f"/proc/self/fd/{descriptor}"))
+        if path.suffix == ".part":
+            raise OSError("simulated storage flush failure")
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(capture.os, "fsync", fail_frame_flush)
+    arm(paths)
+    rec = recorder(paths)
+    attempt(rec)
+    rec.close()
+    assert rec.writer.state == "error"
+    assert rec.writer.raw_count == 0
+    assert rows(rec) == []
+    assert not list(rec.writer.path.glob("*.npz"))
+    assert list(rec.writer.path.glob("*.part"))
 
 
 def test_source_snapshot_is_preserved_and_verified(paths):

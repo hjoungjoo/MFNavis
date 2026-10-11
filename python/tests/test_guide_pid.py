@@ -53,9 +53,9 @@ def test_distance_shaping_preserves_fast_travel_and_softens_near_target():
     assert 0.5 < outputs[0] < 0.6
     assert outputs[1] < 5
     assert outputs[2] == pytest.approx(7.5)
-    # Shape even saturated corrections: a wide accuracy band must not hide
-    # approach damping behind the 2.5 s actuator cap.
-    assert GuidePID().correction(180, 100, 40, approach_band=360) == 30
+    # Shape requested travel, then clamp. A large residual must not reduce
+    # an already bounded pulse a second time.
+    assert GuidePID().correction(180, 100, 40, approach_band=360) == 40
 
 
 def test_derivative_filter_reduces_response_to_fast_solve_jitter():
@@ -65,6 +65,13 @@ def test_derivative_filter_reduces_response_to_fast_solve_jitter():
     assert filtered.correction(9, 100.1, 40) > unfiltered.correction(9, 100.1, 40)
     filtered.correction(-1, 100.2, 40)
     assert filtered.filtered_derivative == 0
+
+
+def test_one_arcminute_approach_uses_pulse_budget_but_center_remains_damped():
+    limit = 15.041 * 2.5
+    assert GuidePID().correction(60, 100, limit, approach_band=120) == limit
+    assert 15 < GuidePID().correction(30, 100, limit, approach_band=120) < 20
+    assert 0 < GuidePID().correction(5, 100, limit, approach_band=120) < 3
 
 
 @pytest.mark.parametrize("cadence", [0.1, 0.4, 1.0, 3.0])

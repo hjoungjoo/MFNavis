@@ -104,7 +104,9 @@ def solve(rig, ra=110.0, dec=30.0, timestamp=None):
 def start(rig, optical=False):
     service, _, _, _ = rig
     if optical:
-        solve(rig)
+        # These lifecycle scenarios need a physical acquisition, not a
+        # repeat GoTo to an already centred field.
+        solve(rig, ra=110.1)
     service.handle_command({"type": "goto_target", "ra": 110.0, "dec": 30.0})
     return commands(service)[-1]
 
@@ -268,14 +270,21 @@ def test_stale_status_cannot_supply_fresh_looking_imu(rig):
     assert not commands(service)
 
 
-def test_fresh_solve_uses_arrival_error_for_fine_alignment(rig):
+@pytest.mark.parametrize("residual", [1.8, 12.0])
+def test_fresh_solve_uses_arrival_error_for_fine_alignment(rig, residual):
     service, clock, _, _ = rig
     start(rig)
     acknowledge(rig)
     clock[0] += 1
-    solve(rig, dec=30.2)
+    solve(rig, dec=30 + residual / 60)
     service._tick_state_machine()
     cmd = commands(service)[-1]
+    if residual == 12.0:
+        assert service.phase == "pifinder_goto"
+        assert cmd["type"] == "sync_and_goto"
+        assert cmd["pointing_source"] == "solve"
+        assert service.correction_count == 2
+        return
     assert service.phase == "pifinder_pulse_align"
     assert cmd["type"] == "toggle_guide_correction"
     assert "manual_approach" not in cmd
@@ -325,8 +334,8 @@ def test_solve_recovery_does_not_reenable_unconverged_pulses(rig):
     solve(rig, dec=30.2)
     service._tick_state_machine()
     assert service.pulse_alignment_unreliable
-    assert service.phase == "pifinder_pulse_align"
-    assert not commands(service)
+    assert service.phase == "pifinder_goto"
+    assert commands(service)[-1]["type"] == "sync_and_goto"
 
 
 def test_solve_during_slew_is_not_a_recovery_anchor(rig):
@@ -817,17 +826,26 @@ def test_temporary_tracking_off_resumes_on_fresh_solve_without_user_stop(rig):
     assert service.phase != "idle"
 
 
-def test_restart_restores_target_but_waits_for_post_start_solve(
-    rig, monkeypatch, tmp_path
+@pytest.mark.parametrize("pulse_failed", [False, True])
+def test_ordinary_restart_ignores_previous_target_and_pulse_failure(
+    rig, monkeypatch, tmp_path, pulse_failed
 ):
     import json
 
     service, clock, _mount, _pointing = rig
     saved = tmp_path / "guide.json"
-    saved.write_text(json.dumps({"resume_target": {"ra": 110.0, "dec": 30.0}}))
+    saved.write_text(
+        json.dumps(
+            {
+                "resume_target": {"ra": 110.0, "dec": 30.0},
+                "pulse_alignment_unreliable": pulse_failed,
+            }
+        )
+    )
     monkeypatch.setattr(mod, "STATUS_FILE", saved)
     service._restore_tracking_intent()
-    assert service.resume_pending
+    assert not service.pulse_alignment_unreliable
+    assert not service.resume_pending
     solve(rig, timestamp=service.started_at)
     service._tick_state_machine()
     assert not commands(service)
@@ -835,8 +853,10 @@ def test_restart_restores_target_but_waits_for_post_start_solve(
     solve(rig, ra=110.02)
     service._tick_state_machine()
     assert not service.resume_pending
-    assert service.solve_fallback_armed
-    assert service.active_target_ra == 110.0
+    assert not service.solve_fallback_armed
+    assert service.active_target_ra is None
+    assert service.phase == "idle"
+    assert not commands(service)
 
 
 def test_explicit_stop_clears_persisted_resume_intent(rig, monkeypatch, tmp_path):
@@ -1015,3 +1035,91 @@ def test_cancel_user_confirmed_arrival_also_clears_waiting_display(rig, command)
     assert service.phase == "idle"
     assert service.service_state == "idle"
     assert not service.wait_reason
+
+
+@pytest.mark.parametrize(
+    "cancel", [None, "goto_target", "stop_movement", "manual_movement"]
+)
+@pytest.mark.parametrize("enable_sync", [False, True])
+def test_deferred_skysafari_align_changes_eyepiece_axis_not_catalogue_target(
+    rig, monkeypatch, cancel, enable_sync
+):
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from PiFinder.alignment_projection import target_pixel_pointing
+
+    service, clock, _, _ = rig
+    start(rig, optical=True)
+    service.sync_goto_request_id = None
+    service.phase = "native_pending"
+    service.handle_command(
+        dict(type="confirm_goto_arrival", ra=110, dec=30, align_target=True)
+    )
+    commands(service)
+    plate = dict(
+        captured_at=1001.0,
+        context=("optics",),
+        RA=110.2,
+        Dec=30.1,
+        Roll=15.0,
+        FOV=4.0,
+        frame=(480, 640, 480),
+        tracking_timing=dict(start_min=999.0),
+    )
+    estimate = SimpleNamespace(
+        alignment_projection=plate,
+        last_solve_success=1001.0,
+        imu_anchor=None,
+        has_pointing=lambda: False,
+    )
+    shared = SimpleNamespace(
+        solution=lambda: estimate,
+        imu=lambda: None,
+        set_target_pixel=Mock(),
+        tracking_control_owner=lambda: "legacy",
+        datetime=lambda: datetime(2026, 10, 11, tzinfo=timezone.utc),
+        location=lambda: None,
+    )
+    service.shared_state = shared
+    monkeypatch.setattr(
+        "PiFinder.alignment_projection.projection_context", lambda *a: ("optics",)
+    )
+    monkeypatch.setattr(
+        mod.config,
+        "Config",
+        lambda: SimpleNamespace(get_option=lambda key, default=None: enable_sync),
+    )
+    monkeypatch.setattr(service, "_resume_legacy_ownership", lambda: None)
+    clock[0] += 1
+    solve(rig, ra=110.2, dec=30.1)
+    service._tick_user_arrival()
+    # A solve that started before Align cannot calibrate the centred pose.
+    assert service.user_arrival_pending
+    shared.set_target_pixel.assert_not_called()
+    if cancel == "manual_movement":
+        service._begin_manual_retarget()
+    elif cancel:
+        service.handle_command(dict(type=cancel, ra=120, dec=35))
+    plate["tracking_timing"]["start_min"] = 1000.5
+    if service.user_arrival_pending:
+        service._tick_user_arrival()
+    if cancel:
+        shared.set_target_pixel.assert_not_called()
+        return
+    pixel = shared.set_target_pixel.call_args.args[0]
+    assert target_pixel_pointing(plate, pixel) == pytest.approx((110, 30))
+    assert (service.tracking_target_ra, service.tracking_target_dec) == (110, 30)
+    assert service.alignment_target_pixel == list(pixel)
+    assert service.phase == "complete"
+    outgoing = commands(service)
+    assert not any(c["type"] in {"goto_target", "sync_and_goto"} for c in outgoing)
+    syncs = [c for c in outgoing if c["type"] == "sync"]
+    assert len(syncs) == int(enable_sync)
+    if syncs:
+        from PiFinder.calc_utils import catalog_to_equinox_of_date
+
+        assert (syncs[0]["ra"], syncs[0]["dec"]) == pytest.approx(
+            catalog_to_equinox_of_date(110, 30, shared.datetime())
+        )
+        assert syncs[0]["origin"] == "skysafari_align"

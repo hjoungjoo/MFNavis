@@ -1346,6 +1346,11 @@ def location_resync(monkeypatch):
     )
     monkeypatch.setattr(pos_server, "_mount_synced_location", None)
     monkeypatch.setattr(pos_server, "_next_location_resync_at", 0.0)
+    monkeypatch.setattr(
+        pos_server,
+        "_mount_control_status",
+        lambda: {"tracking_enabled": False, "updated": time.time()},
+    )
     return commands
 
 
@@ -1397,10 +1402,82 @@ def test_location_resync_rate_limited_between_rechecks(location_resync):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "busy_status",
+    [
+        {"tracking_enabled": True},
+        {"guide_correction_enabled": True},
+        {"mount_motion_active": True},
+        {"goto_motion_active": True},
+        {"manual_motion_direction": "north"},
+        {"updated": 0.0},
+        {"updated": None},
+        {"tracking_enabled": None},
+    ],
+)
+def test_location_resync_preserves_active_observation_until_idle(
+    location_resync, monkeypatch, busy_status
+):
+    state = DummyState(None, location=_MutableLocation(37.5, 127.0))
+    status = {"updated": time.time(), "tracking_enabled": False, **busy_status}
+    monkeypatch.setattr(pos_server, "_mount_control_status", lambda: status)
+    # Initial site remains available even before mount state is ready.
+    pos_server._sync_mount_location_on_change(state)
+    assert location_resync.get_nowait() == {"type": "sync_location_time"}
+    original_site = pos_server._mount_synced_location
+    state._location = _MutableLocation(37.51, 127.01)
+    pos_server._next_location_resync_at = 0.0
+    pos_server._sync_mount_location_on_change(state)
+    assert location_resync.empty()
+    assert pos_server._mount_synced_location == original_site
+
+    # Retry the newest fix after the observer ends tracking, without losing it.
+    status.clear()
+    status.update(updated=time.time(), tracking_enabled=False)
+    state._location = _MutableLocation(37.52, 127.02)
+    pos_server._next_location_resync_at = 0.0
+    pos_server._sync_mount_location_on_change(state)
+    assert location_resync.get_nowait() == {"type": "sync_location_time"}
+    assert pos_server._mount_synced_location[:2] == (37.52, 127.02)
+
+
+@pytest.mark.unit
 def test_location_resync_skips_unlocked_location(location_resync):
     state = DummyState(None, location=_MutableLocation(37.5, 127.0, lock=False))
     pos_server._sync_mount_location_on_change(state)
     assert location_resync.empty()
+
+
+@pytest.mark.unit
+def test_background_location_update_does_not_cancel_active_guide_epoch(
+    location_resync, monkeypatch
+):
+    from PiFinder.tracking_commands import PriorityMountQueue
+
+    commands = PriorityMountQueue()
+    monkeypatch.setattr(pos_server, "mountcontrol_queue", commands)
+    monkeypatch.setattr(
+        pos_server,
+        "_mount_control_status",
+        lambda: {
+            "updated": time.time(),
+            "tracking_enabled": True,
+            "guide_correction_enabled": True,
+        },
+    )
+    try:
+        state = DummyState(None, location=_MutableLocation(37.5, 127.0))
+        pos_server._sync_mount_location_on_change(state)
+        assert commands.get(timeout=1)["type"] == "sync_location_time"
+        guide_epoch = commands.control_epoch
+        state._location = _MutableLocation(37.51, 127.01)
+        pos_server._next_location_resync_at = 0.0
+        pos_server._sync_mount_location_on_change(state)
+        assert commands.register_dispatch(guide_epoch)
+        assert pos_server._mount_synced_location[:2] == (37.5, 127.0)
+    finally:
+        commands.queue.close()
+        commands.queue.join_thread()
 
 
 @pytest.mark.unit
@@ -1560,3 +1637,185 @@ def test_skysafari_sync_skips_pifinder_align_in_indi_mount_mode(monkeypatch):
     assert sync_command["type"] == "sync"
     assert sync_command["ra"] == 100.0
     assert sync_command["dec"] == -20.0
+
+
+@pytest.fixture()
+def test_restart_handoff(monkeypatch, tmp_path):
+    import json
+
+    now = time.time()
+    pixel = [225.0, 277.0]
+    options = {
+        "mount_control": True,
+        "indi_goto_method": "mfnavis",
+        "target_pixel": [221.0, 274.0],
+    }
+    monkeypatch.setattr(pos_server.utils, "runtime_dir", tmp_path)
+    monkeypatch.setattr(
+        pos_server,
+        "_get_config_option",
+        lambda key, default=None: options.get(key, default),
+    )
+    monkeypatch.setattr(pos_server, "_mount_synced_location", (37.5, 127.0, 30.0))
+    monkeypatch.setattr(pos_server, "is_stellarium", False)
+    monkeypatch.setattr(pos_server, "_multipoint_align_active", lambda: False)
+    ui, mount_queue, guide_queue = queue.Queue(), queue.Queue(), queue.Queue()
+    monkeypatch.setattr(pos_server, "ui_queue", ui)
+    monkeypatch.setattr(pos_server, "mountcontrol_queue", mount_queue)
+    monkeypatch.setattr(pos_server, "goto_guide_queue", guide_queue)
+    monkeypatch.setattr(
+        pos_server,
+        "track_freq_command_for_coordinates",
+        lambda *a, **kw: {"type": "set_track_freq", "rate": 15.0},
+    )
+    monkeypatch.setattr(pos_server.sf_utils, "radec_to_constellation", lambda *a: "Peg")
+    monkeypatch.setattr(
+        pos_server,
+        "catalog_to_equinox_of_date",
+        lambda ra, dec, dt: (ra + 0.1, dec + 0.2),
+    )
+    monkeypatch.setattr(
+        pos_server,
+        "equinox_of_date_to_catalog",
+        lambda ra, dec, dt: (ra - 0.1, dec - 0.2),
+    )
+    state = DummyState(None)
+    state.target_pixel = lambda: pixel
+    guide = {"started": now - 1, "updated": now, "last_command": None, "phase": "idle"}
+    (tmp_path / "indi_goto_guide_status.json").write_text(json.dumps(guide))
+    mount = {
+        "updated": now,
+        "initial_location_sync_state": "ready",
+        "connection_health": "healthy",
+    }
+    monkeypatch.setattr(pos_server, "_mount_control_status", lambda: mount)
+    payload = {
+        "mode": "goto_test",
+        "created_wall": now - 2,
+        "target": {"ra": 110.0, "dec": 30.0},
+        "target_pixel": pixel,
+        "saved_target_pixel": options["target_pixel"],
+    }
+    path = tmp_path / "goto_test_restart.json"
+    path.write_text(json.dumps(payload))
+    return state, path, payload, guide, mount, ui, mount_queue, guide_queue
+
+
+def test_explicit_test_restart_uses_normal_goto_ui_and_frequency_once(
+    test_restart_handoff,
+):
+    state, path, _payload, _guide, _mount, ui, mount_queue, guide_queue = (
+        test_restart_handoff
+    )
+    pos_server._dispatch_test_restart_goto(state)
+    assert not path.exists()
+    assert ui.get_nowait() == "push_object"
+    command = guide_queue.get_nowait()
+    assert command["type"] == "goto_target"
+    assert command["ra"] == pytest.approx(110.0)
+    assert command["dec"] == pytest.approx(30.0)
+    assert mount_queue.get_nowait()["type"] == "set_track_freq"
+    pos_server._dispatch_test_restart_goto(state)
+    assert ui.empty() and guide_queue.empty() and mount_queue.empty()
+
+
+@pytest.mark.parametrize(
+    "wait_for",
+    [
+        "new_process",
+        "site",
+        "connection",
+        "moving",
+        "pulse",
+        "alignment",
+        "location",
+        "fresh_status",
+    ],
+)
+def test_test_restart_waits_for_normal_startup(
+    test_restart_handoff, monkeypatch, wait_for
+):
+    import json
+
+    state, path, payload, guide, mount, ui, mount_queue, guide_queue = (
+        test_restart_handoff
+    )
+    if wait_for == "new_process":
+        guide["started"] = payload["created_wall"] - 1
+        (path.parent / "indi_goto_guide_status.json").write_text(json.dumps(guide))
+    elif wait_for == "site":
+        mount["initial_location_sync_state"] = "waiting"
+    elif wait_for == "connection":
+        mount["connection_health"] = "unavailable"
+    elif wait_for == "moving":
+        mount["mount_motion_active"] = True
+    elif wait_for == "pulse":
+        mount["guide_pulse_until_wall"] = time.time() + 2
+    elif wait_for == "alignment":
+        state.target_pixel = lambda: [221.0, 274.0]
+    elif wait_for == "location":
+        monkeypatch.setattr(pos_server, "_mount_synced_location", None)
+    elif wait_for == "fresh_status":
+        mount["updated"] = time.time() - 10
+    pos_server._dispatch_test_restart_goto(state)
+    assert path.exists()
+    assert ui.empty() and guide_queue.empty() and mount_queue.empty()
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        "expired",
+        "mode",
+        "coordinate",
+        "saved_alignment",
+        "user_stop",
+        "user_goto",
+        "user_move",
+    ],
+)
+def test_test_restart_cancels_invalid_or_superseded_request(
+    test_restart_handoff, invalid
+):
+    import json
+
+    state, path, payload, guide, mount, ui, mount_queue, guide_queue = (
+        test_restart_handoff
+    )
+    if invalid == "expired":
+        payload["created_wall"] = time.time() - 61
+    elif invalid == "mode":
+        payload["mode"] = "ordinary_restart"
+    elif invalid == "coordinate":
+        payload["target"]["ra"] = float("nan")
+    elif invalid == "saved_alignment":
+        payload["saved_target_pixel"] = [1, 2]
+    elif invalid == "user_stop":
+        guide["last_command"] = "stop_movement"
+    elif invalid == "user_goto":
+        guide["last_command"] = "goto_target"
+    elif invalid == "user_move":
+        mount["last_user_motion_started_wall"] = time.time()
+    path.write_text(json.dumps(payload))
+    (path.parent / "indi_goto_guide_status.json").write_text(json.dumps(guide))
+    pos_server._dispatch_test_restart_goto(state)
+    assert not path.exists()
+    assert ui.empty() and guide_queue.empty() and mount_queue.empty()
+
+
+def test_pending_test_goto_cannot_carry_over_to_another_restart(test_restart_handoff):
+    import json
+
+    state, path, _payload, guide, mount, ui, mount_queue, guide_queue = (
+        test_restart_handoff
+    )
+    mount["initial_location_sync_state"] = "waiting"
+    pos_server._dispatch_test_restart_goto(state)
+    assert path.exists()
+    assert json.loads(path.read_text())["claimed_started"] == guide["started"]
+    guide["started"] += 0.5
+    (path.parent / "indi_goto_guide_status.json").write_text(json.dumps(guide))
+    mount["initial_location_sync_state"] = "ready"
+    pos_server._dispatch_test_restart_goto(state)
+    assert not path.exists()
+    assert ui.empty() and mount_queue.empty() and guide_queue.empty()

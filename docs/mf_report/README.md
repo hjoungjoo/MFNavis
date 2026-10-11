@@ -38,6 +38,8 @@
 
 | 날짜 | 보고서 |
 |---|---|
+| 20261011 | [솔빙 실패 시 별 영상 추적 오프라인 성능 평가](visual_fallback_benchmark_20261011_ko.md) |
+| 20261011 | [별 검출이 어려운 환경의 상대 추적 시험](weak_star_fallback_benchmark_20261011_ko.md) |
 | 20260927 | [2026-09-27 Trixie 실내 GoTo: 솔빙 실패 시 IMU·마운트 전환](mfnavis_trixie_solve_fallback_20260927_ko.md) |
 | 20260917 | [Solver CPU·메모리 개선 — 2026-09-17](solver_optimization_20260917_ko.md) |
 | 20260916 | [밝은 포화 별 보존과 프레임 전달 수정 — 2026-09-16](mf_compact_saturation_frame_pair_fix_20260916_ko.md) |

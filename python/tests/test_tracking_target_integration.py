@@ -777,6 +777,7 @@ def test_align_hold_cancels_pending_recovery_and_drops_old_automatic_packets():
         _smooth_runtime=None,
         _cancel_sync_goto=Mock(),
         _pending_goto_refine="old",
+        _mfnavis_sync_preparation=Mock(return_value=False),
         _check_motion_limits=Mock(),
     )
     assert MountControlIndi.handle_command(mount, dict(type="tracking_alignment_hold"))

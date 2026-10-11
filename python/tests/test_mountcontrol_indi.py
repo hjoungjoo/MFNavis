@@ -3220,19 +3220,18 @@ def test_tracking_remeasures_after_each_bounded_pulse(monkeypatch):
     }
     assert mount._manual_motion_queue_timeout() == pytest.approx(0.1)
     sent = len(mount.client.numbers)
-    clock[0] = 1001.6
+    clock[0] = 1001.0
     observation[0] = (10.03, 20.0, clock[0])
     mount._check_guide_correction()
-    assert len(mount.client.numbers) == sent + 1
-    assert mount.client.numbers[-1][2] == {
-        "TIMED_GUIDE_E": 0.0,
-        "TIMED_GUIDE_W": 2500.0,
-    }
-    assert mount._guide_pulse_until == pytest.approx(1004.1)
-    clock[0] = 1001.7
+    assert len(mount.client.numbers) == sent  # Same timer need not be extended.
+    assert mount._guide_pulse_until == pytest.approx(1002.5)
+    clock[0] = 1001.1
     mount._check_guide_correction()
-    assert len(mount.client.numbers) == sent + 1  # Never replay an observation.
+    assert len(mount.client.numbers) == sent  # Never replay an observation.
     clock[0] = 1007.0
+    mount._check_guide_correction()
+    assert len(mount.client.numbers) == sent
+    observation[0] = (10.03, 20.0, clock[0])
     mount._check_guide_correction()
     assert len(mount.client.numbers) == sent + 1
 
@@ -4606,7 +4605,7 @@ def test_fast_solve_updates_do_not_prematurely_exhaust_progress_budget(monkeypat
         assert mount._guide_correction_enabled
         assert mount._guide_correction_mode == "pulse"
     assert mount._guide_pulse_no_progress == 0
-    assert len(mount.client.numbers) == 18
+    assert not mount.client.numbers  # No redundant extensions at camera cadence.
     for tick in range(1, 6):
         clock[0] = 1007.0 + tick
         observation[0] = (9.99, -0.01, clock[0])
@@ -4955,3 +4954,287 @@ def test_connection_rejects_unconfirmed_or_invalid_telemetry(monkeypatch, invali
         assert mount._confirmed_connection_position() == (0, 0)
     else:
         assert mount._confirmed_connection_position() is None
+
+
+def test_tracking_arrival_resets_progress_before_next_disturbance(monkeypatch):
+    mount, clock, observation, errors, _motions, _pulses = _pulse_correction_mount(
+        monkeypatch
+    )
+    monkeypatch.setattr(mount, "_select_guide_rate_for_error", lambda *a: True)
+    monkeypatch.setattr(
+        mount, "_current_plate_solve", lambda: (10.0, 20.0, observation[0])
+    )
+    mount._guide_pulse_best_error = 0.1
+    mount._guide_pulse_previous_error = 0.1
+    mount._guide_pulse_no_progress = 5
+    mount._guide_pulse_worsening = 3
+    mount._guide_progress_solve_time = observation[0] - 0.1
+    errors[:] = [0.005, 0.0]
+    mount._check_guide_correction()
+    assert mount._guide_correction_mode == "complete"
+    assert mount._guide_correction_enabled
+    assert mount._guide_pulse_no_progress == mount._guide_pulse_worsening == 0
+    assert mount._guide_pulse_best_error is None
+    clock[0] += 2
+    observation[0] = clock[0]
+    errors[:] = [0.03, 0.0]
+    mount._check_guide_correction()
+    assert mount._guide_correction_mode == "pulse"
+    assert mount._guide_pulse_best_error == pytest.approx(1.8)
+
+
+@pytest.mark.parametrize("continue_on_solve_loss", [False, True])
+def test_tracking_centers_then_holds_without_deadband_pulse_chatter(
+    monkeypatch, continue_on_solve_loss
+):
+    clock = [1000.0]
+    monkeypatch.setattr(mci.time, "time", lambda: clock[0])
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    mount = DummyConnectedMount()
+    observation = [(10.0, 2 / 60, clock[0])]
+    monkeypatch.setattr(mount, "_current_plate_solve", lambda: observation[0])
+    monkeypatch.setattr(mount, "_guide_axis_error", lambda *args: abs(args[1]) * 60)
+    monkeypatch.setattr(mount, "_guide_pulse_supported", lambda: True)
+    monkeypatch.setattr(mount, "_select_guide_rate_for_error", lambda error: True)
+    monkeypatch.setattr(mount, "_guide_pulse_inversions", lambda: (False, False))
+    mount._confirmed_guide_rates = (1.0, 1.0)
+    mount.toggle_guide_correction(
+        True, 10.0, 0.0, 1.0, continue_on_solve_loss=continue_on_solve_loss
+    )
+    mount._check_guide_correction()
+    assert mount._guide_centering_active
+    clock[0] += 3
+    observation[0] = (10.0, 0.8 / 60, clock[0])
+    count = len(mount.client.numbers)
+    mount._check_guide_correction()
+    assert len(mount.client.numbers) > count  # Finish inside 0.5', not at 1'.
+    assert mount._guide_centering_active
+    clock[0] += 3
+    observation[0] = (10.0, 0.4 / 60, clock[0])
+    mount._check_guide_correction()
+    assert mount._guide_correction_mode == "complete"
+    assert not mount._guide_centering_active
+    count = len(mount.client.numbers)
+    for error in [0.7, 0.9, -0.8, 0.6, -0.9]:
+        clock[0] += 3
+        observation[0] = (10.0, error / 60, clock[0])
+        mount._check_guide_correction()
+        # The same frame must not trigger a holdover pulse between solves.
+        clock[0] += 1.1
+        mount._check_guide_correction()
+        assert len(mount.client.numbers) == count
+        assert mount._guide_correction_enabled
+    clock[0] += 3
+    observation[0] = (10.0, 1.2 / 60, clock[0])
+    mount._check_guide_correction()
+    if continue_on_solve_loss:
+        assert len(mount.client.numbers) == count
+        clock[0] += 1.0
+        observation[0] = (10.0, 1.2 / 60, clock[0])
+        mount._check_guide_correction()
+    assert len(mount.client.numbers) > count
+    assert mount._guide_centering_active
+
+
+def _wind_tracking_mount(monkeypatch, accuracy=1.0):
+    clock = [1000.0]
+    monkeypatch.setattr(mci.time, "time", lambda: clock[0])
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    mount = DummyConnectedMount()
+    observation = [(10.0, 0.0, clock[0])]
+    monkeypatch.setattr(mount, "_current_plate_solve", lambda: observation[0])
+    monkeypatch.setattr(mount, "_guide_axis_error", lambda *args: abs(args[1]) * 60)
+    monkeypatch.setattr(mount, "_guide_pulse_supported", lambda: True)
+    monkeypatch.setattr(mount, "_select_guide_rate_for_error", lambda error: True)
+    monkeypatch.setattr(mount, "_guide_pulse_inversions", lambda: (False, False))
+    mount._confirmed_guide_rates = (1.0, 1.0)
+    mount.toggle_guide_correction(
+        True, 10.0, 0.0, accuracy, continue_on_solve_loss=True
+    )
+    mount._check_guide_correction()
+    assert mount._guide_correction_mode == "complete"
+    mount.client.numbers.clear()
+
+    def observe(error, elapsed=0.5):
+        clock[0] += elapsed
+        observation[0] = (10.0, error / 60, clock[0])
+        mount._check_guide_correction()
+
+    return mount, clock, observe
+
+
+@pytest.mark.parametrize("accuracy", [0.5, 1.0, 2.0])
+def test_wind_gusts_do_not_restart_centered_tracking(monkeypatch, accuracy):
+    mount, clock, observe = _wind_tracking_mount(monkeypatch, accuracy)
+    for error in [1.2, -1.3, 1.1, 0.7, -1.4, 1.5, 0.3]:
+        observe(error * accuracy)
+        # Same exposure cannot confirm departure, including through holdover.
+        mount._check_guide_correction()
+        assert not mount.client.numbers
+        assert mount._guide_correction_enabled
+        assert not mount._guide_centering_active
+    observe(1.2 * accuracy)
+    clock[0] += 8  # Cloud gap must not spend the unconfirmed gust as residual.
+    mount._check_guide_correction()
+    assert not mount.client.numbers
+    observe(1.2 * accuracy)
+    assert not mount.client.numbers  # A long gap starts a fresh confirmation.
+    observe(1.2 * accuracy)
+    assert not mount.client.numbers
+    observe(1.2 * accuracy)
+    assert mount.client.numbers
+    assert mount._guide_centering_active
+
+
+def test_real_large_departure_bypasses_wind_confirmation(monkeypatch):
+    mount, _, observe = _wind_tracking_mount(monkeypatch)
+    observe(1.3)
+    assert not mount.client.numbers
+    observe(2.1, elapsed=0.1)
+    assert mount.client.numbers
+    assert mount._guide_centering_active
+    assert mount._guide_rearm_candidate is None
+
+
+@pytest.mark.parametrize("cadence", [0.2, 0.5, 1.0, 2.5, 3.0])
+def test_persistent_small_offset_recenters_at_variable_camera_cadence(
+    monkeypatch, cadence
+):
+    mount, clock, observe = _wind_tracking_mount(monkeypatch)
+    for _ in range(6):
+        observe(0.2, cadence)
+    observe(0.75, cadence)
+    started = clock[0]
+    count = 1
+    while not mount.client.numbers:
+        assert clock[0] - started < 15
+        observe(0.75, cadence)
+        count += 1
+        if clock[0] - started < 4 or count < 4:
+            assert not mount.client.numbers
+    assert count >= 4
+    assert clock[0] - started >= 4
+    assert mount._guide_centering_active
+    assert mount._guide_correction_enabled
+    # The confirmed offset uses normal damped centering and stops at 0.5'.
+    observe(0.4, 3)
+    assert mount._guide_correction_mode == "complete"
+    assert not mount._guide_centering_active
+
+
+def test_small_bias_resets_on_center_crossing_and_cloud_gap(monkeypatch):
+    mount, clock, observe = _wind_tracking_mount(monkeypatch)
+    for error in [0.7, 0.8, 0.9, 0.4, 0.7, 0.8, -0.7, -0.8, -0.9]:
+        observe(error, 1)
+        assert not mount.client.numbers
+    clock[0] += 10
+    mount._check_guide_correction()  # Same stale frame, never confirming evidence.
+    assert not mount.client.numbers
+    for _ in range(4):
+        observe(-0.75, 1)
+        assert not mount.client.numbers
+    observe(-0.75, 1)
+    assert mount.client.numbers
+
+
+def test_fast_repeated_reads_cannot_confirm_persistent_small_offset(monkeypatch):
+    mount, clock, observe = _wind_tracking_mount(monkeypatch)
+    observe(0.7)
+    for _ in range(50):
+        clock[0] += 0.1
+        mount._check_guide_correction()
+    assert not mount.client.numbers
+    assert mount._guide_rearm_candidate[4] == 1
+    assert mount._guide_correction_enabled
+
+
+def test_rotating_small_scatter_does_not_count_as_persistent_direction(monkeypatch):
+    mount, clock, _ = _wind_tracking_mount(monkeypatch)
+    for i in range(15):
+        clock[0] += 1
+        assert not mount._guide_rearm_confirmed(
+            0.8, clock[0], 36.0, 24.0 if i % 2 else -24.0
+        )
+    assert not mount._guide_centering_active
+
+
+def test_small_bias_history_does_not_skip_departure_confirmation(monkeypatch):
+    mount, _, observe = _wind_tracking_mount(monkeypatch)
+    for _ in range(4):
+        observe(0.7, 1)
+    observe(1.5, 0.1)
+    assert not mount.client.numbers  # New magnitude band needs fresh evidence.
+    observe(1.5, 1)
+    assert mount.client.numbers
+
+
+def test_camera_cadence_change_relearns_without_permanent_confirmation_wait(
+    monkeypatch,
+):
+    mount, _, observe = _wind_tracking_mount(monkeypatch)
+    for _ in range(6):
+        observe(0.2, 0.25)
+    observe(0.75, 0.25)
+    observe(0.75, 2.5)
+    assert not mount.client.numbers
+    # Longer exposure or slower solving changes cadence during the candidate.
+    # Reconfirm with the new cadence instead of requiring the old frame rate.
+    for _ in range(8):
+        observe(0.75, 2.5)
+        if mount.client.numbers:
+            break
+    assert mount.client.numbers
+    assert mount._guide_centering_active
+
+
+@pytest.mark.parametrize("action", ["disable", "target", "reset"])
+def test_wind_confirmation_does_not_survive_control_change(monkeypatch, action):
+    mount, _, observe = _wind_tracking_mount(monkeypatch)
+    observe(1.3)
+    assert mount._guide_rearm_candidate is not None
+    if action == "disable":
+        mount.toggle_guide_correction(False)
+    else:
+        mount.toggle_guide_correction(
+            True,
+            11.0 if action == "target" else 10.0,
+            0.0,
+            1.0,
+            continue_on_solve_loss=True,
+            reset_convergence=action == "reset",
+        )
+    assert mount._guide_rearm_candidate is None
+
+
+def test_same_direction_pulse_continues_but_braking_and_reversal_are_immediate(
+    monkeypatch,
+):
+    mount, clock, observation = _early_solve_pulse_mount(monkeypatch)
+    original_end = mount._guide_pulse_until
+    for offset in [0.1, 0.3, 0.8, 1.0]:
+        clock[0] = 1007 + offset
+        observation[0] = (9.99, -0.01, clock[0])
+        mount._check_guide_correction()
+        assert not mount.client.numbers
+        assert mount._guide_pulse_until == original_end
+    clock[0] = 1008.1
+    observation[0] = (9.997, 0.003, clock[0])
+    mount._check_guide_correction()
+    assert len(mount.client.numbers) == 2
+    assert mount.client.numbers[0][2]["TIMED_GUIDE_S"] > 1
+    assert mount.client.numbers[1][2]["TIMED_GUIDE_E"] > 1
+    assert mount._guide_active_pulses["TELESCOPE_TIMED_GUIDE_WE"][1] < original_end
+
+
+def test_large_residual_renews_near_pulse_end_without_camera_rate_spam(monkeypatch):
+    mount, clock, observation = _early_solve_pulse_mount(monkeypatch)
+    for offset in [0.2, 0.7, 1.2]:
+        clock[0] = 1007 + offset
+        observation[0] = (9.99, -0.01, clock[0])
+        mount._check_guide_correction()
+        assert not mount.client.numbers
+    clock[0] = 1008.6
+    observation[0] = (9.99, -0.01, clock[0])
+    mount._check_guide_correction()
+    assert len(mount.client.numbers) == 2
+    assert mount._guide_pulse_until == pytest.approx(1011.1)

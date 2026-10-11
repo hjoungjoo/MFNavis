@@ -52,8 +52,9 @@ class GuidePID:
             if self.ki > 0
             else 0.0
         )
-        # Smoothstep blends full travel far away into half travel near the
-        # target, without requesting unsupported intermediate motor rates.
+        # Shape the requested travel before clipping to the actuator budget.
+        # Clipping first would reduce an already bounded 2.5 s pulse again,
+        # even when the residual is larger than that pulse can correct.
         ratio = min(1.0, abs(error) / approach_band) if approach_band > 0 else 1.0
         approach_gain = 0.5 + 0.5 * ratio * ratio * (3.0 - 2.0 * ratio)
         proportional = self.kp * error
@@ -61,13 +62,13 @@ class GuidePID:
             -abs(proportional) * 0.8,
             min(abs(proportional) * 0.8, self.kd * self.filtered_derivative),
         )
-        output = proportional + self.ki * candidate + damping
+        output = (proportional + self.ki * candidate + damping) * approach_gain
         if abs(output) <= limit or output * error < 0:
             self.integral = candidate
-        output = proportional + self.ki * self.integral + damping
+        output = (proportional + self.ki * self.integral + damping) * approach_gain
         self.previous_error, self.previous_stamp = error, stamp
         # A crossing is handled by the new measured sign, never by stored I/D.
         return math.copysign(
-            min(limit, max(0.0, output * math.copysign(1, error))) * approach_gain,
+            min(limit, max(0.0, output * math.copysign(1, error))),
             error,
         )

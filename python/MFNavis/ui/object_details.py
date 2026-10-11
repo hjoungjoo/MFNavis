@@ -7,6 +7,7 @@ This module contains all the UI code for the object details screen
 """
 
 from PIL import Image, ImageChops, ImageOps
+from datetime import datetime, timezone
 
 from pydeepskylog.exceptions import InvalidParameterError
 
@@ -21,6 +22,7 @@ from PiFinder.mf_manual_lens import manual_focal_from_state
 
 from PiFinder import cat_images
 from PiFinder.display_pointing import DisplayPointing
+from PiFinder.state import Location
 from PiFinder.composite_object import MagnitudeObject
 from PiFinder.ui.marking_menus import MarkingMenuOption, MarkingMenu
 from PiFinder.obj_types import OBJ_TYPES
@@ -437,6 +439,7 @@ class UIObjectDetails(UIModule):
         self._push_status_next_read = 0.0
         self._push_mount_status = {}
         self._push_guide_status = {}
+        self._push_pointing_status = {}
         self._push_last_attempt = None
         self._push_solve_interval = None
 
@@ -486,6 +489,7 @@ class UIObjectDetails(UIModule):
             for attr, filename in (
                 ("_push_mount_status", "mount_control_status.json"),
                 ("_push_guide_status", "indi_goto_guide_status.json"),
+                ("_push_pointing_status", "pointing_coordinate_status.json"),
             ):
                 try:
                     status = json.loads((utils.runtime_dir / filename).read_text())
@@ -598,7 +602,7 @@ class UIObjectDetails(UIModule):
         self.draw.text(
             (
                 PUSH_MARGIN,
-                self.display_class.resY - self.fonts.small.height - PUSH_MARGIN,
+                self._push_footer_layout()[1],
             ),
             text,
             font=font,
@@ -611,14 +615,20 @@ class UIObjectDetails(UIModule):
         mount = getattr(self, "_push_mount_status", {})
         guide = getattr(self, "_push_guide_status", {})
         state = str(mount.get("state", ""))
+        recovering = (
+            guide.get("tracking_guide_state") == "recovering_goto"
+            and guide.get("tracking_guide_recovery_mode") == "goto"
+            and not guide.get("tracking_guide_suspended")
+        )
         if (
             guide.get("phase") not in {"complete", "tracking"}
             or not guide.get("optical_arrival_confirmed")
-            or mount.get("tracking_enabled") is not True
-            or mount.get("mount_motion_active")
-            or mount.get("goto_motion_active")
+            or (mount.get("tracking_enabled") is not True and not recovering)
+            or (mount.get("mount_motion_active") and not recovering)
+            or (mount.get("goto_motion_active") and not recovering)
             or mount.get("manual_motion_direction")
-            or state in INDI_PROBLEM_STATES | {"moving", "slewing"}
+            or state in INDI_PROBLEM_STATES
+            or (state in {"moving", "slewing"} and not recovering)
             or state.endswith("_failed")
             or guide.get("service_state") == "error"
             or guide.get("tracking_guide_state") == "failed"
@@ -654,7 +664,9 @@ class UIObjectDetails(UIModule):
             )
         except (TypeError, ValueError):
             solve_fresh = False
-        if not solve_fresh and (
+        # Arrival is retained during automatic recovery. Blink until its
+        # movement/solve check finishes instead of making it look cancelled.
+        if (not solve_fresh or recovering) and (
             time.monotonic() % (2 * PUSH_BORDER_BLINK_SECONDS)
             >= PUSH_BORDER_BLINK_SECONDS
         ):
@@ -680,16 +692,169 @@ class UIObjectDetails(UIModule):
         catalog = self.catalogs.get_catalog_by_code(code)
         return catalog and catalog.initialized
 
+    @staticmethod
+    def _push_text_height(font, text="Ag012°"):
+        box = font.getbbox(text)
+        return box[3] - box[1]
+
+    def _push_footer_layout(self):
+        status_y = (
+            self.display_class.resY
+            - PUSH_MARGIN
+            - self._push_text_height(self.fonts.small.font)
+        )
+        guidance_y = (
+            status_y
+            - PUSH_MARGIN
+            - self._push_text_height(
+                self.fonts.base.font,
+                "Ag012°"
+                + "".join(
+                    getattr(self, name, "")
+                    for name in (
+                        "_LEFT_ARROW",
+                        "_RIGHT_ARROW",
+                        "_UP_ARROW",
+                        "_DOWN_ARROW",
+                    )
+                ),
+            )
+        )
+        return guidance_y, status_y
+
+    def _push_guidance_coordinates(self):
+        """Select display coordinates only; never change control or tracking."""
+        status = getattr(self, "_push_pointing_status", {})
+        mount_mode = (
+            self.config_object.get_option("indi_goto_method", "mfnavis") == "indi_mount"
+        )
+        keys = ("mount",) if mount_mode else ("display", "solved", "imu")
+        sources = {
+            "solve": "S",
+            "imu_fallback": "I",
+            "pifinder_imu_estimate": "I",
+            "mount": "M",
+            "visual_estimate": "V",
+        }
+        for key in keys:
+            sample = status.get(key) or {}
+            if not isinstance(sample, dict):
+                continue
+            try:
+                source = sources.get(sample.get("source"))
+                if not sample.get("valid") or source is None:
+                    continue
+                age = time.time() - float(sample["timestamp"])
+                if not 0 <= age <= (PUSH_SOLVE_STALE_SECONDS if source == "S" else 5):
+                    continue
+                pixel = (sample.get("metadata") or {}).get("target_pixel")
+                if pixel is not None and tuple(pixel) != tuple(
+                    self.shared_state.target_pixel()
+                ):
+                    continue
+                ra, dec = float(sample["ra"]), float(sample["dec"])
+                if not (
+                    math.isfinite(ra)
+                    and math.isfinite(dec)
+                    and 0 <= ra < 360
+                    and -90 <= dec <= 90
+                ):
+                    continue
+                return source, ra, dec
+            except (KeyError, TypeError, ValueError):
+                continue
+        return None
+
+    def _push_observer_location(self):
+        """Use the saved observing site for display when GPS has no fix."""
+        location = self.shared_state.location()
+        if location is not None and location.lock:
+            return location
+        configured = self.config_object.get_option("locations.default", None)
+        if configured is None:
+            return None
+        try:
+            lat = float(configured.latitude)
+            lon = float(configured.longitude)
+            altitude = float(configured.height)
+            if not (
+                math.isfinite(lat)
+                and -90 <= lat <= 90
+                and math.isfinite(lon)
+                and -180 <= lon <= 180
+                and math.isfinite(altitude)
+            ):
+                return None
+            # A local calculation context only: never set the shared GPS lock.
+            return Location(
+                lat=lat,
+                lon=lon,
+                altitude=altitude,
+                source=f"CONFIG: {configured.name}",
+                lock=True,
+            )
+        except (AttributeError, TypeError, ValueError):
+            return None
+
+    def _render_compact_guidance(self):
+        coordinate = self._push_guidance_coordinates()
+        text = "--  --"
+        if (
+            coordinate is not None
+            and self._check_catalog_initialized()
+            and self.object.ra is not None
+            and self.object.dec is not None
+        ):
+            source, ra, dec = coordinate
+            # Match the coordinate publisher's epoch before GPS/manual time
+            # initializes shared state. Do not change the shared clock or lock.
+            dt = self.shared_state.datetime()
+            if dt is None:
+                dt = datetime.now(timezone.utc)
+            errors = calc_utils.pointing_axis_errors(
+                ra,
+                dec,
+                self.object.ra,
+                self.object.dec,
+                self.mount_type,
+                self._push_observer_location(),
+                dt,
+            )
+            if errors is not None and all(
+                v is not None and math.isfinite(v) for v in errors
+            ):
+                az_arrow, az, alt_arrow, alt = pointing_arrows(
+                    self, *errors, self.mount_type
+                )
+
+                def amount(value):
+                    decimals = 3 if value < 0.2 else 2 if value < 1 else 1
+                    return f"{value:.{decimals}f}°"
+
+                text = f"{source} {az_arrow}{amount(az)} {alt_arrow}{amount(alt)}"
+        available = self.display_class.resX - 2 * PUSH_MARGIN
+        font = self.fonts.base.font
+        if self.draw.textlength(text, font=font) > available:
+            font = self.fonts.small.font
+        # Keep both signed distances intact; the optional source goes first.
+        if self.draw.textlength(text, font=font) > available and coordinate is not None:
+            text = text[2:]
+        self.draw.text(
+            (PUSH_MARGIN, self._push_footer_layout()[0]),
+            text,
+            font=font,
+            fill=self.colors.get(255),
+            anchor="lt",
+        )
+
     def _render_pointing_instructions(self, compact=False):
         self._refresh_push_status()
-        font = self.fonts.base if compact else self.fonts.large
         if compact:
-            bottom = self.display_class.resY - self.fonts.small.height - 2 * PUSH_MARGIN
-            anchor_1 = (PUSH_MARGIN, bottom - 2 * (font.height + 2))
-            anchor_2 = (PUSH_MARGIN, bottom - (font.height + 2))
-        else:
-            anchor_1 = self._pointing_msg_anchor_1
-            anchor_2 = self._pointing_msg_anchor_2
+            self._render_compact_guidance()
+            return
+        font = self.fonts.large
+        anchor_1 = self._pointing_msg_anchor_1
+        anchor_2 = self._pointing_msg_anchor_2
         # Pointing Instructions
         if not self.shared_state.solution().has_pointing():
             self.draw.text(
@@ -779,23 +944,6 @@ class UIObjectDetails(UIModule):
                 self._elipsis_count = 0
             return
 
-        if compact:
-            az_arrow, az, alt_arrow, alt = pointing_arrows(
-                self, point_az, point_alt, self.mount_type
-            )
-            for anchor, arrow, value in (
-                (anchor_1, az_arrow, az),
-                (anchor_2, alt_arrow, alt),
-            ):
-                decimals = 3 if value < 0.2 else 2 if value < 1 else 1
-                self.draw.text(
-                    anchor,
-                    f"{arrow}{value: >5.{decimals}f}°",
-                    font=font.font,
-                    fill=self.colors.get(indicator_color),
-                )
-            return
-
         draw_pointing_instructions(
             self,
             point_az,
@@ -849,13 +997,17 @@ class UIObjectDetails(UIModule):
         self.screen.paste(frame, (left, image_top))
 
         # Dim the text bands enough for readability while retaining the image.
-        header_bottom = top + self.fonts.small.height + 2 * PUSH_MARGIN
-        footer_top = (
-            height
-            - self.fonts.small.height
-            - 2 * PUSH_MARGIN
-            - 2 * (self.fonts.base.height + 2)
+        header = (
+            f"{zoom_factor}x  "
+            f"{_(OBJ_TYPES.get(self.object.obj_type, 'Unknown'))}  {self.object.const}"
         )
+        header_bottom = (
+            top
+            + self._push_text_height(self.fonts.small.font, header)
+            + 2 * PUSH_MARGIN
+            - 1
+        )
+        footer_top = self._push_footer_layout()[0] - PUSH_MARGIN
         for y0, y1 in ((top, header_bottom), (footer_top, height - 1)):
             self.draw.rectangle((0, y0, width - 1, y1), fill=(0, 0, 0, 144))
 
@@ -873,8 +1025,7 @@ class UIObjectDetails(UIModule):
             )
 
         fitted_text(
-            f"{zoom_factor}x  "
-            f"{_(OBJ_TYPES.get(self.object.obj_type, 'Unknown'))}  {self.object.const}",
+            header,
             top + PUSH_MARGIN,
             self.fonts.small.font,
         )

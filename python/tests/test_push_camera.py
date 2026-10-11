@@ -1,6 +1,7 @@
 """Camera push geometry and mode navigation."""
 
 from types import SimpleNamespace
+from datetime import datetime, timezone
 from unittest.mock import Mock
 import time
 
@@ -50,6 +51,9 @@ def camera_ui(resolution, target):
     ui._draw_camera_pointer = Mock()
     ui._render_pointing_instructions = Mock()
     ui._render_push_status = Mock()
+    ui._push_pointing_status = {}
+    ui.config_object = SimpleNamespace(get_option=lambda key, default=None: default)
+    ui._unmoved = True
     return ui
 
 
@@ -185,22 +189,26 @@ def test_square_cycles_camera_and_existing_modes():
         assert ui.object_display_mode == expected
 
 
-def test_camera_without_solve_keeps_compact_wait_message():
+def test_camera_without_any_coordinate_keeps_one_line_placeholder():
     ui = camera_ui((128, 128), (256, 256))
     del ui._render_pointing_instructions
     ui._refresh_push_status = Mock()
     ui.shared_state.solution = lambda: SimpleNamespace(has_pointing=lambda: False)
     ui._elipsis_count = 0
+    ui.draw = Mock(wraps=ui.draw)
     ui._render_camera_push()
-    assert ui._elipsis_count == 1
+    texts = [call.args[1] for call in ui.draw.text.call_args_list]
+    assert texts[-1] == "--  --"
+    assert not any("solve" in text.lower() for text in texts)
+    assert ui._elipsis_count == 0
 
 
 @pytest.mark.parametrize(
     "mount_type,reverse,expected",
     [
-        ("Alt/Az", "Default", ("L0.005°", "U  1.2°")),
-        ("Alt/Az", "Reverse", ("R0.005°", "U  1.2°")),
-        ("EQ", "Default", ("-0.005°", "+  1.2°")),
+        ("Alt/Az", "Default", "S L0.005° U1.2°"),
+        ("Alt/Az", "Reverse", "S R0.005° U1.2°"),
+        ("EQ", "Default", "S -0.005° +1.2°"),
     ],
 )
 def test_compact_guidance_preserves_signs_and_fine_precision(
@@ -212,20 +220,192 @@ def test_compact_guidance_preserves_signs_and_fine_precision(
     ui.shared_state.solution = lambda: SimpleNamespace(has_pointing=lambda: True)
     ui.shared_state.altaz_ready = lambda: True
     ui._check_catalog_initialized = lambda: True
-    ui._push_display_solution = lambda: None
+    ui._push_guidance_coordinates = lambda: ("S", 10, 20)
+    ui.object.ra, ui.object.dec = 11, 21
+    ui.shared_state.location = lambda: None
+    ui.shared_state.datetime = lambda: None
     ui.mount_type = mount_type
     ui.screen_direction = "right"
     ui._unmoved = True
     ui.config_object = SimpleNamespace(get_option=lambda *args: reverse)
     ui._LEFT_ARROW, ui._RIGHT_ARROW = "L", "R"
     ui._UP_ARROW, ui._DOWN_ARROW = "U", "D"
-    ui.draw = Mock()
+    ui.draw = Mock(wraps=ui.draw)
     monkeypatch.setattr(
-        "PiFinder.ui.object_details.calc_utils.aim_degrees",
+        "PiFinder.ui.object_details.calc_utils.pointing_axis_errors",
         lambda *a, **k: (-0.005, 1.2),
     )
     ui._render_pointing_instructions(compact=True)
-    assert tuple(call.args[1] for call in ui.draw.text.call_args_list) == expected
+    assert [call.args[1] for call in ui.draw.text.call_args_list] == [expected]
+
+
+def coordinate_sample(source, ra=10.0, dec=20.0, age=0):
+    return dict(valid=True, source=source, ra=ra, dec=dec, timestamp=time.time() - age)
+
+
+@pytest.mark.parametrize("mode,expected", [("mfnavis", "I"), ("indi_mount", "M")])
+def test_unsolved_push_uses_coordinate_for_selected_mode(mode, expected):
+    ui = camera_ui((128, 128), (256, 256))
+    ui.config_object.get_option = (
+        lambda key, default=None: mode if key == "indi_goto_method" else default
+    )
+    ui._push_pointing_status = {
+        "imu": coordinate_sample("imu_fallback", 12, 22),
+        "mount": coordinate_sample("mount", 13, 23),
+    }
+    assert ui._push_guidance_coordinates() == (
+        ("I", 12, 22) if expected == "I" else ("M", 13, 23)
+    )
+
+
+def test_solve_and_live_imu_prediction_are_labelled_by_actual_source():
+    ui = camera_ui((128, 128), (256, 256))
+    ui._push_pointing_status = {
+        "solved": coordinate_sample("solve"),
+        "imu": coordinate_sample("imu_fallback", 12, 22),
+    }
+    assert ui._push_guidance_coordinates() == ("S", 10, 20)
+    ui._push_pointing_status["display"] = coordinate_sample(
+        "pifinder_imu_estimate", 11, 21
+    )
+    assert ui._push_guidance_coordinates() == ("I", 11, 21)
+    ui._push_pointing_status.pop("display")
+    ui._push_pointing_status["solved"]["timestamp"] -= 13
+    assert ui._push_guidance_coordinates() == ("I", 12, 22)
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {"valid": False},
+        {"ra": float("nan")},
+        {"dec": 91},
+        {"timestamp": time.time() - 20},
+        {"timestamp": time.time() + 100},
+        {"metadata": {"target_pixel": [100, 100]}},
+    ],
+)
+def test_push_does_not_display_invalid_or_old_alignment_coordinates(invalid):
+    ui = camera_ui((128, 128), (256, 256))
+    ui._push_pointing_status = {"solved": {**coordinate_sample("solve"), **invalid}}
+    assert ui._push_guidance_coordinates() is None
+
+
+@pytest.mark.parametrize(
+    "source,mode", [("imu_fallback", "mfnavis"), ("mount", "indi_mount")]
+)
+def test_unsolved_eq_push_calculates_real_distances_without_gps(source, mode):
+    ui = camera_ui((128, 128), (256, 256))
+    ui._push_pointing_status = {
+        "imu" if source == "imu_fallback" else "mount": coordinate_sample(
+            source, 359.9, 20
+        )
+    }
+    ui.config_object.get_option = (
+        lambda key, default=None: mode if key == "indi_goto_method" else default
+    )
+    ui.mount_type = "EQ"
+    ui.object.ra, ui.object.dec = 0.1, 21.2
+    ui._check_catalog_initialized = lambda: True
+    ui.shared_state.location = lambda: None
+    ui.shared_state.datetime = lambda: None
+    ui.draw = Mock(wraps=ui.draw)
+    ui._render_compact_guidance()
+    assert len(ui.draw.text.call_args_list) == 1
+    text = ui.draw.text.call_args.args[1]
+    assert text.startswith("I " if mode == "mfnavis" else "M ")
+    assert "+0.2" in text and "+1.2°" in text
+
+
+@pytest.mark.parametrize(
+    "mode,source,key",
+    [
+        ("mfnavis", "imu_fallback", "imu"),
+        ("indi_mount", "mount", "mount"),
+    ],
+)
+@pytest.mark.parametrize("live_fix", [False, True])
+@pytest.mark.parametrize("shared_time", [False, True])
+def test_altaz_guidance_uses_live_or_saved_site_without_changing_gps(
+    monkeypatch, mode, source, key, live_fix, shared_time
+):
+    from PiFinder import calc_utils
+    from PiFinder.state import Location
+
+    ui = camera_ui((176, 176), (256, 256))
+    ui._push_pointing_status = {key: coordinate_sample(source, 332.6, 32.8)}
+    saved = SimpleNamespace(latitude=37.5, longitude=127.1, height=30, name="Home")
+    ui.config_object.get_option = lambda name, default=None: {
+        "indi_goto_method": mode,
+        "locations.default": saved,
+    }.get(name, default)
+    live = Location(lat=35, lon=129, altitude=20, lock=live_fix)
+    ui.shared_state.location = lambda: live
+    epoch = datetime(2026, 10, 11, 15, tzinfo=timezone.utc)
+    clock = Mock()
+    clock.now.return_value = epoch
+    monkeypatch.setattr("PiFinder.ui.object_details.datetime", clock)
+    ui.shared_state.datetime = lambda: epoch if shared_time else None
+    ui.mount_type = "Alt/Az"
+    ui.object.ra, ui.object.dec = 332.5, 33.2
+    ui._check_catalog_initialized = lambda: True
+    ui._LEFT_ARROW, ui._RIGHT_ARROW = "L", "R"
+    ui._UP_ARROW, ui._DOWN_ARROW = "U", "D"
+    ui._unmoved = False
+    ui.draw = Mock(wraps=ui.draw)
+    before = vars(live).copy()
+    ui._render_compact_guidance()
+    text = ui.draw.text.call_args.args[1]
+    assert text.startswith("I " if mode == "mfnavis" else "M ")
+    assert text.count("°") == 2
+    assert ui.draw.text.call_args.kwargs["fill"] == (255, 0, 0)
+    assert vars(live) == before
+    assert ui.shared_state.datetime() == (epoch if shared_time else None)
+    if shared_time:
+        clock.now.assert_not_called()
+    else:
+        clock.now.assert_called_once_with(timezone.utc)
+    selected = ui._push_observer_location()
+    assert (selected.lat, selected.lon) == ((35, 129) if live_fix else (37.5, 127.1))
+    # Check actual coordinate conversion, not a stubbed pair of errors.
+    expected_site = Location(
+        lat=35 if live_fix else 37.5,
+        lon=129 if live_fix else 127.1,
+        altitude=20 if live_fix else 30,
+        lock=True,
+    )
+    errors = calc_utils.pointing_axis_errors(
+        332.6, 32.8, 332.5, 33.2, "Alt/Az", expected_site, epoch
+    )
+    for value in errors:
+        value = abs(value)
+        decimals = 3 if value < 0.2 else 2 if value < 1 else 1
+        assert f"{value:.{decimals}f}°" in text
+
+
+@pytest.mark.parametrize(
+    "saved",
+    [
+        None,
+        SimpleNamespace(latitude=float("nan"), longitude=127, height=0, name="Invalid"),
+    ],
+)
+def test_altaz_guidance_without_valid_site_keeps_placeholder(saved):
+    from PiFinder.state import Location
+
+    ui = camera_ui((176, 176), (256, 256))
+    ui._push_pointing_status = {"imu": coordinate_sample("imu_fallback")}
+    ui.config_object.get_option = lambda key, default=None: (
+        saved if key == "locations.default" else default
+    )
+    ui.shared_state.location = lambda: Location(lock=False)
+    ui.shared_state.datetime = lambda: datetime(2026, 10, 11, tzinfo=timezone.utc)
+    ui.mount_type = "Alt/Az"
+    ui.object.ra, ui.object.dec = 11, 21
+    ui._check_catalog_initialized = lambda: True
+    ui.draw = Mock(wraps=ui.draw)
+    ui._render_compact_guidance()
+    assert ui.draw.text.call_args.args[1] == "--  --"
 
 
 @pytest.mark.parametrize(
@@ -397,4 +577,47 @@ def test_stop_hides_solid_and_blinking_arrival_border(monkeypatch, success, stop
     for stamp in (100.1, 100.6, 101.1):
         monkeypatch.setattr("PiFinder.ui.object_details.time.monotonic", lambda: stamp)
         ui._render_push_tracking_border()
+    assert not ui.draw.rectangle.called
+
+
+@pytest.mark.parametrize("fresh", [True, False])
+def test_completed_border_blinks_during_automatic_recovery(monkeypatch, fresh):
+    ui, _ = arrived_ui(monkeypatch, success=1013.0 if fresh else 1000.0)
+    ui._push_guide_status.update(
+        tracking_guide_state="recovering_goto", tracking_guide_recovery_mode="goto"
+    )
+    ui._push_mount_status.update(
+        tracking_enabled=False,
+        mount_motion_active=True,
+        goto_motion_active=True,
+        state="slewing",
+    )
+    for stamp, visible in [(100.1, True), (100.6, False), (101.1, True)]:
+        monkeypatch.setattr("PiFinder.ui.object_details.time.monotonic", lambda: stamp)
+        ui.draw.reset_mock()
+        ui._render_push_tracking_border()
+        assert (ui.draw.rectangle.call_count == 2) is visible
+
+
+@pytest.mark.parametrize(
+    "block", ["manual", "suspended", "parked", "failed", "new_target"]
+)
+def test_recovery_border_does_not_hide_real_cancellation_or_failure(monkeypatch, block):
+    ui, _ = arrived_ui(monkeypatch, success=1013.0)
+    ui._push_guide_status.update(
+        tracking_guide_state="recovering_goto", tracking_guide_recovery_mode="goto"
+    )
+    ui._push_mount_status.update(tracking_enabled=False, mount_motion_active=True)
+    if block == "manual":
+        ui._push_mount_status["manual_motion_direction"] = "north"
+    elif block == "suspended":
+        ui._push_guide_status["tracking_guide_suspended"] = True
+    elif block == "parked":
+        ui._push_mount_status["park_state"] = "Parked"
+    elif block == "failed":
+        ui._push_mount_status["state"] = "goto_failed"
+    else:
+        ui._push_guide_status["tracking_target_ra"] = 101.0
+    monkeypatch.setattr("PiFinder.ui.object_details.time.monotonic", lambda: 100.1)
+    ui._render_push_tracking_border()
     assert not ui.draw.rectangle.called

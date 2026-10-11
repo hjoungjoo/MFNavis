@@ -87,9 +87,15 @@ MFNAVIS_CORRECTION_RETRY_SECONDS = 10.0
 # Keep larger errors in the sync+GoTo loop instead of handing an impossible
 # correction to the fine pulse stage.
 MFNAVIS_PULSE_ALIGN_MAX_ERROR_ARCMIN = 15.0
+# Enter fine alignment close to the requested accuracy. At 1x sidereal,
+# closing 15' to 1' needs at least 56 seconds of pulses before solve latency;
+# closing 3' to 1' needs about 8 seconds. Keep the wider capacity above for
+# mounts whose small GoTos stop improving, and for an already active pulse loop.
+MFNAVIS_PULSE_ENTRY_ACCURACY_MULTIPLE = 3.0
 # Retry the GoTo stage after this long with usable solves but no correction
 # activity (mount-control pulses every 3 s off a fresh solve).
 MFNAVIS_PULSE_ALIGN_TIMEOUT_SECONDS = 90.0
+MFNAVIS_PULSE_PROGRESS_WINDOW_SECONDS = 12.0
 # Initial solve-anchor deadline and periodic post-stop solve-wait warning.
 # Post-motion recovery retains the target rather than expiring after this
 # interval. Neither expiry nor a warning authorizes an estimated sync anchor.
@@ -158,8 +164,11 @@ class IndiGotoGuideService:
         self.tracking_baseline_pending = False
         self.user_arrival_pending = False
         self.user_arrival_after_wall = 0.0
+        self.user_arrival_after_mono = 0.0
+        self.user_arrival_align_target = False
         self.pulse_align_sent = False
         self.pulse_align_started_at = 0.0
+        self.pulse_align_progress: dict[str, Any] = {}
         self.pulse_alignment_unreliable = False
         self.tracking_target_ra: Optional[float] = None
         self.tracking_target_dec: Optional[float] = None
@@ -184,6 +193,7 @@ class IndiGotoGuideService:
         self.tracking_recovery_goto_idle_since = 0.0
         self.tracking_recovery_solve_after_wall = 0.0
         self.tracking_recovery_attempts = 0
+        self.tracking_recovery_error_before_goto = None
         self.tracking_recovery_retry_at = 0.0
         self.solve_fallback_resume_tracking = False
         # Manual re-target: a user mount manual-move during tracking, once ended
@@ -191,6 +201,7 @@ class IndiGotoGuideService:
         self.manual_retarget_pending = False
         self.manual_retarget_count = 0
         self.goto_started_wall = time.time()
+        self.goto_timing = {"started_wall": self.goto_started_wall, "stage": "starting"}
         self.manual_motion_handled_wall = self.goto_started_wall
         self.manual_retarget_idle_since = 0.0
         self.manual_retarget_after_wall = 0.0
@@ -615,6 +626,7 @@ class IndiGotoGuideService:
         # "complete". Stale correction_count / previous_goto_error_arcmin would
         # likewise mis-fire the GoTo limit and the "error did not improve" guard.
         self.correction_count = 0
+        self.sync_goto_request_id = None
         self.previous_goto_error_arcmin = None
         self.final_sync_sent = False
         self.final_goto_idle_since = 0.0
@@ -713,6 +725,33 @@ class IndiGotoGuideService:
             "stage": "pifinder_goto",
         }
 
+        # A repeat GoTo after Align can already be centred. Only a recent
+        # unsmoothed, post-motion optical sample may skip the physical slew.
+        mount = self._mount_status_summary()
+        optical = self._pulse_solve_current(self.pointing_status, mount)
+        stopped_after = max(
+            self._finite_float(mount.get("last_user_motion_stopped_wall")) or 0.0,
+            self._finite_float(mount.get("goto_completed_wall")) or 0.0,
+        )
+        if (
+            optical is not None
+            and self._mount_status_fresh(mount)
+            and not self._mount_summary_reports_motion(mount)
+            and not self._mount_summary_reports_parked(mount)
+            and mount.get("tracking_enabled") is True
+            and not ((self.pointing_status.get("imu") or {}).get("metadata") or {}).get(
+                "moving"
+            )
+            and optical["timestamp"] > stopped_after
+        ):
+            error = self._target_error_arcmin(
+                optical["ra"], optical["dec"], target_ra, target_dec, measured=True
+            )
+            if error is not None and error <= self._final_accuracy_arcmin():
+                logger.info("GoTo already centred on fresh solve: %.2f arcmin", error)
+                self._evaluate_goto_arrival(optical)
+                return
+
         # Sync + GoTo loop, starting with the first iteration: sync the mount to
         # the current PiFinder coordinate (so the readback aligns to PiFinder,
         # current.source = mount, instead of the raw IMU fallback) and GoTo the
@@ -761,33 +800,40 @@ class IndiGotoGuideService:
             self.shared_state.smooth_tracking("stop", "explicit_legacy_restart")
         self.smooth_tracking_legacy_suspended = False
 
-    def _restore_tracking_intent(self) -> None:
-        """Restore accepted intent in this boot; never replay an old motion."""
+    def _restore_alignment_handoff(self) -> None:
+        """Consume an explicit, short-lived maintenance restart handoff.
+
+        SkySafari alignment remains session-only. Ordinary starts use the
+        saved LCD alignment; maintenance can preserve RAM without rewriting it.
+        """
+        path = utils.runtime_dir / "alignment_restart.json"
         try:
-            previous = json.loads(STATUS_FILE.read_text())
-            target = previous.get("resume_target")
-            # Migrate the active lifecycle saved by the preceding version.
-            if "resume_target" not in previous and previous.get("solve_fallback_armed"):
-                target = {
-                    "ra": previous.get("active_target_ra"),
-                    "dec": previous.get("active_target_dec"),
-                }
-            if not isinstance(target, dict) or previous.get("tracking_guide_suspended"):
+            payload = json.loads(path.read_text())
+            path.unlink()
+            if not 0 <= time.time() - float(payload["created_wall"]) <= 60:
                 return
-            ra, dec = float(target["ra"]), float(target["dec"])
-            if not all(math.isfinite(v) for v in (ra, dec)) or abs(dec) > 90:
+            cfg = config.Config()
+            if list(cfg.get_option("target_pixel")) != payload["saved_target_pixel"]:
                 return
+            pixel = tuple(float(v) for v in payload["target_pixel"])
+            if len(pixel) != 2 or not all(
+                math.isfinite(v) and 0 < v < 512 for v in pixel
+            ):
+                return
+            self.shared_state.set_target_pixel(pixel)
+            logger.info(
+                "Restored session alignment after maintenance restart: %s", pixel
+            )
         except (OSError, ValueError, TypeError, KeyError, AttributeError):
             return
-        self.active_target_ra = self.tracking_target_ra = ra % 360.0
-        self.active_target_dec = self.tracking_target_dec = dec
-        self.resume_pending = True
-        self.phase = "waiting_solve_resume"
-        self.service_state = "waiting"
-        self.wait_reason = (
-            "retaining target until a fresh solve permits tracking resume"
-        )
-        logger.info("Tracking target restored; waiting for fresh camera solve")
+
+    def _restore_tracking_intent(self) -> None:
+        """Ordinary startup stays idle; status files are not GoTo requests.
+
+        A separately armed test restart is dispatched through the normal
+        position-server GoTo/UI path after site/time initialization.
+        """
+        self._restore_alignment_handoff()
 
     def _tick_tracking_resume(self) -> None:
         if (
@@ -804,7 +850,7 @@ class IndiGotoGuideService:
         ):
             return
         pointing = self._refresh_pointing_status()
-        current = pointing.get("current") or {}
+        current = self._pulse_solve_current(pointing, mount) or {}
         if (
             not self._camera_solve_available(pointing)
             or float(current.get("timestamp") or 0) <= self.resume_solve_after_wall
@@ -821,7 +867,8 @@ class IndiGotoGuideService:
         self.wait_reason = ""
         self.final_sync_sent = False
         self._evaluate_goto_arrival(current)
-        logger.info("Tracking target resumed from fresh camera solve")
+        if not self.resume_pending:
+            logger.info("Tracking target resumed from fresh camera solve")
 
     def _wait_for_tracking_resume(self) -> None:
         self._disable_pulse_align()
@@ -980,8 +1027,7 @@ class IndiGotoGuideService:
     def _camera_solve_available(self, pointing: dict[str, Any]) -> bool:
         """IMU updates between successful frames are not camera failures."""
         if (
-            self.phase == "pifinder_pulse_align"
-            and self.shared_state is not None
+            self.shared_state is not None
             and self._pulse_solve_current(pointing, require_finished=False) is not None
         ):
             return True
@@ -1106,11 +1152,9 @@ class IndiGotoGuideService:
             return True
         pointing = self._refresh_pointing_status()
         self.pointing_status = pointing
-        if (
-            self.optical_arrival_confirmed
-            and self.phase in {"complete", "tracking"}
-            and self.tracking_recovery_state != "goto_wait"
-        ):
+        if self.optical_arrival_confirmed and self.phase in {"complete", "tracking"}:
+            # The tracking recovery loop owns its slew and post-stop solve wait.
+            # Clouds must not turn a completed acquisition into another GoTo.
             # A completed acquisition owns a measured correction baseline.
             # Its executor keeps residual travel and learned drift through
             # solve loss; it must not be disabled by acquisition fallback.
@@ -1198,10 +1242,9 @@ class IndiGotoGuideService:
         self.phase = "native_tracking"
         self.service_state = "waiting"
         self.last_action = "native mount tracking; waiting for plate solve"
-        current = pointing.get("current") or {}
+        current = self._pulse_solve_current(pointing, mount) or {}
         if (
-            not self._camera_solve_available(pointing)
-            or not self._is_fresh_arrival_solve(current)
+            not self._is_fresh_arrival_solve(current)
             or float(current.get("timestamp") or 0) <= self.solve_fallback_since_wall
         ):
             self._record_arrival_solve_wait(current)
@@ -1293,12 +1336,16 @@ class IndiGotoGuideService:
         self.optical_arrival_confirmed = False
         self.user_arrival_pending = True
         self.user_arrival_after_wall = time.time()
+        self.user_arrival_after_mono = time.monotonic()
+        self.user_arrival_align_target = bool(command.get("align_target"))
         self.phase = "arrived_waiting_solve"
         self.service_state = "waiting"
         self.goto_timing.update(stage="user_arrived", user_arrived_wall=time.time())
         self.wait_reason = (
             "arrival confirmed; native tracking until plate solve returns"
         )
+        if self.user_arrival_align_target:
+            self.wait_reason = "SkySafari alignment waiting for stationary plate solve"
         self.last_action = self.wait_reason
         self._update_goto_plan()
 
@@ -1310,25 +1357,89 @@ class IndiGotoGuideService:
             return
         if self._mount_summary_reports_motion(mount):
             self.user_arrival_after_wall = time.time()
+            self.user_arrival_after_mono = time.monotonic()
             return
         pointing = self._refresh_pointing_status()
         current = self._pulse_solve_current(pointing, mount)
         if current is None or current["timestamp"] <= self.user_arrival_after_wall:
             return
-        # This is the actual field the user chose. Do not slew back to the
-        # catalogue coordinate or rewrite the target on subsequent exposures.
-        self.handle_command(
-            {
-                "type": "set_tracking_target",
-                "ra": current["ra"],
-                "dec": current["dec"],
-                "optical_confirmed": True,
-            }
-        )
+        command = {
+            "type": "set_tracking_target",
+            "ra": current["ra"],
+            "dec": current["dec"],
+            "optical_confirmed": True,
+        }
+        aligned = self.user_arrival_align_target
+        if aligned:
+            from PiFinder.alignment_projection import current_solved_target_pixel
+
+            cfg = config.Config()
+            # Align identifies the catalogue target at the user's eyepiece
+            # centre. Adopting the old calibrated coordinate here would leave
+            # the camera offset unchanged and undo centring on the next GoTo.
+            try:
+                pixel = current_solved_target_pixel(
+                    self.shared_state,
+                    cfg,
+                    self.active_target_ra,
+                    self.active_target_dec,
+                    motion={
+                        "moving": False,
+                        "origin": "skysafari_align",
+                        "completed_mono": self.user_arrival_after_mono,
+                    },
+                )
+            except (
+                LookupError,
+                ValueError,
+                TypeError,
+                KeyError,
+                AttributeError,
+            ) as exc:
+                self.wait_reason = f"SkySafari alignment waiting: {exc}"
+                self.last_action = self.wait_reason
+                return
+            self.shared_state.set_target_pixel(pixel)
+            if cfg.get_option("mount_control", False) and cfg.get_option(
+                "skysafari_indi_sync", True
+            ):
+                from PiFinder.calc_utils import catalog_to_equinox_of_date
+
+                ra_eod, dec_eod = catalog_to_equinox_of_date(
+                    self.active_target_ra,
+                    self.active_target_dec,
+                    self.shared_state.datetime(),
+                )
+                self._forward_to_mountcontrol(
+                    {
+                        "type": "sync",
+                        "ra": ra_eod,
+                        "dec": dec_eod,
+                        "origin": "skysafari_align",
+                        "pointing_source": "skysafari_target",
+                    }
+                )
+            command.update(
+                ra=self.active_target_ra,
+                dec=self.active_target_dec,
+                alignment_target_pixel=list(pixel),
+            )
+            logger.info(
+                "Deferred SkySafari Align set target pixel: %s; target %.6f,%.6f",
+                pixel,
+                self.active_target_ra,
+                self.active_target_dec,
+            )
+        # Bare arrival confirmation still adopts the chosen field once.
+        self.handle_command(command)
         self.phase = "complete"
         self.goto_timing.update(stage="complete", completed_wall=time.time())
         self.wait_reason = ""
-        self.last_action = "tracking target fixed from recovered plate solve"
+        self.last_action = (
+            "SkySafari alignment applied from recovered plate solve"
+            if aligned
+            else "tracking target fixed from recovered plate solve"
+        )
 
     def _begin_manual_retarget(self) -> None:
         """User movement replaces the GoTo destination after release/settle."""
@@ -1693,10 +1804,14 @@ class IndiGotoGuideService:
             self.solve_fallback_armed = False
             return
         self.correction_count = 1 if first else self.correction_count + 1
-        self.pulse_alignment_unreliable = False
+        # A corrective slew does not prove that failed guide pulses now work.
         self.previous_goto_error_arcmin = self.last_error_arcmin
         self.final_goto_sent_at = time.monotonic()
-        self.goto_timing = {"requested_wall": time.time(), "stage": "moving"}
+        self.goto_timing = {
+            "started_wall": self.goto_started_wall,
+            "requested_wall": time.time(),
+            "stage": "moving",
+        }
         self._arrival_wait_log_at = 0.0
         self.final_goto_idle_since = 0.0
         self.solve_anchor_wait_since = 0.0
@@ -1752,6 +1867,7 @@ class IndiGotoGuideService:
         )
         self.pulse_align_sent = True
         self.pulse_align_started_at = time.monotonic()
+        self.pulse_align_progress = {}
         self.goto_timing.update(stage="pulse_align", pulse_started_wall=time.time())
         self.service_state = "running"
         self.phase = "pifinder_pulse_align"
@@ -1805,24 +1921,10 @@ class IndiGotoGuideService:
             if current is None:
                 self.last_action = "waiting for fresh solve after correction"
                 return
-            error = self._target_error_arcmin(
-                current.get("ra"),
-                current.get("dec"),
-                self.active_target_ra,
-                self.active_target_dec,
-                measured=True,
-            )
-            if error is not None and error <= self._pulse_align_threshold_arcmin():
-                self.last_error_arcmin = error
-                if error <= self._final_accuracy_arcmin():
-                    self._disable_pulse_align()
-                    self._send_final_sync_once()
-                else:
-                    self.last_action = (
-                        "fine correction paused; retaining native tracking"
-                    )
-                return
-            self._wait_to_retry_goto("guide correction did not converge")
+            # Stop using the failed actuator, not the user's correction task.
+            # The solve above must be newer than the final pulse before SYNC.
+            self._disable_pulse_align()
+            self._evaluate_goto_arrival(current, measured=True)
             return
         if (
             str(mount_status.get("state", "")).strip().lower()
@@ -1873,6 +1975,20 @@ class IndiGotoGuideService:
         )
         self._update_goto_plan()
 
+        if self._pulse_approach_stalled(current):
+            # Stop scheduling this ineffective pulse trial. Existing finite
+            # pulses finish before the next tick may use a post-pulse SYNC.
+            self.pulse_alignment_unreliable = True
+            self._disable_pulse_align()
+            self.last_action = (
+                "pulse progress slow; waiting for solve for native correction"
+            )
+            logger.info(
+                "Pulse approach made no useful progress in %.0fs; switching to native correction",
+                MFNAVIS_PULSE_PROGRESS_WINDOW_SECONDS,
+            )
+            return
+
         # Live solves update progress while the executor replaces each axis's
         # PID pulse. Sync/GoTo transitions require an observation after stopping.
         # In particular, do not sync merely because a moving frame is on target.
@@ -1912,6 +2028,49 @@ class IndiGotoGuideService:
             if self.last_error_arcmin is not None
             else "MFNavis pulse align"
         )
+
+    def _pulse_approach_stalled(self, current: dict[str, Any]) -> bool:
+        """Bound ineffective fine approach by distinct camera observations."""
+        error = self.last_error_arcmin
+        timestamp = self._finite_float(current.get("timestamp"))
+        if error is None or timestamp is None:
+            return False
+        progress = self.pulse_align_progress
+        if (
+            not progress
+            or timestamp - progress["last"] > MFNAVIS_SOLVE_ANCHOR_MAX_AGE_SECONDS
+        ):
+            self.pulse_align_progress = {
+                "started": timestamp,
+                "last": timestamp,
+                "initial": error,
+                "best": error,
+                "samples": 1,
+            }
+            return False
+        if timestamp <= progress["last"]:
+            return False
+        progress["last"] = timestamp
+        progress["samples"] += 1
+        progress["best"] = min(progress["best"], error)
+        if timestamp - progress["started"] < MFNAVIS_PULSE_PROGRESS_WINDOW_SECONDS:
+            return False
+        stalled = (
+            progress["samples"] >= 3
+            and progress["best"] > self._final_accuracy_arcmin()
+            and progress["initial"] - progress["best"]
+            < max(0.25, self._final_accuracy_arcmin() * 0.25)
+        )
+        # Give a progressing approach another window; cloud gaps do not count
+        # as a failed response and a successful arrival wins over this budget.
+        self.pulse_align_progress = {
+            "started": timestamp,
+            "last": timestamp,
+            "initial": error,
+            "best": error,
+            "samples": 1,
+        }
+        return stalled
 
     def _disable_pulse_align(self) -> None:
         if self.pulse_align_sent:
@@ -1960,23 +2119,25 @@ class IndiGotoGuideService:
             return
 
         pointing = self._refresh_pointing_status()
-        current = pointing.get("current") or {}
-        if not pointing.get("usable_for_goto") or not self._is_fresh_arrival_solve(
-            current
-        ):
+        current = self._pulse_solve_current(pointing, mount_status) or {}
+        if not self._is_fresh_arrival_solve(current):
             self._record_arrival_solve_wait(current)
             self.last_action = "waiting for solve anchor"
             return
         self.solve_anchor_wait_since = 0.0
         self._evaluate_goto_arrival(current)
 
-    def _evaluate_goto_arrival(self, current: dict[str, Any]) -> None:
+    def _evaluate_goto_arrival(
+        self, current: dict[str, Any], *, measured: bool = True
+    ) -> None:
         """Choose a correction from a verified, fresh post-motion solve."""
         completed = self.goto_timing.get("mount_completed_wall")
         self.goto_timing.update(
             stage="arrival",
             evaluated_wall=time.time(),
             solve_timestamp=current.get("timestamp"),
+            solve_source=current.get("source"),
+            solve_quality=current.get("quality"),
             post_stop_seconds=(time.time() - completed if completed else None),
         )
         logger.info("GoTo arrival timing: %s", self.goto_timing)
@@ -1987,40 +2148,70 @@ class IndiGotoGuideService:
             self.current_dec,
             self.active_target_ra,
             self.active_target_dec,
+            measured=measured,
         )
         if self.last_error_arcmin is None:
-            self._stop_with_error("GoTo error unavailable")
+            # A camera frame can arrive before startup location/time is ready.
+            # Missing axis projection is a recoverable wait, not user cancel.
+            self._wait_for_tracking_resume()
+            self.last_action = "waiting for coordinate context to evaluate arrival"
+            self.wait_reason = self.last_action
             return
 
         self._update_goto_plan()
         near_threshold_arcmin = self._pulse_align_threshold_arcmin()
         final_accuracy_arcmin = self._final_accuracy_arcmin()
+        pulse_entry_arcmin = min(
+            near_threshold_arcmin,
+            final_accuracy_arcmin * MFNAVIS_PULSE_ENTRY_ACCURACY_MULTIPLE,
+        )
+        goto_stalled = (
+            self.previous_goto_error_arcmin is not None
+            and self.last_error_arcmin
+            >= self.previous_goto_error_arcmin - MFNAVIS_MIN_ERROR_IMPROVEMENT_ARCMIN
+        )
 
         if self.last_error_arcmin <= final_accuracy_arcmin:
             # Already at final accuracy straight off the slew: skip pulse guide.
             self._send_final_sync_once()
             return
-        if self.last_error_arcmin <= near_threshold_arcmin:
-            # Within the near threshold: hand off to pulse-guide fine alignment.
-            if not self.pulse_alignment_unreliable:
-                self._begin_pulse_align()
-            else:
-                self.phase = "pifinder_pulse_align"
-                self.last_action = "fine correction paused; retaining native tracking"
+        if (
+            not self.pulse_alignment_unreliable
+            and self.last_error_arcmin <= near_threshold_arcmin
+            and (
+                self.last_error_arcmin <= pulse_entry_arcmin
+                or goto_stalled
+                or self.correction_count >= self._max_gotos()
+            )
+        ):
+            # Prefer a short pulse finish. If another small native GoTo made
+            # no useful progress, use the existing wider pulse capacity rather
+            # than cycling against the mount's small-slew resolution forever.
+            logger.info(
+                "GoTo approach: pulse finish (error %.2f, entry %.2f arcmin; "
+                "goto_stalled=%s)",
+                self.last_error_arcmin,
+                pulse_entry_arcmin,
+                goto_stalled,
+            )
+            self._begin_pulse_align()
             return
 
-        # Still outside the near threshold: keep correcting in bounded batches.
+        # Outside pulse entry, or pulses failed: correct in bounded batches.
         # A noisy observation must not discard an otherwise working target.
         max_gotos = self._max_gotos()
         if self.correction_count >= max_gotos:
             self._wait_to_retry_goto(f"GoTo batch complete ({max_gotos})")
             return
-        if (
-            self.previous_goto_error_arcmin is not None
-            and self.last_error_arcmin
-            >= self.previous_goto_error_arcmin - MFNAVIS_MIN_ERROR_IMPROVEMENT_ARCMIN
-        ):
+        if goto_stalled:
             logger.info("GoTo error did not improve; continuing with fresh solve")
+        elif self.last_error_arcmin <= near_threshold_arcmin:
+            logger.info(
+                "GoTo approach: closing residual with native GoTo "
+                "(error %.2f, pulse entry %.2f arcmin)",
+                self.last_error_arcmin,
+                pulse_entry_arcmin,
+            )
 
         self._send_sync_and_goto(first=False)
 
@@ -2058,8 +2249,8 @@ class IndiGotoGuideService:
         )
         self.final_sync_sent = True
         self.optical_arrival_confirmed = True
-        # A verified optical arrival ends acquisition's convergence trial.
-        # Carry neither its failure latch nor its executor budget into tracking.
+        # A fresh optical arrival establishes tracking's new baseline. Do not
+        # turn an acquisition pulse failure into permanent small GoTo recovery.
         self.pulse_alignment_unreliable = False
         self.tracking_baseline_pending = True
         self.tracking_guide_active_sent = False
@@ -2204,6 +2395,7 @@ class IndiGotoGuideService:
             self.tracking_motion_ra = None
             self.tracking_motion_dec = None
             self.tracking_last_motion_at = time.monotonic()
+            self.tracking_recovery_solve_after_wall = time.time()
             if self._mount_summary_reports_manual_motion(mount_status):
                 self.manual_retarget_pending = True
                 self.tracking_guide_state = "manual_move"
@@ -2224,12 +2416,21 @@ class IndiGotoGuideService:
             and not self.tracking_guide_suspended
             and not self._camera_solve_available(pointing)
         ):
+            if self.pulse_alignment_unreliable:
+                self._disable_tracking_guide("recovery waiting for fresh solve")
+                self.tracking_guide_state = "waiting_coordinate"
+                return
             self._enable_pulse_correction(self._final_accuracy_arcmin())
             self.tracking_guide_state = "solve_holdover"
             self.tracking_guide_last_action = "retaining residual correction and learned drift while waiting for solve"
             return
-        current_ra = self._finite_float(current.get("ra"))
-        current_dec = self._finite_float(current.get("dec"))
+        metadata = current.get("metadata") or {}
+        current_ra = self._finite_float(
+            metadata.get("unstabilized_ra", current.get("ra"))
+        )
+        current_dec = self._finite_float(
+            metadata.get("unstabilized_dec", current.get("dec"))
+        )
         if (
             not pointing.get("usable_for_goto")
             or current_ra is None
@@ -2248,6 +2449,7 @@ class IndiGotoGuideService:
             current_dec,
             self.tracking_target_ra,
             self.tracking_target_dec,
+            measured=True,
         )
 
         # Disturbance detection: while the scope is being moved, suspend all
@@ -2297,6 +2499,7 @@ class IndiGotoGuideService:
             self.tracking_imu_flag_overridden = False
 
         if coordinate_moving or (imu_moving and not ignore_imu_flag):
+            self.tracking_recovery_solve_after_wall = time.time()
             self._disable_tracking_guide("scope moving")
             self.tracking_recovery_attempts = 0
             self.tracking_guide_recovery_mode = "none"
@@ -2398,15 +2601,63 @@ class IndiGotoGuideService:
             if not self.pulse_alignment_unreliable:
                 self.tracking_guide_active_sent = False
             self.pulse_alignment_unreliable = True
-        # Large error with recovery enabled: sync mount to current, GoTo target.
+        if self.pulse_alignment_unreliable and self.optical_arrival_confirmed:
+            recovered = self._pulse_solve_current(pointing, mount_status)
+            if (
+                recovered is not None
+                and recovered["timestamp"] < self.tracking_recovery_solve_after_wall
+            ):
+                recovered = None
+            recovered_error = (
+                self._target_error_arcmin(
+                    recovered["ra"],
+                    recovered["dec"],
+                    self.tracking_target_ra,
+                    self.tracking_target_dec,
+                    measured=True,
+                )
+                if recovered is not None
+                else None
+            )
+            if (
+                recovered_error is not None
+                and recovered_error <= self._final_accuracy_arcmin()
+            ):
+                # Late pulses can finish the correction after the executor
+                # requested recovery. A verified arrival is a new baseline,
+                # even when no recovery GoTo had to be sent.
+                self.pulse_alignment_unreliable = False
+                self.tracking_baseline_pending = True
+                self.tracking_guide_active_sent = False
+                self.tracking_guide_error_arcmin = recovered_error
+                self._enable_pulse_correction(self._final_accuracy_arcmin())
+                self.tracking_guide_state = "enabled"
+                self.tracking_guide_last_action = (
+                    "pulse recovery resolved by fresh arrival"
+                )
+                self.tracking_recovery_attempts = 0
+                self.tracking_guide_recovery_mode = "pulse"
+                return
+        # Failed pulses use native recovery even inside the normal GoTo band.
+        # Retain this choice until verified optical arrival or a new target.
         # The recovery starts with a mount SYNC, so the anchor must be a fresh
         # plate solve: an IMU estimate here can be degrees off and sends the
         # recovery slew far from the target (observed 2026-08-03: 13 deg misses
         # burning all 5 attempts). Same bounded wait as the pifinder GoTo loop.
-        if (
-            self.tracking_guide_error_arcmin > goto_threshold_arcmin
-        ) and goto_recovery_enabled:
-            if not self._is_recent_solve(current):
+        pulse_fallback = (
+            self.pulse_alignment_unreliable
+            and self.tracking_guide_error_arcmin > self._final_accuracy_arcmin()
+        )
+        if goto_recovery_enabled and (
+            self.tracking_guide_error_arcmin > goto_threshold_arcmin or pulse_fallback
+        ):
+            recovery_current = self._pulse_solve_current(pointing, mount_status)
+            if (
+                recovery_current is None
+                or not self._is_recent_solve(recovery_current)
+                or recovery_current["timestamp"]
+                < self.tracking_recovery_solve_after_wall
+            ):
                 if self.recovery_anchor_wait_since == 0.0:
                     self.recovery_anchor_wait_since = now
                 if (
@@ -2429,7 +2680,29 @@ class IndiGotoGuideService:
                 self.tracking_guide_state = "waiting_coordinate"
                 return
             self.recovery_anchor_wait_since = 0.0
-            self._begin_tracking_recovery_goto(current_ra, current_dec)
+            recovery_error = self._target_error_arcmin(
+                recovery_current.get("ra"),
+                recovery_current.get("dec"),
+                self.tracking_target_ra,
+                self.tracking_target_dec,
+                measured=True,
+            )
+            if recovery_error is None:
+                self._disable_tracking_guide("recovery waiting for valid solve")
+                self.tracking_guide_state = "waiting_coordinate"
+                return
+            self.tracking_guide_error_arcmin = recovery_error
+            if recovery_error <= self._final_accuracy_arcmin():
+                self.tracking_baseline_pending = self.optical_arrival_confirmed
+                self._enable_pulse_correction(self._final_accuracy_arcmin())
+                self.tracking_guide_recovery_mode = "pulse"
+                self.tracking_recovery_attempts = 0
+                self.tracking_guide_state = "enabled"
+                self.tracking_guide_last_action = "disturbance resolved on fresh solve"
+                return
+            self._begin_tracking_recovery_goto(
+                recovery_current["ra"], recovery_current["dec"]
+            )
             return
         self.recovery_anchor_wait_since = 0.0
 
@@ -2439,7 +2712,7 @@ class IndiGotoGuideService:
                 self.tracking_guide_state = "enabled"
                 return
             self._disable_tracking_guide(
-                "fine correction paused; retaining native tracking"
+                "pulse correction unavailable; goto recovery disabled in config"
             )
             self.tracking_guide_state = "settling"
             return
@@ -2607,12 +2880,12 @@ class IndiGotoGuideService:
                 "sync_dec": current_dec,
                 "ra": self.tracking_target_ra,
                 "dec": self.tracking_target_dec,
-                **self._sync_context("tracking_recovery"),
+                **self._sync_context("tracking_recovery", pointing_source="solve"),
                 "motion_purpose": "correction",
             }
         )
-        self.pulse_alignment_unreliable = False
         self.tracking_recovery_attempts += 1
+        self.tracking_recovery_error_before_goto = self.tracking_guide_error_arcmin
         self.tracking_guide_recovery_count += 1
         self.tracking_recovery_state = "goto_wait"
         self.tracking_recovery_goto_sent_at = time.monotonic()
@@ -2677,11 +2950,10 @@ class IndiGotoGuideService:
         # of arrival. Using its pre-slew error can kick a centered target out
         # again, either with a guide pulse or another sync + GoTo.
         pointing = self._refresh_pointing_status()
-        current = pointing.get("current") or {}
+        current = self._pulse_solve_current(pointing, mount_status) or {}
         timestamp = self._finite_float(current.get("timestamp"))
         if (
-            not pointing.get("usable_for_goto")
-            or not self._is_recent_solve(current)
+            not self._is_recent_solve(current)
             or timestamp is None
             or timestamp < self.tracking_recovery_solve_after_wall
             or self._finite_float(current.get("ra")) is None
@@ -2689,14 +2961,56 @@ class IndiGotoGuideService:
         ):
             self.tracking_guide_last_action = "waiting for post-recovery solve"
             return
+        error = self._target_error_arcmin(
+            current["ra"],
+            current["dec"],
+            self.tracking_target_ra,
+            self.tracking_target_dec,
+            measured=True,
+        )
+        if error is None:
+            self.tracking_guide_last_action = "waiting for recovery coordinate context"
+            return
+        self.tracking_guide_error_arcmin = error
+        pulse_entry = min(
+            self._pulse_align_threshold_arcmin(),
+            self._final_accuracy_arcmin() * MFNAVIS_PULSE_ENTRY_ACCURACY_MULTIPLE,
+        )
+        previous_error = self.tracking_recovery_error_before_goto
+        stalled = (
+            previous_error is not None
+            and error >= previous_error - MFNAVIS_MIN_ERROR_IMPROVEMENT_ARCMIN
+        )
+        if (
+            self.config_values.get("indi_tracking_guide_goto_recovery_enabled", True)
+            and error > pulse_entry
+            and (
+                error > self._pulse_align_threshold_arcmin()
+                or self.pulse_alignment_unreliable
+                or not stalled
+            )
+        ):
+            # A disturbance recovery uses the same short pulse finish as a
+            # new GoTo. Do not hand a still-improving 9' residual to slow pulses.
+            self._begin_tracking_recovery_goto(current["ra"], current["dec"])
+            return
         # Recovery arrival is observed; re-baseline on the next tick. Preserve
         # the observation boundary for mount-control's independent solve read.
         self.tracking_recovery_state = "idle"
-        self.tracking_motion_ra = None
-        self.tracking_motion_dec = None
+        self.tracking_motion_ra = current["ra"]
+        self.tracking_motion_dec = current["dec"]
         self.tracking_last_motion_at = now
         self.tracking_guide_last_action = "recovery goto complete"
-        self.pulse_alignment_unreliable = False
+        if (
+            self.optical_arrival_confirmed
+            and error is not None
+            and error <= pulse_entry
+        ):
+            # Only a verified recovery arrival can reopen a failed pulse trial;
+            # a cloud gap or another tick cannot reset convergence on its own.
+            self.pulse_alignment_unreliable = False
+            self.tracking_baseline_pending = True
+            self.tracking_guide_active_sent = False
 
     def _verified_sync_goto_ready(self, mount_status, *, recovery: bool) -> bool:
         if self.sync_goto_request_id is None:
@@ -2720,17 +3034,19 @@ class IndiGotoGuideService:
             self.sync_goto_request_id = None
             return False
         if state != "goto_sent":
-            self.goto_timing["stage"] = "waiting_sync"
-            self.last_action = "waiting for mount sync verification"
-            self.tracking_guide_last_action = self.last_action
+            if not recovery:
+                self.goto_timing["stage"] = "waiting_sync"
+                self.last_action = "waiting for mount sync verification"
+            self.tracking_guide_last_action = "waiting for mount sync verification"
             return False
         actual_sent = self._finite_float(receipt.get("goto_sent_monotonic"))
         if actual_sent is None:
             return False
-        self.goto_timing.update(
-            stage="moving",
-            goto_sent_wall=time.time() - (time.monotonic() - actual_sent),
-        )
+        if not recovery:
+            self.goto_timing.update(
+                stage="moving",
+                goto_sent_wall=time.time() - (time.monotonic() - actual_sent),
+            )
         if recovery:
             self.tracking_recovery_goto_sent_at = actual_sent
         else:
@@ -2739,6 +3055,7 @@ class IndiGotoGuideService:
         return True
 
     def _reset_tracking_recovery(self) -> None:
+        self.tracking_recovery_error_before_goto = None
         self.recovery_anchor_wait_since = 0.0
         self.tracking_motion_ra = None
         self.tracking_motion_dec = None
@@ -3118,6 +3435,7 @@ class IndiGotoGuideService:
             "correction_count": self.correction_count,
             "final_sync_sent": self.final_sync_sent,
             "optical_arrival_confirmed": self.optical_arrival_confirmed,
+            "pulse_alignment_unreliable": self.pulse_alignment_unreliable,
             "user_arrival_pending": self.user_arrival_pending,
             "tracking_target_ra": self.tracking_target_ra,
             "tracking_target_dec": self.tracking_target_dec,

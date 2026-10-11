@@ -154,7 +154,7 @@ class Lifecycle:
         assert self.mount._goto_motion is not None
         assert self.mount._sync_goto_status["state"] == "goto_sent"
 
-    def arrive(self, dec=29.9):
+    def arrive(self, dec=29.97):
         self.now += 10
         # Inject a physical stop; callback/stability verification is covered
         # separately in test_mountcontrol_indi. No real hardware is contacted.
@@ -193,7 +193,8 @@ def test_start_fine_arrival_tracking_outage_recovery_and_explicit_stop(lifecycle
     rig.fail()
     for _ in range(20):
         rig.tick()
-    assert len(rig.mount.client.numbers) > before
+    # A centered holdover retains tracking without spending small solve noise.
+    assert len(rig.mount.client.numbers) == before
     assert rig.service.tracking_guide_state == "solve_holdover"
     assert rig.tracking
     assert rig.mount._guide_correction_enabled
@@ -219,10 +220,103 @@ def test_large_arrival_error_repeats_verified_goto_before_fine_correction(lifecy
     assert rig.service.phase == "pifinder_goto"
     assert rig.service.correction_count == 2
     rig.acknowledge()
-    rig.arrive(29.9)
+    rig.arrive(29.97)
     assert rig.service.phase == "pifinder_pulse_align"
     assert rig.mount._guide_correction_enabled
     assert not rig.mount._guide_continue_on_solve_loss
+
+
+@pytest.mark.parametrize("residual", [4.17, 6.0, 14.0])
+def test_near_arrival_closes_large_residual_before_pulse_finish(lifecycle, residual):
+    rig = lifecycle
+    rig.start()
+    rig.arrive(30 - residual / 60)
+    assert rig.service.phase == "pifinder_goto"
+    assert rig.service.correction_count == 2
+    assert not rig.mount._guide_correction_enabled
+    assert not any(
+        "TIMED_GUIDE" in prop for _, prop, _ in rig.mount.client.numbers
+    )  # No slow pulse before the second slew.
+    rig.acknowledge()
+    rig.arrive(29.97)
+    assert rig.service.phase == "pifinder_pulse_align"
+    assert rig.mount._guide_correction_enabled
+    rig.now += 4
+    rig.solve(30)
+    rig.tick(0)
+    assert rig.service.optical_arrival_confirmed
+
+
+@pytest.mark.parametrize("residual", [4.17, 4.0, 5.0])
+def test_small_goto_without_progress_falls_back_to_pulses(lifecycle, residual):
+    rig = lifecycle
+    rig.start()
+    rig.arrive(30 - 4.17 / 60)
+    rig.acknowledge()
+    rig.arrive(30 - residual / 60)
+    assert rig.service.phase == "pifinder_pulse_align"
+    assert rig.service.correction_count == 2
+    assert rig.mount._guide_correction_enabled
+    # The wider pulse capacity remains valid after entering this fallback;
+    # the next observation must not bounce back into another small GoTo.
+    rig.now += 4
+    rig.solve(30 - residual / 60)
+    rig.tick(0)
+    assert rig.service.phase == "pifinder_pulse_align"
+    assert sum(c["type"] == "sync_and_goto" for c in rig.commands) == 2
+
+
+@pytest.mark.parametrize("residual", [4.17, 6.0, 14.0])
+@pytest.mark.parametrize("cadence", [3.0, 6.0])
+@pytest.mark.parametrize("remaining", [0.25, 0.95])
+def test_approach_timing_with_simulated_mount(tmp_path, residual, cadence, remaining):
+    """Compare policies, not hardware: a slew+solve costs 10 s in this model.
+
+    The ideal axis executes actual executor pulse durations at 1x sidereal.
+    Small slews either remove 75% of the residual or barely help (5%).
+    """
+    results = {}
+    for mode, multiple in (
+        ("before", 15.0),
+        ("after", policy.MFNAVIS_PULSE_ENTRY_ACCURACY_MULTIPLE),
+    ):
+        with pytest.MonkeyPatch.context() as patch:
+            data = tmp_path / mode
+            data.mkdir()
+            rig = Lifecycle(patch, data)
+            patch.setattr(policy, "MFNAVIS_PULSE_ENTRY_ACCURACY_MULTIPLE", multiple)
+            rig.start()
+            rig.arrive(30 - residual / 60)
+            started, error = rig.now, residual
+            for _ in range(120):
+                if rig.service.phase == "complete":
+                    break
+                if rig.mount._pending_sync_goto:
+                    rig.acknowledge()
+                    error *= remaining
+                    rig.arrive(30 - error / 60)
+                else:
+                    active = rig.mount._guide_active_pulses.get(
+                        "TELESCOPE_TIMED_GUIDE_NS"
+                    )
+                    if active:
+                        direction, end = active
+                        duration = min(cadence, max(0, end - rig.now))
+                        travel = duration * executor.SIDEREAL_ARCSEC_PER_SEC / 60
+                        error -= travel if direction == "north" else -travel
+                    rig.now += cadence
+                    rig.solve(30 - error / 60)
+                    rig.tick(0)
+            assert rig.service.optical_arrival_confirmed
+            assert abs(error) <= 1
+            results[mode] = (rig.now - started, rig.service.correction_count)
+    if remaining == 0.25:
+        assert results["after"][0] < results["before"][0]
+    else:
+        # An ineffective small GoTo costs at most one extra slew; it must
+        # yield to pulses instead of repeatedly exhausting the batch budget.
+        assert results["after"][1] == 2
+        assert results["after"][0] <= results["before"][0] + 10
 
 
 def test_postarrival_large_error_uses_optical_recovery_without_changing_target(
@@ -301,32 +395,107 @@ def test_limit_at_every_stage_stops_tracking_and_blocks_recovered_solve(
     assert not rig.mount._guide_correction_enabled
 
 
-def test_optical_arrival_after_failed_pulses_starts_new_tracking_baseline(lifecycle):
+def test_optical_arrival_after_failed_pulses_reopens_tracking_baseline(lifecycle):
     rig = lifecycle
     rig.start()
     rig.arrive()
-    rig.mount._guide_pulse_no_progress = 5
-    rig.mount._guide_pulse_worsening = 3
     rig.mount._guide_correction_enabled = False
     rig.mount._guide_correction_mode = "reacquire"
-    rig.service.pulse_alignment_unreliable = True
     rig.now += 4
-    rig.solve(29.995)
+    rig.solve(29.95)
     rig.tick(0)
+    assert rig.service.phase == "pifinder_goto"
+    assert rig.service.pulse_alignment_unreliable
+    rig.acknowledge()
+    rig.arrive(29.995)
     assert rig.service.optical_arrival_confirmed
     assert not rig.service.pulse_alignment_unreliable
     rig.tick(2)
     assert rig.mount._guide_correction_enabled
     assert rig.mount._guide_pulse_no_progress == 0
-    assert rig.mount._guide_pulse_worsening == 0
     assert sum(c.get("reset_convergence", False) for c in rig.commands) == 1
+    before = sum(c["type"] == "sync_and_goto" for c in rig.commands)
     rig.now += 2
-    rig.solve(29.96)
+    rig.solve(29.97)
     rig.tick(0)
+    assert rig.mount._guide_correction_mode == "settling"
     assert rig.mount._guide_correction_enabled
+    rig.now += 1
+    rig.solve(29.97)
+    rig.tick(0)
     assert rig.mount._guide_correction_mode == "pulse"
+    assert sum(c["type"] == "sync_and_goto" for c in rig.commands) == before
     rig.fail()
-    rig.tick(4)
+    rig.tick(15)
     assert rig.mount._guide_correction_enabled
     assert rig.mount._guide_continue_on_solve_loss
+    assert rig.service.phase == "complete"
     assert sum(c.get("reset_convergence", False) for c in rig.commands) == 1
+    rig.service.handle_command({"type": "stop_movement", "stop_tracking": True})
+    rig.flush()
+    rig.now += 5
+    rig.solve(29.9)
+    before = len(rig.mount.client.numbers)
+    rig.tick(0)
+    assert len(rig.mount.client.numbers) == before
+    assert rig.service.active_target_ra is None
+    assert not rig.tracking
+
+
+@pytest.mark.parametrize("error", [0.5, 2.0, 8.0])
+def test_tracking_recovery_reopens_pulses_only_after_fresh_near_arrival(
+    lifecycle, error
+):
+    rig = lifecycle
+    rig.complete()
+    rig.service.pulse_alignment_unreliable = True
+    rig.mount._guide_correction_enabled = False
+    rig.mount._guide_correction_mode = "reacquire"
+    rig.now += 2
+    rig.solve(29.9)
+    rig.tick(0)
+    rig.tick(2)
+    assert rig.service.tracking_recovery_state == "goto_wait"
+    assert rig.service.pulse_alignment_unreliable
+    rig.acknowledge()
+    rig.fail()
+    rig.tick(3)
+    assert rig.service.pulse_alignment_unreliable
+    rig.arrive(30 - error / 60)
+    assert rig.service.tracking_recovery_state == ("goto_wait" if error > 3 else "idle")
+    assert rig.service.pulse_alignment_unreliable is (error > 3)
+    if error <= 3:
+        assert rig.service.tracking_baseline_pending
+        rig.tick(2)
+        assert rig.mount._guide_correction_enabled
+        assert sum(c.get("reset_convergence", False) for c in rig.commands) == 2
+
+
+def test_cloud_during_tracking_recovery_preserves_acquisition_completion(lifecycle):
+    rig = lifecycle
+    rig.complete()
+    completed = dict(rig.service.goto_timing)
+    action = rig.service.last_action
+    rig.now += 1
+    rig.solve(29)
+    rig.tick(0)
+    rig.tick(2)
+    assert rig.service.tracking_recovery_state == "goto_wait"
+    rig.acknowledge()
+    rig.fail()
+    rig.tick(1)
+    assert rig.service.phase == "complete"
+    assert rig.service.goto_timing == completed
+    assert rig.service.last_action == action
+    rig.now += 10
+    rig.mount._complete_goto_motion()
+    rig.tick(0)
+    rig.tick(15)
+    assert rig.service.tracking_recovery_state == "goto_wait"
+    assert rig.service.optical_arrival_confirmed
+    assert rig.service.phase == "complete"
+    rig.solve(30)
+    rig.tick(0)
+    assert rig.service.tracking_recovery_state == "idle"
+    assert rig.service.goto_timing == completed
+    assert sum(c["type"] == "sync" for c in rig.commands) == 1

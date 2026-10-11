@@ -639,6 +639,22 @@ def _sync_mount_location_on_change(shared_state) -> None:
         _LOCATION_RESYNC_MOVE_THRESHOLD_M
     ):
         return
+    # A background site update invalidates the mount command epoch, which
+    # disarms an active guide loop. Keep the initialized site throughout an
+    # observing run; retry the latest GPS fix after tracking/motion stops.
+    # Initial setup above and explicit Location/clock changes remain separate.
+    status = _mount_control_status()
+    updated = status.get("updated")
+    if (
+        not isinstance(updated, (int, float))
+        or not 0 <= time.time() - updated <= 5.0
+        or status.get("tracking_enabled") is not False
+        or status.get("guide_correction_enabled")
+        or status.get("mount_motion_active")
+        or status.get("goto_motion_active")
+        or status.get("manual_motion_direction")
+    ):
+        return
     _enqueue_mount_location_sync(
         current, "location changed", explicit_location=configured
     )
@@ -737,6 +753,7 @@ def _coordinate_service_loop(shared_state, stop_event: threading.Event) -> None:
             _sync_mount_location_on_change(shared_state)
             _resync_mount_on_clock_events()
             _update_coordinate_service_state(shared_state)
+            _dispatch_test_restart_goto(shared_state)
         except Exception:
             logger.exception("Pointing coordinate service update failed")
         stop_event.wait(_POINTING_UPDATE_SECONDS)
@@ -1440,15 +1457,6 @@ def handle_sync_command(shared_state, _input_str: str):
         return "Coordinates matched."
 
     goto_method = str(_get_config_option("indi_goto_method", "mfnavis"))
-    if goto_method == "mfnavis":
-        from PiFinder.goto_arrival import queue_unsolved_arrival
-
-        if queue_unsolved_arrival(
-            goto_guide_queue,
-            shared_state,
-            *_catalog_target(shared_state, ra_deg, dec_deg),
-        ):
-            return "Coordinates matched."
     if (
         goto_method == "mfnavis"
         and goto_guide_queue is not None
@@ -1483,10 +1491,32 @@ def handle_sync_command(shared_state, _input_str: str):
                 _get_config_option("skysafari_pifinder_align", True)
                 and not pifinder_aligned
             ):
+                from PiFinder.goto_arrival import queue_unsolved_arrival
+
+                if queue_unsolved_arrival(
+                    goto_guide_queue,
+                    shared_state,
+                    ra_deg,
+                    dec_deg,
+                    align_target=True,
+                ):
+                    return "Alignment requested."
                 # Do not partially sync the mount or arm tracking after a
                 # rejected local alignment. No delayed solver command exists.
                 return "Alignment unavailable."
     else:
+        if goto_method == "mfnavis" and _get_config_option(
+            "skysafari_pifinder_align", True
+        ):
+            from PiFinder.goto_arrival import queue_unsolved_arrival
+
+            if queue_unsolved_arrival(
+                goto_guide_queue,
+                shared_state,
+                *_catalog_target(shared_state, ra_deg, dec_deg),
+                align_target=True,
+            ):
+                return "Alignment requested."
         if os.environ.get("MFNAVIS_VISUAL_TRACKING_EXPERIMENT"):
             try:
                 from PiFinder.visual_tracking_runtime import mirror_alignment
@@ -1534,10 +1564,14 @@ def handle_sync_command(shared_state, _input_str: str):
 
 
 def handle_goto_command(shared_state, ra_parsed, dec_parsed):
-    global sequence, ui_queue, is_stellarium, last_target_coordinates
     ra = ra_to_deg(*ra_parsed)
     dec = _sd_to_deg(dec_parsed)
-    target_ra, target_dec = ra % 360.0, dec
+    return _goto_coordinates(shared_state, ra % 360.0, dec)
+
+
+def _goto_coordinates(shared_state, target_ra, target_dec):
+    """Common accepted GoTo route: target display, frequency policy and motion."""
+    global last_target_coordinates
     last_target_coordinates = (target_ra, target_dec)
     logger.debug("Goto target coordinates: %s, %s", target_ra, target_dec)
     if _multipoint_align_active():
@@ -1555,6 +1589,87 @@ def handle_goto_command(shared_state, ra_parsed, dec_parsed):
     )
     _queue_indi_goto_if_enabled(shared_state, target_ra, target_dec)
     return "1"
+
+
+def _dispatch_test_restart_goto(shared_state):
+    """Consume only an explicit one-shot test handoff, after normal startup."""
+    path = utils.runtime_dir / "goto_test_restart.json"
+    if not path.exists():
+        return
+    try:
+        payload = json.loads(path.read_text())
+        created = float(payload["created_wall"])
+        ra, dec = float(payload["target"]["ra"]), float(payload["target"]["dec"])
+        pixel = tuple(float(v) for v in payload["target_pixel"])
+        if (
+            payload.get("mode") != "goto_test"
+            or not 0 <= time.time() - created <= 60
+            or not all(math.isfinite(v) for v in (ra, dec))
+            or not 0 <= ra < 360
+            or not -90 <= dec <= 90
+            or len(pixel) != 2
+            or not all(math.isfinite(v) and 0 < v < 512 for v in pixel)
+            or payload["saved_target_pixel"]
+            != list(_get_config_option("target_pixel", []))
+        ):
+            raise ValueError("invalid or expired test GoTo handoff")
+        try:
+            guide = json.loads(
+                (utils.runtime_dir / "indi_goto_guide_status.json").read_text()
+            )
+        except (OSError, ValueError):
+            return
+        # Creating the handoff must not issue GoTo in the pre-restart process.
+        if guide.get("started", 0) < created:
+            return
+        claimed = payload.get("claimed_started")
+        if claimed is None:
+            payload["claimed_started"] = guide["started"]
+            path.write_text(json.dumps(payload))
+        elif claimed != guide["started"]:
+            raise ValueError("test handoff belongs to an earlier startup")
+        mount = _mount_control_status()
+        if (
+            guide.get("last_command") not in (None, "reload_config")
+            or guide.get("tracking_guide_suspended")
+            or any(
+                float(mount.get(key) or 0) >= created
+                for key in (
+                    "last_user_motion_started_wall",
+                    "last_user_tracking_stopped_wall",
+                )
+            )
+        ):
+            raise ValueError("new user command superseded test GoTo handoff")
+        if (
+            not all(
+                0 <= time.time() - float(status.get("updated") or 0) <= 5
+                for status in (guide, mount)
+            )
+            or _mount_synced_location is None
+            or float(mount.get("updated") or 0) < guide["started"]
+            or mount.get("initial_location_sync_state") != "ready"
+            or mount.get("connection_health") != "healthy"
+            or mount.get("mount_motion_active")
+            or mount.get("goto_motion_active")
+            or float(mount.get("guide_pulse_until_wall") or 0) > time.time()
+            or tuple(shared_state.target_pixel()) != pixel
+            or not _goto_guide_enabled()
+        ):
+            return
+        if _get_config_option("indi_goto_method", "mfnavis") != "mfnavis":
+            raise ValueError("test restart GoTo requires MFNavis mode")
+        # Stored targets are catalog coordinates; use the same client frame
+        # conversion as an ordinary SkySafari/Stellarium request.
+        if not is_stellarium:
+            ra, dec = catalog_to_equinox_of_date(ra, dec, shared_state.datetime())
+        path.unlink()  # Consume before motion/UI dispatch; never replay twice.
+        _mark_skysafari_slew_started()
+        _goto_coordinates(shared_state, ra, dec)
+        logger.info("Test restart dispatched through normal GoTo and target UI")
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        path.unlink(missing_ok=True)
+        logger.warning("Test restart GoTo canceled: %s", exc)
 
 
 def _publish_push_target(shared_state, target_ra, target_dec, preserve_name=False):

@@ -7,7 +7,7 @@ import time
 from PiFinder import utils
 
 
-def queue_unsolved_arrival(guide_queue, shared_state, ra, dec):
+def queue_unsolved_arrival(guide_queue, shared_state, ra, dec, *, align_target=False):
     if guide_queue is None:
         return False
     try:
@@ -34,16 +34,22 @@ def queue_unsolved_arrival(guide_queue, shared_state, ra, dec):
         solution = shared_state.solution()
         success = getattr(solution, "last_solve_success", None)
         attempt = getattr(solution, "last_solve_attempt", None)
-        if success and 0 <= time.time() - success <= 12 and (attempt or 0) <= success:
+        if (
+            not align_target
+            and success
+            and 0 <= time.time() - success <= 12
+            and (attempt or 0) <= success
+        ):
             return False
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return False
-    guide_queue.put(
-        {
-            "type": "confirm_goto_arrival",
-            "ra": ra % 360,
-            "dec": dec,
-            "requested_wall": time.time(),
-        }
-    )
+    command = {
+        "type": "confirm_goto_arrival",
+        "ra": ra % 360,
+        "dec": dec,
+        "requested_wall": time.time(),
+    }
+    if align_target:
+        command["align_target"] = True
+    guide_queue.put(command)
     return True
