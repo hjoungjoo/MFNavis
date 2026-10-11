@@ -133,8 +133,7 @@ From an installed checkout:
 cd ~/MFNavis
 bash scripts/setup_dev_trixie.sh
 source scripts/activate_dev_trixie.sh
-nox --no-venv -s lint format
-nox --no-venv -s unit_tests
+nox --no-venv
 nox --no-venv -s docs
 ```
 
@@ -143,6 +142,12 @@ data/runtime directories, then changes to `python/`. Use
 `requirements_dev-trixie.txt` and `requirements_docs-trixie.txt`. The
 [Trixie development guide](setup_ko.md) explains INDI wheels,
 GPIO handling, debugging, and isolated Nox sessions.
+
+The default Nox run includes lint, formatting, type checks, smoke tests, the full
+unit suite, and UI integration tests. Run it before pushing; a selected pytest
+subset does not cover type errors or incompatible test doubles elsewhere.
+GitHub's `Bookworm compatibility (Python 3.11)` job retains compatibility checks
+and exposes each check as a separate step so the actual failure is visible.
 
 ### Validation scope
 

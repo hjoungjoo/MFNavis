@@ -12,6 +12,7 @@ on:
   pull_request:
 jobs:
   nox:
+    name: Bookworm compatibility (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -23,6 +24,8 @@ jobs:
     defaults:
       run:
         working-directory: ./python
+    env:
+      NOX_PYTHON: ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -46,15 +49,29 @@ jobs:
             python/requirements_dev.txt
       - name: Install pinned Nox
         run: python -m pip install --disable-pip-version-check nox==2024.4.15
-      - name: Run Nox on Python ${{ matrix.python-version }}
-        env:
-          NOX_PYTHON: ${{ matrix.python-version }}
+      - name: Lint and formatting
         # Keep the interpreter-specific environment directory explicit so a
         # runner image update cannot reuse an incompatible virtual environment.
         run: >-
           python -m nox --error-on-missing-interpreters
           --envdir .nox-${{ matrix.python-version }}
-          -s lint format type_hints smoke_tests unit_tests ui_tests
+          -s lint format
+      - name: Type checking
+        run: >-
+          python -m nox --error-on-missing-interpreters
+          --envdir .nox-${{ matrix.python-version }} -s type_hints
+      - name: Smoke tests
+        run: >-
+          python -m nox --error-on-missing-interpreters
+          --envdir .nox-${{ matrix.python-version }} -s smoke_tests
+      - name: Unit tests
+        run: >-
+          python -m nox --error-on-missing-interpreters
+          --envdir .nox-${{ matrix.python-version }} -s unit_tests
+      - name: UI integration tests
+        run: >-
+          python -m nox --error-on-missing-interpreters
+          --envdir .nox-${{ matrix.python-version }} -s ui_tests
 
   trixie-checks:
     name: Trixie Python 3.13 quality and installer checks

@@ -12,7 +12,6 @@ from PiFinder import config, imu_calibration
 from PiFinder.multiproclogging import MultiprocLogging
 from PiFinder.types.positioning import ImuSample
 from PiFinder.i2c_bus import get_i2c
-import adafruit_bno055
 import logging
 import quaternion  # Numpy quaternion
 
@@ -32,6 +31,10 @@ class Imu:
     """
 
     def __init__(self):
+        # Blinka can open GPIO while importing the driver on a Raspberry Pi.
+        # Pure IMU state/error handling must also be importable without hardware.
+        import adafruit_bno055
+
         cfg = config.Config()
         i2c = get_i2c()
         self.sensor = adafruit_bno055.BNO055_I2C(i2c)

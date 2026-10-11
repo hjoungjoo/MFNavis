@@ -193,7 +193,7 @@ class IndiGotoGuideService:
         self.tracking_recovery_goto_idle_since = 0.0
         self.tracking_recovery_solve_after_wall = 0.0
         self.tracking_recovery_attempts = 0
-        self.tracking_recovery_error_before_goto = None
+        self.tracking_recovery_error_before_goto: Optional[float] = None
         self.tracking_recovery_retry_at = 0.0
         self.solve_fallback_resume_tracking = False
         # Manual re-target: a user mount manual-move during tracking, once ended

@@ -1,4 +1,6 @@
 import time
+import subprocess
+import sys
 
 import pytest
 import quaternion
@@ -8,6 +10,38 @@ from PiFinder.types.positioning import ImuSample
 
 
 pytestmark = pytest.mark.unit
+
+
+def test_import_does_not_open_hardware_but_initialization_loads_driver():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import sys
+from importlib.abc import MetaPathFinder
+
+class NoHardware(MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == 'adafruit_bno055':
+            raise RuntimeError('hardware driver requested')
+
+sys.meta_path.insert(0, NoHardware())
+from PiFinder.imu_pi import Imu, _update_imu_safely
+assert callable(_update_imu_safely)
+try:
+    Imu()
+except RuntimeError as error:
+    assert str(error) == 'hardware driver requested'
+else:
+    raise AssertionError('Imu initialization must load the hardware driver')
+""",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def _sample(**overrides):

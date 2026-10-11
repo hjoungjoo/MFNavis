@@ -3,7 +3,14 @@ import sys
 
 import nox
 
-nox.options.sessions = ["lint", "format", "type_hints", "smoke_tests"]
+nox.options.sessions = [
+    "lint",
+    "format",
+    "type_hints",
+    "smoke_tests",
+    "unit_tests",
+    "ui_tests",
+]
 
 # Keep the Bookworm CI default; an active Python 3.13 uses the Trixie setup.
 _PYTHON = os.environ.get("NOX_PYTHON") or (

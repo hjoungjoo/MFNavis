@@ -263,6 +263,17 @@ Python 3.13에서 `imp` 모듈을 사용하는 `python-libinput`의 구형 sdist
 
 활성화한 `python/` 디렉터리에서 실행한다.
 
+푸시 전에는 기본 Nox 세션 전체를 실행한다. 일부 파일의 pytest 통과만으로는
+타입 검사나 다른 테스트의 모의 객체 불일치를 확인할 수 없다.
+
+```bash
+nox --no-venv
+```
+
+기본 세션은 lint·format·type_hints·smoke_tests·unit_tests·ui_tests다.
+`--no-venv`는 준비된 개발 가상환경을 재사용하며, 운영 서비스는 재시작하지 않는다.
+아래 명령은 문제를 좁히기 위한 개별 검사다.
+
 ```bash
 python -m pytest tests/test_setup_indi_archive.py tests/test_mountcontrol_indi.py -q
 nox -s lint format
@@ -301,6 +312,17 @@ INDI 아카이브 플랫폼·검증·설치 선택 테스트를 실행한다. �
 wheel이나 Pi 장비 없이 실행할 수 있는 범위다. 전체 앱 회귀는 설치된
 Trixie 개발 환경에서 실행하며, 기존 Python 3.11 CI는 Bookworm 호환성을
 확인한다. 수동 실행하는 Selenium workflow도 기존 Python 3.11 환경이다.
+
+GitHub의 `Bookworm compatibility (Python 3.11)`은 호환성 작업 이름이며,
+그 작업이 실패했다고 Python 3.11 설치가 실패한 것은 아니다. 펼쳐진
+`Type checking`, `Unit tests`, `UI integration tests` 등 실제 실패 단계를
+확인한다. 2026-10-11 실패는 테스트용 마운트 객체의 누락 속성이 원인이었고,
+후속 복귀 오차 변수의 `Optional[float]` 선언 누락도 타입 검사에서 발견해
+수정했다. 검사 생략이나 `continue-on-error`로 실패를 숨기지 않는다.
+
+Pi 장비의 테스트 수집에서도 실제 GPIO를 열지 않도록 IMU 하드웨어 드라이버는
+`Imu` 생성 시 불러온다. 순수 상태·오류 처리 함수 import는 GPIO 접근 권한이나
+센서 연결을 요구하지 않으며, 실제 IMU 초기화에는 기존 드라이버를 사용한다.
 
 ### Graft와 셸 검사
 
