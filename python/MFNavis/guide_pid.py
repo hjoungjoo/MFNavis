@@ -4,6 +4,14 @@ import math
 from dataclasses import dataclass
 
 
+def approach_gain(error: float, band: float) -> float:
+    """Quarter travel in the inner half; smoothly reach full travel at band."""
+    if band <= 0:
+        return 1.0
+    ratio = max(0.0, min(1.0, 2 * abs(error) / band - 1))
+    return 0.25 + 0.75 * ratio * ratio * (3.0 - 2.0 * ratio)
+
+
 @dataclass
 class GuidePID:
     # P=1 requests the full measured error. D damps approach; I removes bias.
@@ -55,17 +63,19 @@ class GuidePID:
         # Shape the requested travel before clipping to the actuator budget.
         # Clipping first would reduce an already bounded 2.5 s pulse again,
         # even when the residual is larger than that pulse can correct.
-        ratio = min(1.0, abs(error) / approach_band) if approach_band > 0 else 1.0
-        approach_gain = 0.5 + 0.5 * ratio * ratio * (3.0 - 2.0 * ratio)
+        gain = approach_gain(error, approach_band)
+        if approach_band > 0:
+            # Neither accumulated bias nor noisy D may defeat approach braking.
+            limit = min(limit, abs(error) * gain)
         proportional = self.kp * error
         damping = max(
             -abs(proportional) * 0.8,
             min(abs(proportional) * 0.8, self.kd * self.filtered_derivative),
         )
-        output = (proportional + self.ki * candidate + damping) * approach_gain
+        output = (proportional + self.ki * candidate + damping) * gain
         if abs(output) <= limit or output * error < 0:
             self.integral = candidate
-        output = (proportional + self.ki * self.integral + damping) * approach_gain
+        output = (proportional + self.ki * self.integral + damping) * gain
         self.previous_error, self.previous_stamp = error, stamp
         # A crossing is handled by the new measured sign, never by stored I/D.
         return math.copysign(

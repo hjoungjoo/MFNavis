@@ -69,3 +69,27 @@ Sync 응답/이동 시작/물리 정지/첫 post-motion solve:
 한계 값/감지 원인/실제 정지 지연:
 로그·프레임 저장 위치/자동 검사 결과:
 ```
+
+
+## 2026-10-13 푸시 전 검증
+
+SkySafari GoTo 자동 복구, 근거리 보정 억제, Push 배율·마크 수정을 검증했다.
+[변경 내용·현장 실측·관측 조건·원본 기록](mount_control_ko.md#skysafari-goto-복구근거리-보정push-표시-검증-2026-10-13)을 함께 보존한다.
+관련 8개 suite는 **793 passed**다. 전체 Nox 검사는 개발 가상환경의 실행 경로를
+설정하고 `python/`에서 `nox --no-venv`로 실행한다.
+
+2026-10-14(KST) 완료 결과:
+
+| 검사 | 결과 |
+|---|---|
+| lint / format / type_hints | 모두 통과 |
+| smoke_tests | 7 passed |
+| unit_tests | 3,829 passed |
+| ui_tests | 296 passed, 2 skipped |
+| Git diff 공백 검사 | 통과 |
+
+선택 세션 사이에는 테스트 중복이 있으므로 합계를 독립 테스트 수로 해석하지 않는다.
+실행 로그는 `MFNavis_data/telemetry/20261013_near_far_tuning/pre_push_nox.log`에
+보존한다. 최초 시도는 개발 가상환경의 PATH 누락으로 중단했으며, 위 결과는
+PATH를 바로잡은 전체 재실행 결과다. 기기의 운영 서비스나 하드웨어를 재시작하는
+현장 시험은 이 저장·푸시 단계에서 추가하지 않았다.

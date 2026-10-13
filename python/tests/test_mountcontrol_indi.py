@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 import time
+import math
 from multiprocessing import Queue
 from types import SimpleNamespace
 
@@ -3052,6 +3053,43 @@ def _slew_rate_ack(mount, rate, state="ok"):
     )
 
 
+@pytest.mark.parametrize("mount_type", ["Alt/Az", "Equatorial"])
+def test_onstep_pulses_use_equatorial_residuals_for_both_mount_types(
+    monkeypatch, mount_type
+):
+    mount = DummyConnectedMount()
+    mount.shared_state = DummySharedState(DummySolution(10, 45, 1000))
+    mount._guide_mount_type = mount_type
+    mount._guide_correction_accuracy_arcmin = 1
+    mount._confirmed_guide_rates = (1.0, 1.0)
+    monkeypatch.setattr(mount, "_guide_pulse_inversions", lambda: (False, False))
+    requested = []
+    monkeypatch.setattr(
+        mount,
+        "_send_optical_guide_pulse",
+        lambda direction, duration, residual: requested.append((direction, residual)),
+    )
+    expected = (-360, 360 * math.cos(math.radians(45)))
+    assert mount._guide_pulse_errors(10, 45, 10.1, 44.9) == pytest.approx(expected)
+    mount._apply_guide_pulse(10, 45, 10.1, 44.9, 1)
+    assert [direction for direction, _ in requested] == ["south", "east"]
+    assert [residual for _, residual in requested] == pytest.approx(expected)
+
+
+def test_altaz_holdover_uses_the_same_equatorial_residual_as_optical_pulses(
+    monkeypatch,
+):
+    mount, _clock, _observation, _errors, _motions, _pulses = _pulse_correction_mount(
+        monkeypatch, axis_errors=(0.03, 0.02)
+    )
+    mount._guide_mount_type = "Alt/Az"
+    mount._guide_continue_on_solve_loss = True
+    mount._check_guide_correction()
+    assert mount._guide_holdover.sample[1] == pytest.approx(
+        mount._guide_pulse_errors(10.1, 20, 10, 20)
+    )
+
+
 def test_solver_outage_executes_residual_once_and_resumes_on_new_solve(monkeypatch):
     clock = [1000.0]
     monkeypatch.setattr(mci.time, "time", lambda: clock[0])
@@ -3070,9 +3108,9 @@ def test_solver_outage_executes_residual_once_and_resumes_on_new_solve(monkeypat
     durations = [
         values.get("TIMED_GUIDE_N", 0) for _, _, values in mount.client.numbers
     ]
-    assert sum(durations) * mci.SIDEREAL_ARCSEC_PER_SEC / 1000 == pytest.approx(
-        100, abs=1
-    )
+    # Brake into the inner half-accuracy band instead of spending all residual
+    # from an old frame. Never overshoot or keep sending after reaching it.
+    assert 85 <= sum(durations) * mci.SIDEREAL_ARCSEC_PER_SEC / 1000 <= 100
     count = len(mount.client.numbers)
     clock[0] += 86400
     mount._check_guide_correction()
@@ -3084,6 +3122,44 @@ def test_solver_outage_executes_residual_once_and_resumes_on_new_solve(monkeypat
     assert mount._guide_holdover.residual(clock[0]) == pytest.approx((0, 0))
     mount.toggle_guide_correction(False)
     assert mount._guide_holdover.residual(clock[0]) is None
+
+
+def test_centered_holdover_cannot_rearm_from_extrapolated_drift(monkeypatch):
+    mount, clock, observe = _wind_tracking_mount(monkeypatch)
+    observe(0.75)
+    mount._guide_holdover.rate = (5.0, 5.0)
+    clock[0] += 30
+    mount._check_guide_correction()
+    assert not mount.client.numbers
+    assert not mount._guide_centering_active
+    # A fresh sustained departure still starts correction normally.
+    observe(1.25)
+    assert not mount.client.numbers
+    observe(1.25, elapsed=1.0)
+    assert mount.client.numbers
+
+
+@pytest.mark.parametrize("error,travel", [(45, 11.25), (120, 37.6025)])
+def test_holdover_brakes_near_but_keeps_full_far_pulse_budget(
+    monkeypatch, error, travel
+):
+    clock = [1000.0]
+    monkeypatch.setattr(mci.time, "time", lambda: clock[0])
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    mount = DummyConnectedMount()
+    monkeypatch.setattr(mount, "_guide_pulse_supported", lambda: True)
+    monkeypatch.setattr(mount, "_select_guide_rate_for_error", lambda error: True)
+    monkeypatch.setattr(mount, "_guide_pulse_inversions", lambda: (False, False))
+    mount._confirmed_guide_rates = (1.0, 1.0)
+    mount.toggle_guide_correction(True, 10, 20, 1, continue_on_solve_loss=True)
+    mount._guide_centering_active = True
+    mount._guide_holdover.observe(clock[0], (error, 10))
+    mount._check_guide_holdover()
+    assert len(mount.client.numbers) == 1  # Other axis is inside its deadband.
+    duration = mount.client.numbers[0][2]["TIMED_GUIDE_N"]
+    assert duration * mci.SIDEREAL_ARCSEC_PER_SEC / 1000 == pytest.approx(
+        travel, abs=0.016
+    )
 
 
 def test_limit_stops_axes_and_tracking_and_latches_all_future_motion(monkeypatch):
@@ -3704,6 +3780,184 @@ def test_initial_site_sync_verifies_real_ack_and_tracking(monkeypatch):
     mount._check_initial_location_sync()
     assert mount._initial_site_complete
     assert not reboots
+
+
+def _rejected_onstep_sync(monkeypatch, message="Unspecified Error"):
+    mount, clock = _initial_site_mount(monkeypatch)
+    _site_ack(mount)
+    mount._check_initial_location_sync()
+    assert mount._initial_site_complete
+    command = dict(
+        type="sync_and_goto",
+        request_id="rejected",
+        sync_ra=132.0,
+        sync_dec=49.5,
+        ra=140.0,
+        dec=45.0,
+        origin="pifinder_goto",
+    )
+    assert mount.begin_sync_and_goto(command)
+    _sync_ack(mount, "ON_COORD_SET", {"SYNC": True})
+    mount.receive_sync_driver_message(
+        f"[ERROR] OnStep slew/syncError: {message}", mount._client_generation
+    )
+    mount.receive_sync_property(
+        "EQUATORIAL_EOD_COORD", "alert", {}, mount._client_generation
+    )
+    mount._check_pending_sync_goto()
+    assert mount._sync_goto_status["state"] == "failed"
+    clock[0] += 3
+    mount.receive_onstep_status()
+    monkeypatch.setattr(mount, "_raw_onstep_status", lambda: "nNpvAT160")
+    monkeypatch.setattr(mount, "_indi_mount_is_busy", lambda: False)
+    return mount, clock
+
+
+def test_sync_fault_after_ready_reinitializes_once_without_replaying_goto(monkeypatch):
+    mount, clock = _rejected_onstep_sync(monkeypatch)
+    reboots = []
+
+    def reboot():
+        reboots.append(True)
+        assert not mount._initial_site_complete
+        assert mount._initial_site_recovering
+        mount.sync_location_time()
+        _site_ack(mount)
+        return True
+
+    monkeypatch.setattr(mount, "reboot_mount", reboot)
+    mount._check_sync_fault_recovery()
+    mount._check_initial_location_sync()
+    assert reboots == [True]
+    assert mount._initial_site_complete
+    assert mount._pending_sync_goto is None
+    assert mount._sync_goto_status["state"] == "failed"
+    assert ("LX200 OnStep", "ON_COORD_SET", "SLEW") not in mount.client.switches
+    # The same failure in this session exhausts the existing reset budget.
+    mount._sync_fault_recovery = dict(
+        at=clock[0] - 3,
+        generation=mount._client_generation,
+        control_epoch=0,
+        reason="OnStep rejected Sync with Unspecified Error",
+    )
+    mount._check_sync_fault_recovery()
+    assert reboots == [True]
+    assert mount._initial_site_failed
+    assert mount.statuses[-1][0] == "initialization_failed"
+
+
+@pytest.mark.parametrize(
+    "blocked",
+    [
+        "manual",
+        "goto",
+        "pulse",
+        "tracking",
+        "busy",
+        "unknown",
+        "stale",
+        "fault",
+        "parked",
+        "limit",
+        "disconnected",
+        "generation",
+        "expired",
+    ],
+)
+def test_sync_fault_reset_waits_for_healthy_stopped_mount(monkeypatch, blocked):
+    mount, clock = _rejected_onstep_sync(monkeypatch)
+    reboots = []
+    monkeypatch.setattr(mount, "reboot_mount", lambda: reboots.append(True) or True)
+    if blocked == "manual":
+        mount._manual_motion_direction = "north"
+    elif blocked == "goto":
+        mount._goto_motion = {"target_ra": 10.0}
+    elif blocked == "pulse":
+        mount._guide_pulse_until = clock[0] + 1
+    elif blocked == "tracking":
+        monkeypatch.setattr(mount, "_raw_onstep_status", lambda: "NpvAT160")
+    elif blocked in {"busy", "unknown"}:
+        monkeypatch.setattr(
+            mount, "_indi_mount_is_busy", lambda: True if blocked == "busy" else None
+        )
+    elif blocked == "stale":
+        mount._last_fresh_onstep_status_at = clock[0] - 10
+    elif blocked == "fault":
+        monkeypatch.setattr(mount, "_raw_onstep_status", lambda: "nNpvAT168")
+    elif blocked == "parked":
+        monkeypatch.setattr(mount, "_raw_onstep_status", lambda: "nNPvAT160")
+    elif blocked == "limit":
+        mount._motion_limit = {"latched": True, "message": "limit"}
+    elif blocked == "disconnected":
+        mount.connected = False
+    elif blocked == "generation":
+        mount._client_generation += 1
+    else:
+        clock[0] += 31
+    mount._check_sync_fault_recovery()
+    assert not reboots
+
+
+@pytest.mark.parametrize(
+    "message", ["Outside limits", "In motion", "Synchronization failed."]
+)
+def test_other_sync_errors_do_not_schedule_controller_reset(monkeypatch, message):
+    mount, _clock = _rejected_onstep_sync(monkeypatch, message)
+    assert mount._sync_fault_recovery is None
+
+
+@pytest.mark.parametrize("origin", [None, "goto_error"])
+def test_user_stop_cancels_sync_reset_but_error_cleanup_does_not(monkeypatch, origin):
+    mount, _clock = _rejected_onstep_sync(monkeypatch)
+    monkeypatch.setattr(mount, "stop_mount", lambda **kw: True)
+    mount.handle_command({"type": "stop_movement", "origin": origin})
+    assert (mount._sync_fault_recovery is not None) == (origin == "goto_error")
+
+
+def test_queued_user_stop_prevents_reset_before_dispatch(monkeypatch):
+    from PiFinder.tracking_commands import PriorityMountQueue
+
+    mount, _clock = _rejected_onstep_sync(monkeypatch)
+    mount.mount_queue = PriorityMountQueue()
+    mount.mount_queue.put({"type": "stop_movement"})
+    reboots = []
+    monkeypatch.setattr(mount, "reboot_mount", lambda: reboots.append(True) or True)
+    mount._check_sync_fault_recovery()
+    assert not reboots
+
+
+def test_error_cleanup_does_not_adopt_a_later_user_stop_epoch(monkeypatch):
+    from PiFinder.tracking_commands import PriorityMountQueue
+
+    mount, _clock = _rejected_onstep_sync(monkeypatch)
+    mount.mount_queue = PriorityMountQueue()
+    mount.mount_queue.put({"type": "stop_movement", "origin": "goto_error"})
+    cleanup = mount.mount_queue.get(timeout=1)
+    mount.mount_queue.put({"type": "stop_movement"})
+    monkeypatch.setattr(mount, "stop_mount", lambda **kw: True)
+    reboots = []
+    monkeypatch.setattr(mount, "reboot_mount", lambda: reboots.append(True) or True)
+    mount.handle_command(cleanup)
+    mount._check_sync_fault_recovery()
+    assert not reboots
+
+
+@pytest.mark.parametrize("recovering", [False, True])
+def test_reboot_explicitly_reinitializes_and_preserves_automatic_reset_budget(
+    monkeypatch, recovering
+):
+    mount = DummyConnectedMount()
+    mount._initial_site_reset_attempted = True
+    mount._initial_site_recovering = recovering
+    monkeypatch.setattr(mount, "disconnect", lambda: None)
+    monkeypatch.setattr(
+        sys_utils, "reboot_onstep_controller_exclusive", lambda **kw: {"ok": True}
+    )
+    connections = []
+    monkeypatch.setattr(mount, "connect", lambda **kw: connections.append(kw) or True)
+    assert mount.reboot_mount()
+    assert connections == [{"announce": False, "preserve_mount_state": False}]
+    assert mount._initial_site_reset_attempted is recovering
 
 
 @pytest.mark.parametrize(
@@ -4610,6 +4864,11 @@ def test_fast_solve_updates_do_not_prematurely_exhaust_progress_budget(monkeypat
         clock[0] = 1007.0 + tick
         observation[0] = (9.99, -0.01, clock[0])
         mount._check_guide_correction()
+        assert mount._guide_correction_enabled
+    for tick in range(2, 6):
+        clock[0] = 1007.0 + tick * 3
+        observation[0] = (9.99, -0.01, clock[0])
+        mount._check_guide_correction()
     clock[0] += 0.01
     mount._check_guide_correction()
     assert mount._guide_correction_mode == "reacquire"
@@ -4623,7 +4882,7 @@ def test_slower_axis_scales_time_for_faster_shared_rate(monkeypatch):
     assert mount._requested_axis_guide_rate(slow_error / 60) == 0.5
     assert mount._requested_axis_guide_rate(1.0) == 1.0
     fast_ms = mount._axis_pid_pulse_ms("ns", slow_error, 100, 1.0)
-    assert 250 < fast_ms < 500  # Smooth approach reduces near-target travel.
+    assert 100 < fast_ms < 250  # Near-target travel is now more strongly damped.
     mount._guide_pid["ns"].reset()
     fine_ms = mount._axis_pid_pulse_ms("ns", slow_error, 100, 0.5)
     assert fine_ms == pytest.approx(fast_ms * 2, abs=1)
@@ -4648,7 +4907,7 @@ def test_actual_commands_use_fastest_axis_rate_and_shorter_slow_axis(monkeypatch
     we = [
         v for _, prop, v in mount.client.numbers if prop == "TELESCOPE_TIMED_GUIDE_WE"
     ][-1]
-    assert 250 < ns["TIMED_GUIDE_N"] < 500
+    assert 100 < ns["TIMED_GUIDE_N"] < 250
     assert we["TIMED_GUIDE_E"] == pytest.approx(1000, abs=1)
 
 
@@ -5097,26 +5356,18 @@ def test_real_large_departure_bypasses_wind_confirmation(monkeypatch):
 
 
 @pytest.mark.parametrize("cadence", [0.2, 0.5, 1.0, 2.5, 3.0])
-def test_persistent_small_offset_recenters_at_variable_camera_cadence(
+def test_persistent_offset_inside_accuracy_stays_quiet_at_variable_camera_cadence(
     monkeypatch, cadence
 ):
-    mount, clock, observe = _wind_tracking_mount(monkeypatch)
+    mount, _clock, observe = _wind_tracking_mount(monkeypatch)
     for _ in range(6):
         observe(0.2, cadence)
-    observe(0.75, cadence)
-    started = clock[0]
-    count = 1
-    while not mount.client.numbers:
-        assert clock[0] - started < 15
+    for _ in range(30):
         observe(0.75, cadence)
-        count += 1
-        if clock[0] - started < 4 or count < 4:
-            assert not mount.client.numbers
-    assert count >= 4
-    assert clock[0] - started >= 4
-    assert mount._guide_centering_active
+        assert not mount.client.numbers
+    assert not mount._guide_centering_active
     assert mount._guide_correction_enabled
-    # The confirmed offset uses normal damped centering and stops at 0.5'.
+    # Staying inside accuracy keeps tracking enabled without centering pulses.
     observe(0.4, 3)
     assert mount._guide_correction_mode == "complete"
     assert not mount._guide_centering_active
@@ -5134,7 +5385,7 @@ def test_small_bias_resets_on_center_crossing_and_cloud_gap(monkeypatch):
         observe(-0.75, 1)
         assert not mount.client.numbers
     observe(-0.75, 1)
-    assert mount.client.numbers
+    assert not mount.client.numbers
 
 
 def test_fast_repeated_reads_cannot_confirm_persistent_small_offset(monkeypatch):
@@ -5144,7 +5395,7 @@ def test_fast_repeated_reads_cannot_confirm_persistent_small_offset(monkeypatch)
         clock[0] += 0.1
         mount._check_guide_correction()
     assert not mount.client.numbers
-    assert mount._guide_rearm_candidate[4] == 1
+    assert mount._guide_rearm_candidate is None
     assert mount._guide_correction_enabled
 
 
@@ -5152,7 +5403,7 @@ def test_rotating_small_scatter_does_not_count_as_persistent_direction(monkeypat
     mount, clock, _ = _wind_tracking_mount(monkeypatch)
     for i in range(15):
         clock[0] += 1
-        assert not mount._guide_rearm_confirmed(
+        assert mount._guide_rearm_confirmed(
             0.8, clock[0], 36.0, 24.0 if i % 2 else -24.0
         )
     assert not mount._guide_centering_active
@@ -5174,13 +5425,13 @@ def test_camera_cadence_change_relearns_without_permanent_confirmation_wait(
     mount, _, observe = _wind_tracking_mount(monkeypatch)
     for _ in range(6):
         observe(0.2, 0.25)
-    observe(0.75, 0.25)
-    observe(0.75, 2.5)
+    observe(1.25, 0.25)
+    observe(1.25, 2.5)
     assert not mount.client.numbers
     # Longer exposure or slower solving changes cadence during the candidate.
     # Reconfirm with the new cadence instead of requiring the old frame rate.
     for _ in range(8):
-        observe(0.75, 2.5)
+        observe(1.25, 2.5)
         if mount.client.numbers:
             break
     assert mount.client.numbers

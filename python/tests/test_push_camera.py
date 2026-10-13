@@ -9,6 +9,7 @@ import pytest
 from PIL import Image, ImageDraw, ImageFont
 
 import PiFinder.i18n  # noqa: F401
+from PiFinder.state import UIState
 from PiFinder.ui.object_details import (
     DM_CAMERA,
     DM_CONTRAST,
@@ -23,6 +24,7 @@ pytestmark = pytest.mark.unit
 
 def camera_ui(resolution, target):
     ui = UIObjectDetails.__new__(UIObjectDetails)
+    ui.ui_state = UIState()
     width, height = resolution
     ui.display_class = SimpleNamespace(
         resolution=resolution,
@@ -134,13 +136,52 @@ def test_camera_zoom_keys_stop_at_limits_without_changing_equipment():
     ):
         key()
         assert ui.camera_zoom_level == expected
+        assert ui.ui_state.push_camera_zoom_level() == expected
         ui.update.assert_called()
+    ui.key_plus()
+    ui.key_plus()
+    assert ui.ui_state.push_camera_zoom_level() == 2
+    other = UIObjectDetails.__new__(UIObjectDetails)
+    other.ui_state = ui.ui_state
+    assert other.camera_zoom_level == 2
+    other.camera_zoom_level = 1
+    assert ui.camera_zoom_level == 1  # Returning to an older screen also follows it.
+    assert UIState().push_camera_zoom_level() == 0  # A new boot starts at 1x.
     ui.change_fov.assert_not_called()
     ui.object_display_mode = DM_LOCATE
     ui.key_plus()
     ui.change_fov.assert_called_with(1)
     ui.key_minus()
     ui.change_fov.assert_called_with(-1)
+
+
+@pytest.mark.parametrize("zoom_level", [0, 1, 2])
+def test_push_reticle_keeps_pixel_center_and_hides_outer_ring_at_max_zoom(
+    monkeypatch, zoom_level
+):
+    from PiFinder.ui import object_details
+    from PiFinder.ui.camera_guidance import draw_reticle
+
+    ui = camera_ui((128, 128), (230.25, 310.75))
+    ui.camera_zoom_level = zoom_level
+    reticle = Mock()
+    monkeypatch.setattr(object_details, "draw_reticle", reticle)
+    ui._render_camera_push()
+    assert reticle.call_args.kwargs["diameters"] == (
+        (2, 0.5) if zoom_level == 2 else (4, 2, 0.5)
+    )
+    # Check the actual raster, not just the requested geometric centre.
+    image = Image.new("L", (128, 144))
+    draw_reticle(
+        ImageDraw.Draw(image),
+        (63.5, 71.5),
+        112 * 2**zoom_level / 10.2,
+        255,
+        diameters=(0.5,),
+    )
+    lit = [(x, y) for y in range(144) for x in range(128) if image.getpixel((x, y))]
+    assert sum(x for x, _ in lit) / len(lit) == pytest.approx(63.5)
+    assert sum(y for _, y in lit) / len(lit) == pytest.approx(71.5)
 
 
 @pytest.mark.parametrize("zoom_level", [1, 2])

@@ -50,9 +50,9 @@ def test_distance_shaping_preserves_fast_travel_and_softens_near_target():
     ]
     assert outputs == sorted(outputs)
     assert outputs[-2:] == [20, 40]
-    assert 0.5 < outputs[0] < 0.6
-    assert outputs[1] < 5
-    assert outputs[2] == pytest.approx(7.5)
+    assert outputs[0] == 0.25
+    assert outputs[1] == 1.25
+    assert outputs[2] == 2.5
     # Shape requested travel, then clamp. A large residual must not reduce
     # an already bounded pulse a second time.
     assert GuidePID().correction(180, 100, 40, approach_band=360) == 40
@@ -67,11 +67,18 @@ def test_derivative_filter_reduces_response_to_fast_solve_jitter():
     assert filtered.filtered_derivative == 0
 
 
-def test_one_arcminute_approach_uses_pulse_budget_but_center_remains_damped():
+def test_near_target_uses_quarter_travel_but_far_target_keeps_full_budget():
     limit = 15.041 * 2.5
-    assert GuidePID().correction(60, 100, limit, approach_band=120) == limit
-    assert 15 < GuidePID().correction(30, 100, limit, approach_band=120) < 20
-    assert 0 < GuidePID().correction(5, 100, limit, approach_band=120) < 3
+    assert GuidePID().correction(120, 100, limit, approach_band=120) == limit
+    assert GuidePID().correction(60, 100, limit, approach_band=120) == 15
+    assert GuidePID().correction(30, 100, limit, approach_band=120) == 7.5
+    assert GuidePID().correction(5, 100, limit, approach_band=120) == 1.25
+
+
+def test_integral_and_noisy_derivative_cannot_defeat_near_target_travel_cap():
+    pid = GuidePID()
+    for stamp, error in enumerate([30, 32, 35, 30, 34, 38] * 10, start=100):
+        assert 0 <= pid.correction(error, stamp, 40, approach_band=120) <= error / 4
 
 
 @pytest.mark.parametrize("cadence", [0.1, 0.4, 1.0, 3.0])
@@ -82,7 +89,7 @@ def test_closed_loop_pulse_replacement_converges(cadence, response):
     pid = GuidePID()
     error = 150.0
     speed = 15.041
-    for tick in range(int(40 / cadence)):
+    for tick in range(int(60 / cadence)):
         if abs(error) <= 1:
             break
         correction = pid.correction(

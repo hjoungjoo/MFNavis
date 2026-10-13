@@ -28,7 +28,7 @@ from PiFinder import calc_utils, config
 from PiFinder import gps_time_sync
 from PiFinder import nonsidereal
 from PiFinder import sys_utils, utils
-from PiFinder.guide_pid import GuidePID
+from PiFinder.guide_pid import GuidePID, approach_gain
 from PiFinder.guide_holdover import GuideHoldover
 from PiFinder.mount_motion_limits import MountMotionLimitsMixin
 from PiFinder.operation_errors import ErrorNotifier, mount_failure
@@ -670,6 +670,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         self._initial_site_reset_attempted = False
         self._initial_site_recovering = False
         self._initial_site_expected_time: Any = None
+        self._sync_fault_recovery: Optional[dict[str, Any]] = None
         self.shared_state = shared_state
         self.imu_command_queue = imu_command_queue
         self.indi_host = indi_host
@@ -922,6 +923,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
                 else "waiting_location"
             ),
             "initial_location_reset_attempted": self._initial_site_reset_attempted,
+            "sync_fault_recovery_pending": self._sync_fault_recovery is not None,
             "tracking_enabled": self._cached_tracking_enabled(),
             "slew_rate": self.slew_rate,
             "manual_slew_rate": self.slew_rate,
@@ -2433,6 +2435,8 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         if not self._initial_site_recovering:
             self._initial_site_failed = False
             self._initial_site_complete = False
+            self._initial_site_reset_attempted = False
+        self._sync_fault_recovery = None
         onstep_cfg = self._onstep_connection_config()
         logger.info("Rebooting OnStep mount controller via :ERESET#")
         self._write_controller_status("rebooting", "Rebooting OnStep mount controller")
@@ -2469,7 +2473,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
 
         # The controller boots without date/time (no RTC); connect() re-runs
         # location/time sync, unpark, and tracking enable.
-        if not self.connect(announce=False):
+        if not self.connect(announce=False, preserve_mount_state=False):
             self._write_controller_status(
                 "reboot_failed", "Mount did not reconnect after reboot"
             )
@@ -3348,6 +3352,8 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             return
         self._initial_site_reset_attempted = True
         self._initial_site_recovering = True
+        self._initial_site_complete = False
+        self._initial_site_failed = False
         self._write_controller_status(
             "initialization_reset",
             f"Initial location sync stalled; automatically resetting INDI: {reason}",
@@ -3366,6 +3372,51 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
                 "initialization_failed",
                 "Automatic INDI reset failed; check mount connection and power",
             )
+
+    def _check_sync_fault_recovery(self) -> None:
+        """Recover a rejected OnStep Sync once, after fresh stopped telemetry.
+
+        Site/time and tracking may have succeeded before startup authority was
+        revoked. That later failure must not be hidden by _initial_site_complete.
+        The failed GoTo stays failed: a new request must supply a fresh solve.
+        """
+        pending = self._sync_fault_recovery
+        if pending is None:
+            return
+        from PiFinder.tracking_commands import control_epoch
+
+        now = time.monotonic()
+        if pending["generation"] != self._client_generation or now > pending["at"] + 30:
+            self._sync_fault_recovery = None
+            return
+        if (
+            now < pending["at"] + 2
+            or control_epoch(self.mount_queue) != pending["control_epoch"]
+            or not self.connected
+            or self._initial_site_recovering
+            or self._manual_motion_direction is not None
+            or self._goto_motion is not None
+            or self._pending_sync_goto is not None
+            or self._pending_goto_refine is not None
+            or self._guide_correction_enabled
+            or now < self._guide_pulse_until
+            or getattr(self, "_motion_limit", {}).get("latched")
+            or self._reported_motion_limit_reason()
+            or self._last_fresh_onstep_status_at < pending["at"]
+            or not 0 <= now - self._last_fresh_onstep_status_at <= 3
+            or self._indi_mount_is_busy() is not False
+        ):
+            return
+        raw = self._raw_onstep_status().rstrip("#")
+        # No tracking, no GoTo, unparked, no firmware fault. Do not turn a
+        # hardware/limit fault, parked mount or unknown status into a reset.
+        if not {"n", "N", "p"}.issubset(raw) or not raw.endswith("0"):
+            return
+        self._sync_fault_recovery = None
+        invalidate = getattr(self.mount_queue, "invalidate_motion", None)
+        if invalidate is not None:
+            invalidate()
+        self._recover_initial_location_sync(pending["reason"])
 
     def _sync_location_time_once(
         self,
@@ -4060,15 +4111,17 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         if (
             not self._guide_continue_on_solve_loss
             or self._guide_centering_active
-            or error <= 0.5 * accuracy
+            or error <= accuracy
             or error > 2 * accuracy
         ):
             self._guide_rearm_candidate = None
             return True
-        small_bias = error <= accuracy
-        required_seconds = 4.0 if small_bias else GUIDE_TRACKING_INTERVAL_SECONDS
-        required_samples = 4 if small_bias else 2
-        direction_cosine = math.cos(math.radians(30)) if small_bias else 0.5
+        # Once centered, do not chase persistent offsets inside the accepted
+        # accuracy. Outside it, require a sustained direction before re-entry.
+        small_bias = False
+        required_seconds = GUIDE_TRACKING_INTERVAL_SECONDS
+        required_samples = 2
+        direction_cosine = 0.5
         previous = self._guide_rearm_candidate
         if previous is not None:
             started, last, old_ns, old_we, count, was_small = previous
@@ -4152,6 +4205,13 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         if not 0.0 <= solve_age <= GUIDE_CORRECTION_MAX_SOLVE_AGE_SECONDS:
             self._check_guide_holdover()
             return
+        target_ra, target_dec = self._guide_correction_target
+        residual = self._guide_pulse_errors(
+            current_ra, current_dec, target_ra, target_dec
+        )
+        if residual is None:
+            return
+        ns_error, we_error = residual
         if (
             self._guide_continue_on_solve_loss
             and self._guide_holdover.sample is None
@@ -4161,16 +4221,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             # Arrival may have consumed this exact observation in the fine
             # alignment loop. Seed its residual when tracking takes ownership,
             # without replaying the old PID update or a pre-pulse exposure.
-            target_ra, target_dec = self._guide_correction_target
-            self._guide_holdover.observe(
-                now - solve_age,
-                (
-                    (target_dec - current_dec) * 3600,
-                    shortest_ra_delta_deg(target_ra, current_ra)
-                    * 3600
-                    * math.cos(math.radians(current_dec)),
-                ),
-            )
+            self._guide_holdover.observe(now - solve_age, residual)
         if solve_time <= self._guide_correction_last_solve_time:
             self._check_guide_holdover()
             return
@@ -4193,12 +4244,6 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         error = max(separation, axis_error)
         if not math.isfinite(error):
             return
-        ns_error = (target_dec - current_dec) * 3600
-        we_error = (
-            shortest_ra_delta_deg(target_ra, current_ra)
-            * 3600
-            * math.cos(math.radians(current_dec))
-        )
         if not self._guide_rearm_confirmed(error, solve_time, ns_error, we_error):
             self._guide_correction_last_solve_time = solve_time
             self._guide_correction_mode = "settling"
@@ -4228,11 +4273,11 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         # Judge progress from distinct fresh camera observations, not
         # command submission. A functioning transport can still guide away.
         if self._guide_pulse_best_error is not None:
-            # Fast solves replace timers immediately, but tiny 100 ms changes
-            # must not exhaust the convergence budget before a pulse can act.
-            if (
-                solve_time - self._guide_progress_solve_time
-                >= GUIDE_TRACKING_INTERVAL_SECONDS
+            # Allow a full bounded pulse to act between progress verdicts.
+            # Faster camera frames can revise a command, but are not separate
+            # failed attempts while a slow approach/reversal is still running.
+            if solve_time - self._guide_progress_solve_time >= max(
+                GUIDE_TRACKING_INTERVAL_SECONDS, GUIDE_PULSE_MAX_MS / 1000
             ):
                 self._guide_progress_solve_time = solve_time
                 if (
@@ -4301,17 +4346,11 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         # computed from the axis error and guide rate; NOT a manual move, so it
         # does not show up as manual_motion in status).
         if self._guide_pulse_supported():
-            we_error = (
-                abs(
-                    shortest_ra_delta_deg(target_ra, current_ra)
-                    * math.cos(math.radians(current_dec))
-                )
-                * 60.0
-            )
-            ns_error = abs(target_dec - current_dec) * 60.0
             # A shared rate selector follows the faster requested axis; the
             # slower axis preserves its requested travel by shortening time.
-            if not self._select_guide_rate_for_error(max(we_error, ns_error)):
+            if not self._select_guide_rate_for_error(
+                max(abs(we_error), abs(ns_error)) / 60
+            ):
                 if self._guide_rate_writable is False:
                     self._guide_correction_enabled = False
                     self._guide_correction_mode = "reacquire"
@@ -4360,16 +4399,30 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         # completed optical correction into a new pulse toward sub-arcsecond
         # prediction noise; holdover must honor the same centering band.
         outer = self._guide_correction_accuracy_arcmin * 60 * self._guide_axis_scale
+        if (
+            not self._guide_centering_active
+            and self._guide_holdover.sample is not None
+            and max(abs(v) for v in self._guide_holdover.sample[1]) <= outer
+        ):
+            # A centered measured frame is not evidence of a new departure.
+            # Wait for a fresh solve rather than re-arm from drift extrapolation.
+            return
         if max(abs(v) for v in residual) > outer:
             self._guide_centering_active = True
         finish = outer * (0.5 if self._guide_centering_active else 1.0)
         if max(abs(v) for v in residual) <= finish:
+            self._guide_centering_active = False
             return
         self._guide_correction_mode = "solve_holdover"
         # No synthetic camera sample, PID integration or convergence verdict.
-        # A one-arcsecond deadband accumulates slow drift into finite pulses.
-        if max(abs(v) for v in residual) < 1.0:
-            return
+        # Use the same distance braking and per-axis deadband as optical PID;
+        # a repeated frame must not issue a stronger command than a fresh one.
+        deadband = max(0.6, outer / 4)
+        band = (
+            self._guide_correction_accuracy_arcmin
+            * 60
+            * GUIDE_RATE_FAST_MIN_ERROR_MULTIPLE
+        )
         if not self._select_guide_rate_for_error(max(abs(v) for v in residual) / 60):
             return
         we_rate, ns_rate = self._confirmed_guide_rates or self._current_guide_rate_x()
@@ -4378,11 +4431,12 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             (residual[0], ns_rate, "north", "south", invert_ns),
             (residual[1], we_rate, "east", "west", invert_we),
         ):
-            if abs(error) < 1.0:
+            if abs(error) <= deadband:
                 continue
+            travel = abs(error) * approach_gain(error, band)
             duration = min(
                 GUIDE_PULSE_MAX_MS,
-                int(abs(error) / (speed * SIDEREAL_ARCSEC_PER_SEC) * 1000),
+                int(travel / (speed * SIDEREAL_ARCSEC_PER_SEC) * 1000),
             )
             if duration <= 0:
                 continue
@@ -4392,6 +4446,17 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         self._write_controller_status(
             "guide_correction",
             "Plate solve unavailable; continuing residual and drift correction",
+        )
+
+    def _guide_pulse_errors(self, ra, dec, target_ra, target_dec):
+        """Signed sky-plane residuals for INDI's north/east guide commands.
+
+        OnStepX also applies Alt/Az pulse guiding in equatorial coordinates
+        before converting the tracking rates to its physical mount axes.
+        """
+        return (
+            (target_dec - dec) * 3600,
+            shortest_ra_delta_deg(target_ra, ra) * 3600 * math.cos(math.radians(dec)),
         )
 
     def _guide_axis_error(self, ra, dec, target_ra, target_dec):
@@ -4818,10 +4883,12 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         target_dec: float,
         separation: float,
     ) -> None:
-        ra_delta_deg = shortest_ra_delta_deg(target_ra, current_ra)
-        dec_delta_deg = target_dec - current_dec
-        ra_arcsec = ra_delta_deg * 3600.0 * math.cos(math.radians(current_dec))
-        dec_arcsec = dec_delta_deg * 3600.0
+        residual = self._guide_pulse_errors(
+            current_ra, current_dec, target_ra, target_dec
+        )
+        if residual is None:
+            return
+        dec_arcsec, ra_arcsec = residual
         guide_we_x, guide_ns_x = (
             self._confirmed_guide_rates or self._current_guide_rate_x()
         )
@@ -5003,6 +5070,22 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             return
         with self._sync_property_lock:
             errors = list(self._sync_driver_errors)
+        if (
+            reason == "Driver rejected waiting_sync_coordinates"
+            and self._pending_sync_goto.get("stage") == "waiting_sync_coordinates"
+            and sys_utils.is_onstep_family_device_name(self._indi_device_name())
+            and any(
+                "onstep slew/syncerror: unspecified error" in e.lower() for e in errors
+            )
+        ):
+            from PiFinder.tracking_commands import control_epoch
+
+            self._sync_fault_recovery = {
+                "at": time.monotonic(),
+                "generation": self._client_generation,
+                "control_epoch": control_epoch(self.mount_queue),
+                "reason": "OnStep rejected Sync with Unspecified Error",
+            }
         if errors:
             reason = f"{reason}: {errors[0]}"
         self._pending_sync_goto = None
@@ -6620,6 +6703,14 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
 
         if stale_command(command, getattr(self, "mount_queue", None)):
             return True
+        if command_type in INVALIDATING_COMMANDS and not (
+            command_type == "stop_movement" and command.get("origin") == "goto_error"
+        ):
+            self._sync_fault_recovery = None
+        elif command_type == "stop_movement" and self._sync_fault_recovery is not None:
+            self._sync_fault_recovery["control_epoch"] = command.get(
+                "_control_epoch", control_epoch(self.mount_queue)
+            )
         if command_type == "sync_and_goto" and self._mfnavis_sync_preparation(command):
             self._check_motion_limits(sync_preparation=True)
         else:
@@ -6885,6 +6976,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
                 logger.exception("Smooth tracking held after executor failure")
                 self._smooth_runtime.cancel("executor_error")
                 self.shared_state.smooth_tracking("fault", "executor_error")
+            self._check_sync_fault_recovery()
             self._check_initial_location_sync()
             self._check_usb_serial_reinsert()
             self._check_manual_motion_deadline()

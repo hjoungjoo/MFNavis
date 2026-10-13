@@ -57,6 +57,7 @@ class UIState:
         self.__message_timeout = 0
         self.__hint_timeout = 0
         self.__show_fps = False
+        self.__push_camera_zoom_level = 0  # RAM only; shared across pushed targets.
         # Set to true when an object is pushed
         # to the recent list from the pos_server
         # proccess (i.e. skysafari goto).  Used
@@ -104,6 +105,12 @@ class UIState:
 
     def set_show_fps(self, v: bool):
         self.__show_fps = v
+
+    def push_camera_zoom_level(self) -> int:
+        return self.__push_camera_zoom_level
+
+    def set_push_camera_zoom_level(self, level: int):
+        self.__push_camera_zoom_level = max(0, min(2, int(level)))
 
     def __str__(self):
         return str(

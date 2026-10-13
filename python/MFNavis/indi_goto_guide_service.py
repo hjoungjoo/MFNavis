@@ -1577,7 +1577,7 @@ class IndiGotoGuideService:
 
     def _stop_with_error(self, reason: str) -> None:
         self.solve_fallback_armed = False
-        self._forward_to_mountcontrol({"type": "stop_movement"})
+        self._forward_to_mountcontrol({"type": "stop_movement", "origin": "goto_error"})
         self._disable_pulse_align()
         self.service_state = "error"
         self.phase = "error"
@@ -2638,14 +2638,17 @@ class IndiGotoGuideService:
                 self.tracking_recovery_attempts = 0
                 self.tracking_guide_recovery_mode = "pulse"
                 return
-        # Failed pulses use native recovery even inside the normal GoTo band.
-        # Retain this choice until verified optical arrival or a new target.
+        # Before arrival, failed pulses still need native recovery to finish
+        # the requested GoTo. After arrival, a failed small correction must
+        # not promote near-target jitter into repeated slews and solve loss.
+        # Hold native tracking until departure exceeds the recovery threshold.
         # The recovery starts with a mount SYNC, so the anchor must be a fresh
         # plate solve: an IMU estimate here can be degrees off and sends the
         # recovery slew far from the target (observed 2026-08-03: 13 deg misses
         # burning all 5 attempts). Same bounded wait as the pifinder GoTo loop.
         pulse_fallback = (
             self.pulse_alignment_unreliable
+            and not self.optical_arrival_confirmed
             and self.tracking_guide_error_arcmin > self._final_accuracy_arcmin()
         )
         if goto_recovery_enabled and (
@@ -2700,6 +2703,16 @@ class IndiGotoGuideService:
                 self.tracking_guide_state = "enabled"
                 self.tracking_guide_last_action = "disturbance resolved on fresh solve"
                 return
+            if (
+                self.optical_arrival_confirmed
+                and recovery_error <= goto_threshold_arcmin
+            ):
+                self._disable_tracking_guide(
+                    "holding near target; waiting for departure beyond GoTo threshold"
+                )
+                self.tracking_guide_recovery_mode = "none"
+                self.tracking_guide_state = "settling"
+                return
             self._begin_tracking_recovery_goto(
                 recovery_current["ra"], recovery_current["dec"]
             )
@@ -2712,8 +2725,11 @@ class IndiGotoGuideService:
                 self.tracking_guide_state = "enabled"
                 return
             self._disable_tracking_guide(
-                "pulse correction unavailable; goto recovery disabled in config"
+                "holding near target; waiting for departure beyond GoTo threshold"
+                if goto_recovery_enabled
+                else "pulse correction unavailable; goto recovery disabled in config"
             )
+            self.tracking_guide_recovery_mode = "none"
             self.tracking_guide_state = "settling"
             return
 

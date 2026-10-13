@@ -34,12 +34,18 @@ def draw_pointer(image, center, side, angle, color, *, outline=None):
     image.paste(ImageChops.add(image, layer))
 
 
-def draw_reticle(draw, center, pixels_per_degree, color, *, outline=None):
-    """The chart's 4, 2 and 0.5 degree segmented circles."""
+def draw_reticle(
+    draw, center, pixels_per_degree, color, *, outline=None, diameters=(4, 2, 0.5)
+):
+    """Segmented circles, rasterized symmetrically about the image centre."""
     cx, cy = center
-    for diameter in (4, 2, 0.5):
+    for diameter in diameters:
         radius = diameter * pixels_per_degree / 2
-        bounds = (cx - radius, cy - radius, cx + radius, cy + radius)
+        # PIL truncates floating arc bounds separately, shifting half-pixel
+        # centres up/left. Round one edge and reflect it about the centre so
+        # the reticle agrees with the camera resize/zoom pixel convention.
+        left, top = round(cx - radius), round(cy - radius)
+        bounds = (left, top, round(2 * cx - left), round(2 * cy - top))
         for start in (20, 110, 200, 290):
             if outline is not None:
                 draw.arc(

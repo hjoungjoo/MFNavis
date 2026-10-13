@@ -139,6 +139,78 @@ def test_tracking_uses_goto_accuracy_even_with_old_threshold(monkeypatch, accura
     assert command["accuracy_arcmin"] == service._final_accuracy_arcmin() == accuracy
 
 
+@pytest.mark.parametrize("error_arcmin", [2.0, 5.0, 7.0])
+def test_tracking_six_arcmin_recovery_threshold(monkeypatch, error_arcmin):
+    service = _make_service(monkeypatch, [1000.0])
+    service.config_values.update(
+        indi_goto_refine_accuracy_arcmin=1.0,
+        indi_tracking_guide_goto_threshold_deg=0.1,
+    )
+    service._pointing["current"]["dec"] = 20.0 + error_arcmin / 60
+    service.tracking_motion_ra = 100.0
+    service.tracking_motion_dec = service._pointing["current"]["dec"]
+    service.tracking_last_motion_at = 990.0
+    service._tick_tracking_guide()
+    command = service.mountcontrol_queue.commands[-1]
+    assert command["type"] == (
+        "sync_and_goto" if error_arcmin > 6 else "toggle_guide_correction"
+    )
+
+
+@pytest.mark.parametrize("error_arcmin", [2.0, 5.0, 7.0])
+def test_completed_tracking_never_promotes_failed_near_pulses_to_goto(
+    monkeypatch, error_arcmin
+):
+    clock = [1000.0]
+    service = _make_service(monkeypatch, clock)
+    service.optical_arrival_confirmed = True
+    service.pulse_alignment_unreliable = True
+    service.config_values.update(
+        indi_goto_refine_accuracy_arcmin=1.0,
+        indi_tracking_guide_goto_threshold_deg=0.1,
+    )
+    service._pointing["current"]["dec"] = 20 + error_arcmin / 60
+    service.tracking_motion_ra = 100.0
+    service.tracking_motion_dec = service._pointing["current"]["dec"]
+    service.tracking_last_motion_at = 990.0
+    service._tick_tracking_guide()
+    commands = service.mountcontrol_queue.commands
+    if error_arcmin > 6:
+        assert commands[-1]["type"] == "sync_and_goto"
+    else:
+        assert not commands
+        assert service.tracking_guide_state == "settling"
+        assert "holding near target" in service.tracking_guide_last_action
+        # Repeated fresh near frames cannot restart the failed actuator.
+        for _ in range(10):
+            clock[0] += 2
+            service._tick_tracking_guide()
+        assert not commands
+        assert service.pulse_alignment_unreliable
+
+
+def test_completed_recovery_rechecks_threshold_on_fresh_solve(monkeypatch):
+    service = _make_service(monkeypatch, [1000.0])
+    service.optical_arrival_confirmed = True
+    service.pulse_alignment_unreliable = True
+    service.config_values.update(
+        indi_goto_refine_accuracy_arcmin=1.0,
+        indi_tracking_guide_goto_threshold_deg=0.1,
+    )
+    service.tracking_motion_ra, service.tracking_motion_dec = 100.0, 22.0
+    service.tracking_last_motion_at = 990.0
+    monkeypatch.setattr(
+        service,
+        "_pulse_solve_current",
+        lambda *args: dict(
+            ra=100.0, dec=20 + 5 / 60, timestamp=1000.0, source="solve", quality="high"
+        ),
+    )
+    service._tick_tracking_guide()
+    assert not service.mountcontrol_queue.commands
+    assert service.tracking_guide_state == "settling"
+
+
 def test_lower_configured_pulse_align_threshold_is_preserved(monkeypatch):
     service = _make_service(monkeypatch, [1000.0])
     service.config_values["indi_pifinder_goto_near_threshold_deg"] = 0.2

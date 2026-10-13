@@ -114,7 +114,6 @@ class UIObjectDetails(UIModule):
         self.object = self.item_definition["object"]
         self.object_list = self.item_definition["object_list"]
         self.object_display_mode = DM_CAMERA
-        self.camera_zoom_level = 0
         self.object_image = None
 
         # Marking Menu - Just default help for now
@@ -173,6 +172,14 @@ class UIObjectDetails(UIModule):
 
         self.active()  # fill in activation time
         self.update_object_info()
+
+    @property
+    def camera_zoom_level(self):
+        return self.ui_state.push_camera_zoom_level()
+
+    @camera_zoom_level.setter
+    def camera_zoom_level(self, level):
+        self.ui_state.set_push_camera_zoom_level(level)
 
     def _layout_designator(self):
         """
@@ -1052,6 +1059,7 @@ class UIObjectDetails(UIModule):
                 side * zoom_factor / fov,
                 self.colors.get(255),
                 outline=self.colors.get(0),
+                diameters=(2, 0.5) if self.camera_zoom_level == 2 else (4, 2, 0.5),
             )
             # Direction uses the original target pixel and full camera FOV.
             self._draw_camera_pointer((cx, cy), side, target, fov)

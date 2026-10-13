@@ -452,7 +452,7 @@ def test_tracking_recovery_reopens_pulses_only_after_fresh_near_arrival(
     rig.mount._guide_correction_enabled = False
     rig.mount._guide_correction_mode = "reacquire"
     rig.now += 2
-    rig.solve(29.9)
+    rig.solve(29.5)  # A real departure beyond the native recovery threshold.
     rig.tick(0)
     rig.tick(2)
     assert rig.service.tracking_recovery_state == "goto_wait"
