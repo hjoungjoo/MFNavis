@@ -116,7 +116,7 @@ _COMMAND_QUEUE_KEYS = (
 )
 
 # Modules that need the Hipparcos catalogue to construct (build plot.Starfield)
-_HIP_REQUIRED = {"UIChart", "UIAlign"}
+_HIP_REQUIRED = {"UIChart", "UIFinder", "UIAlign"}
 
 # Modules the generic sweep can't fairly exercise, with the reason. These are
 # still constructed and covered by the completeness guard -- only the key sweep

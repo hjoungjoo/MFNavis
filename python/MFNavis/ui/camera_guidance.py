@@ -3,10 +3,58 @@
 import math
 from functools import lru_cache
 
-from PIL import Image, ImageChops, ImageFilter
+from PIL import Image, ImageChops, ImageFilter, ImageOps
 
 from PiFinder import utils
 from PiFinder.solver_frame_map import map_target_pixel_to_frame
+
+
+def render_camera_view(screen, camera_image, color, zoom_level, target_pixel, *, top=0):
+    """Draw the rotated 512-space preview; return (reticle centre, image side).
+
+    Zoom stays centred on the saved alignment pixel, padding sensor edges in
+    black. ``top`` reserves the Push title bar; Finder uses the whole screen.
+    """
+    width, height = screen.size
+    side = min(width, height - top)
+    left = (width - side) // 2
+    image_top = top + (height - top - side) // 2
+    valid_target = (
+        target_pixel is not None
+        and len(target_pixel) == 2
+        and all(math.isfinite(v) and 0 <= v < 512 for v in target_pixel)
+    )
+    crop_size = 512 / 2**zoom_level
+    crop_x = crop_y = (512 - crop_size) / 2
+    frame = camera_image.copy().convert("L")
+    if zoom_level > 0:
+        if valid_target:
+            y, x = target_pixel
+            crop_x = x + 0.5 - crop_size / 2
+            crop_y = y + 0.5 - crop_size / 2
+        scale = crop_size / side
+        frame = frame.transform(
+            (side, side),
+            Image.Transform.AFFINE,
+            (scale, 0, crop_x, 0, scale, crop_y),
+            resample=Image.Resampling.BILINEAR,
+            fillcolor=0,
+        )
+    else:
+        frame = frame.resize((side, side))
+    frame = ImageOps.autocontrast(frame)
+    frame = ImageChops.multiply(
+        frame.convert("RGB"), Image.new("RGB", (side, side), color)
+    )
+    screen.paste(frame, (left, image_top))
+    center = None
+    if valid_target:
+        y, x = target_pixel
+        center = (
+            left + (x - crop_x + 0.5) * side / crop_size - 0.5,
+            image_top + (y - crop_y + 0.5) * side / crop_size - 0.5,
+        )
+    return center, side
 
 
 @lru_cache(maxsize=1)

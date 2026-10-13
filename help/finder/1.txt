@@ -1,0 +1,10 @@
+FINDER
+
+Square: Camera / Chart
++/-: Zoom in / out
+5: GoTo reticle centre
+
+Long Square > ALIGN
+also goes to the reticle
+centre. Chart also uses
+IMU when no solve exists.

@@ -6,7 +6,6 @@ This module contains all the UI code for the object details screen
 
 """
 
-from PIL import Image, ImageChops, ImageOps
 from datetime import datetime, timezone
 
 from pydeepskylog.exceptions import InvalidParameterError
@@ -16,6 +15,7 @@ from PiFinder.ui.camera_guidance import (
     draw_pointer,
     draw_reticle,
     target_direction,
+    render_camera_view,
 )
 from PiFinder.optics import OpticalTrainResolver
 from PiFinder.mf_manual_lens import manual_focal_from_state
@@ -26,7 +26,7 @@ from PiFinder.state import Location
 from PiFinder.composite_object import MagnitudeObject
 from PiFinder.ui.marking_menus import MarkingMenuOption, MarkingMenu
 from PiFinder.obj_types import OBJ_TYPES
-from PiFinder.ui.align import CAMERA_NATIVE_RES, align_on_radec
+from PiFinder.ui.align import align_on_radec
 from PiFinder.ui.base import INDI_PROBLEM_STATES, UIModule
 from PiFinder.ui.log import UILog
 from PiFinder.ui.ui_utils import (
@@ -965,43 +965,16 @@ class UIObjectDetails(UIModule):
         """Overlay guidance on the already rotated, 512-space camera preview."""
         width, height = self.display_class.resolution
         top = self.display_class.titlebar_height
-        # Preserve the square image geometry on rectangular LCDs too.
-        side = min(width, height - top)
-        left = (width - side) // 2
-        image_top = top + (height - top - side) // 2
         zoom_factor = 2**self.camera_zoom_level
-        # Read once so the image and overlays use the same alignment point.
         target = self.shared_state.target_pixel()
-        valid_target = (
-            target is not None
-            and len(target) == 2
-            and all(math.isfinite(v) and 0 <= v < CAMERA_NATIVE_RES for v in target)
+        center, side = render_camera_view(
+            self.screen,
+            self.camera_image,
+            self.colors.get(255),
+            self.camera_zoom_level,
+            target,
+            top=top,
         )
-        crop_size = CAMERA_NATIVE_RES / zoom_factor
-        crop_x = crop_y = (CAMERA_NATIVE_RES - crop_size) / 2
-        frame = self.camera_image.copy().convert("L")
-        if self.camera_zoom_level > 0:
-            if valid_target:
-                y, x = target
-                crop_x = x + 0.5 - crop_size / 2
-                crop_y = y + 0.5 - crop_size / 2
-            # Keep fractional pixel alignment and pad beyond the sensor in black
-            # instead of shifting the reticle away from the viewport centre.
-            scale = crop_size / side
-            frame = frame.transform(
-                (side, side),
-                Image.Transform.AFFINE,
-                (scale, 0, crop_x, 0, scale, crop_y),
-                resample=Image.Resampling.BILINEAR,
-                fillcolor=0,
-            )
-        else:
-            frame = frame.resize((side, side))
-        frame = ImageOps.autocontrast(frame)
-        frame = ImageChops.multiply(
-            frame.convert("RGB"), Image.new("RGB", (side, side), self.colors.get(255))
-        )
-        self.screen.paste(frame, (left, image_top))
 
         # Dim the text bands enough for readability while retaining the image.
         header = (
@@ -1041,10 +1014,8 @@ class UIObjectDetails(UIModule):
 
         # target_pixel is (Y, X) in the SAME rotated 512x512 space as frame;
         # no extra camera or telescope rotation should be applied here.
-        if valid_target:
-            y, x = target
-            cx = left + (x - crop_x + 0.5) * side / crop_size - 0.5
-            cy = image_top + (y - crop_y + 0.5) * side / crop_size - 0.5
+        if center is not None:
+            cx, cy = center
             if not hasattr(self, "_camera_optics"):
                 self._camera_optics = OpticalTrainResolver()
             fov = self._camera_optics.resolve(

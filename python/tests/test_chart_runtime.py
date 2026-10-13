@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 import PiFinder.i18n  # noqa: F401
 from PiFinder.displays import DisplayHeadless, DisplayHeadless176, DisplayHeadless320
 from PiFinder.ui import chart as chart_module, menu_structure
+from PiFinder.ui.menu_manager import MenuManager
 
 pytestmark = pytest.mark.unit
 
@@ -107,6 +108,16 @@ def test_chart_constructs_draws_center_and_opens_ranked_details(chart):
     assert [obj.object_id for obj in pushed["object_list"]] == [1, 2]
 
 
+def test_standalone_chart_long_right_still_opens_recent_object(chart):
+    obj = marker(9)
+    manager = MenuManager.__new__(MenuManager)
+    manager.stack = [chart]
+    manager.ui_state = SimpleNamespace(recent_list=lambda: [obj])
+    manager.add_to_stack = MagicMock()
+    manager.key_long_right()
+    assert manager.add_to_stack.call_args.args[0]["object"] is obj
+
+
 def test_target_remains_visible_when_dso_markers_are_off(chart):
     chart.test_settings["chart_dso"] = 0
     chart.ui_state.target_obj = marker(9)
@@ -141,6 +152,7 @@ def test_return_from_details_redraws_new_target_without_new_solve(chart):
 def test_no_solve_clears_readout_and_right_is_inert(chart):
     chart.update()
     chart.shared_state.solve_state = lambda: False
+    chart.shared_state.solution = lambda: None
     chart.update()
     assert chart.serialize_ui_state()["center_object"] is None
     assert chart._chart_backdrop is None

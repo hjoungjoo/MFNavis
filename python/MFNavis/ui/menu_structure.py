@@ -10,6 +10,7 @@ from PiFinder.ui.software import UISoftware
 from PiFinder.ui.gpsstatus import UIGPSStatus
 from PiFinder.ui.gps_time_sync_status import UIGPSTimeSyncStatus
 from PiFinder.ui.chart import UIChart
+from PiFinder.ui.finder import UIFinder
 from PiFinder.ui.align import UIAlign
 from PiFinder.ui.align_daytime import UIAlignDaytime
 from PiFinder.ui.polar_align import UIPolarAlign
@@ -140,6 +141,12 @@ pifinder_menu = {
                     ],
                 },
             ],
+        },
+        {
+            "name": _("Finder"),
+            "class": UIFinder,
+            "label": "finder",
+            "stateful": True,
         },
         {
             "name": _("Chart"),

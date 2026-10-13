@@ -166,6 +166,7 @@ class RotatingInfoDisplay:
 class UIModule:
     __title__ = "BASE"
     __help_name__ = ""
+    allow_object_details = True
     __uuid__ = str(uuid.uuid1()).split("-")[0]
     _config_options: dict
     _CAM_ICON = ""

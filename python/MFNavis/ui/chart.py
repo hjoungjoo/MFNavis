@@ -12,6 +12,7 @@ from __future__ import (
 
 import datetime
 import logging
+import math
 import time
 from dataclasses import dataclass
 from PIL import ImageChops, Image
@@ -32,6 +33,15 @@ from PiFinder.ui.center_object import (
     readout_y,
 )
 from PiFinder.ui.ui_utils import TextLayouterScroll
+from PiFinder.pointing_coordinate_service import PointingCoordinateService, valid_radec
+from PiFinder.state import Location
+from PiFinder.types.positioning import (
+    Pointing,
+    PointingAxis,
+    PointingEstimate,
+    PointingMatrix,
+    SolveSource,
+)
 
 
 logger = logging.getLogger("Chart")
@@ -78,6 +88,10 @@ class UIChart(UIModule):
         self.last_update = time.time()
         self.starfield = plot.Starfield(self.colors, self.display_class.resolution)
         self.solution = None
+        self._imu_coordinates = PointingCoordinateService()
+        self._chart_pointing_source = None
+        self._chart_center = None
+        self._chart_frame_key = None
         self.fov_list = [5, 10.2, 20, 30, 60]
         self.fov_index = 1
         self.fov_set_time = time.time()
@@ -104,7 +118,11 @@ class UIChart(UIModule):
         # The finished chart, cached so the readout strip can be repainted every
         # frame -- the starfield under it is only redrawn on a new solve.
         self._chart_backdrop = None
-        self._center_arrow_px = int(self.fonts.base.font.getlength(self._RIGHT_ARROW))
+        self._center_arrow_px = (
+            int(self.fonts.base.font.getlength(self._RIGHT_ARROW))
+            if self.allow_object_details
+            else 0
+        )
 
         # Marking menu definition
         self.marking_menu = MarkingMenu(
@@ -467,12 +485,13 @@ class UIChart(UIModule):
         self.screen.paste(self._chart_backdrop.crop(box), (box[0], box[1]))
 
         self._center_scroller.draw((0, strip_y))
-        self.draw.text(
-            (self.display_class.resX - self._center_arrow_px, strip_y),
-            self._RIGHT_ARROW,
-            font=font.font,
-            fill=self.colors.get(255),
-        )
+        if self.allow_object_details:
+            self.draw.text(
+                (self.display_class.resX - self._center_arrow_px, strip_y),
+                self._RIGHT_ARROW,
+                font=font.font,
+                fill=self.colors.get(255),
+            )
 
     def active(self):
         """
@@ -499,7 +518,7 @@ class UIChart(UIModule):
         """
         from PiFinder.ui.object_details import UIObjectDetails
 
-        if not self._center_readout_enabled():
+        if not self.allow_object_details or not self._center_readout_enabled():
             return
         obj = self._center_tracker.center_object
         if obj is None:
@@ -536,6 +555,7 @@ class UIChart(UIModule):
             }
         return {
             "fov": self.fov,
+            "pointing_source": self._chart_pointing_source,
             "center_object_readout": self._center_readout_enabled(),
             "center_object": center,
         }
@@ -568,28 +588,117 @@ class UIChart(UIModule):
         self.fov = current_fov
         self.starfield.set_fov(current_fov)
 
+    def _chart_observer_location(self):
+        """Local fallback site for IMU projection; never publish a GPS fix."""
+        location = self.shared_state.location()
+        if location is not None and location.lock:
+            return location
+        configured = self.config_object.get_option("locations.default", None)
+        if configured is None:
+            return None
+        try:
+            lat, lon, altitude = map(
+                float, (configured.latitude, configured.longitude, configured.height)
+            )
+            if (
+                all(math.isfinite(value) for value in (lat, lon, altitude))
+                and -90 <= lat <= 90
+                and -180 <= lon <= 180
+            ):
+                return Location(lat=lat, lon=lon, altitude=altitude, lock=True)
+        except (AttributeError, TypeError, ValueError):
+            pass
+        return None
+
+    def _chart_solution(self):
+        """Prefer plate-anchored estimates, then project the absolute IMU.
+
+        Failed plates retain the integrator's IMU-progressed aligned estimate.
+        Before any plate succeeds, the shared coordinate service converts the
+        calibrated IMU orientation using the observing site and current time.
+        This synthetic estimate is for this screen only.
+        """
+        solution = self.shared_state.solution()
+        if solution is not None and solution.has_pointing():
+            aligned = solution.pointing.aligned.estimate
+            timestamp = solution.estimate_time
+            if (
+                valid_radec(aligned.RA, aligned.Dec) is not None
+                and timestamp is not None
+                and math.isfinite(timestamp)
+            ):
+                source = getattr(solution, "solve_source", None)
+                self._chart_pointing_source = (
+                    "imu"
+                    if source in (SolveSource.IMU, SolveSource.CAMERA_FAILED)
+                    else "solve"
+                )
+                return solution
+
+        self._chart_pointing_source = None
+        dt = self.shared_state.datetime() or datetime.datetime.now(
+            datetime.timezone.utc
+        )
+        sample = self._imu_coordinates.imu_sample(
+            self.shared_state,
+            dt,
+            # The chart fallback is independent of SkySafari's display setting.
+            config_get=lambda key, default=None: (
+                True
+                if key == "skysafari_imu_fallback"
+                else self.config_object.get_option(key, default)
+            ),
+            default_location_provider=self._chart_observer_location,
+        )
+        radec = sample.radec()
+        if radec is None or valid_radec(*radec) is None:
+            return None
+        self._chart_pointing_source = "imu"
+        pointing = Pointing(*radec, 0.0)
+        return PointingEstimate(
+            pointing=PointingMatrix(
+                camera=PointingAxis(estimate=pointing),
+                aligned=PointingAxis(estimate=pointing),
+            ),
+            estimate_time=sample.timestamp,
+            solve_source=SolveSource.IMU,
+            Alt=sample.alt_deg,
+            Az=sample.az_deg,
+        )
+
     def update(self, force=False):
         if force:
             self.last_update = 0
 
-        if self.shared_state.solve_state():
+        self.solution = self._chart_solution()
+        if self.solution is not None:
             self.animate_fov()
             constellation_brightness = self.config_object.get_option(
                 "chart_constellations", 64
             )
-            self.solution = self.shared_state.solution()
             last_estimate_time = self.solution.estimate_time
+            aligned = self.solution.pointing.aligned.estimate
+            frame_key = (
+                self._chart_pointing_source,
+                last_estimate_time,
+                aligned.RA,
+                aligned.Dec,
+            )
 
             if last_estimate_time is None:
                 self.plot_no_solve()
-            elif self.solution_is_new(last_estimate_time):
-                aligned = self.solution.pointing.aligned.estimate
+            elif (
+                force
+                or self._chart_backdrop is None
+                or frame_key != self._chart_frame_key
+                or self.solution_is_new(last_estimate_time)
+            ):
                 # Solution is new so plot the updated chart
                 orientation = get_chart_rotation_angle(
                     aligned.RA,
                     aligned.Dec,
                     chart_coord_sys=self.config_object.get_option("chart_coord_sys"),
-                    location=self.shared_state.location(),
+                    location=self._chart_observer_location(),
                     dt=self.shared_state.datetime(),
                 )
                 chart_rot_angle = orientation.rot_deg if orientation else None
@@ -635,6 +744,8 @@ class UIChart(UIModule):
                     )
 
                 self.last_update = last_estimate_time
+                self._chart_center = (aligned.RA, aligned.Dec)
+                self._chart_frame_key = frame_key
 
                 self.draw_reticle()
 
@@ -655,6 +766,8 @@ class UIChart(UIModule):
         self._center_tracker.reset()
         self._center_scroller = None
         self._chart_backdrop = None
+        self._chart_center = None
+        self._chart_frame_key = None
         self.draw.rectangle(
             [0, 0, self.display_class.resX, self.display_class.resY],
             fill=self.colors.get(0),

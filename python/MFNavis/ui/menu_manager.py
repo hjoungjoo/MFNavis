@@ -552,6 +552,8 @@ class MenuManager:
         pass
 
     def key_long_right(self):
+        if not self.stack[-1].allow_object_details:
+            return
         # jump to recent objects
         if self.stack[-1].item_definition.get("label") != "object_details":
             recent_list = self.ui_state.recent_list()

@@ -170,6 +170,14 @@ _Avoid_: api state, ui snapshot.
 
 ### Chart
 
+**Chart pointing**:
+The chart follows `pointing.aligned.estimate`, including plate-anchored IMU estimates retained after failed solves. If no valid estimate exists, it projects the calibrated, fresh IMU orientation into RA/Dec using the GPS or saved default observing site and current time. This fallback is local to the screen: it never publishes an optical solve or changes the shared pointing. Without either coordinate source, the chart shows its unavailable message. The published UI state identifies the source as `solve` or `imu`.
+
+**Finder** (`UIFinder`, label `finder`):
+A stateful main-menu module immediately above Chart. Short square cycles between a full-height camera image with the saved alignment reticle (no title or information bands) and the normal chart. `+` / `-` select 1×/2×/4× camera magnification or the standard chart fields of view. Both 5 and the ALIGN marking-menu action send the displayed reticle's RA/Dec as a GoTo target, including IMU coordinates in chart mode. They do not change the alignment pixel or select the nearest catalog object. Without a usable coordinate, neither action sends GoTo.
+
+Finder is for manual positioning followed by GoTo at the chosen reticle centre. It disables object-details navigation: short and long RIGHT stay in Finder in both modes, and the chart readout omits the object-details arrow. LEFT returns to the previous menu. The standalone Chart retains its object-details shortcuts.
+
 **Center object**:
 The plotted chart marker nearest the center of the chart. The candidate set is exactly what the chart drew on the current solve — the **target** cross, the observing list, and the nearby catalog DSOs that survived the zoom magnitude limit and the marker cap — further restricted to markers inside the screen bounds. So the center object is always something the user can see: with DSO Display off, the target cross is the only candidate, and when nothing qualifies there is no center object. It is held **sticky** between solves — a rival marker must be closer by a clear margin to take over — so it doesn't alternate between two near-equidistant markers as the pointing drifts. Ranked by distance in screen pixels, not great-circle degrees; at wide FOV the projection makes those differ, and "nearest the center of the chart" is the pixel one.
 _Avoid_: nearest object (the Catalog context's **Nearby** ranking is unbounded and ignores what's drawn — a different set), centre object (house spelling is `center`, matching `centerX`/`centerY`), selected object, target.
