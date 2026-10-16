@@ -321,13 +321,17 @@ def test_solve_and_live_imu_prediction_are_labelled_by_actual_source():
         {"valid": False},
         {"ra": float("nan")},
         {"dec": 91},
-        {"timestamp": time.time() - 20},
-        {"timestamp": time.time() + 100},
+        {"timestamp_offset": -20},
+        {"timestamp_offset": 100},
         {"metadata": {"target_pixel": [100, 100]}},
     ],
 )
 def test_push_does_not_display_invalid_or_old_alignment_coordinates(invalid):
     ui = camera_ui((128, 128), (256, 256))
+    invalid = invalid.copy()
+    if "timestamp_offset" in invalid:
+        # Collection can precede this test by minutes in the full suite.
+        invalid["timestamp"] = time.time() + invalid.pop("timestamp_offset")
     ui._push_pointing_status = {"solved": {**coordinate_sample("solve"), **invalid}}
     assert ui._push_guidance_coordinates() is None
 
