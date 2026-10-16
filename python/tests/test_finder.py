@@ -240,9 +240,13 @@ def test_invalid_pointing_never_sends_goto(finder, mode, invalid):
     finder.message.assert_called_with("No solve", 1)
 
 
-def test_lost_solve_between_draw_and_input_blocks_goto(finder):
+@pytest.mark.parametrize("mode", ("camera", "chart"))
+def test_lost_pointing_between_draw_and_input_blocks_goto(finder, mode):
+    if mode == "chart":
+        finder.key_square()
     finder.update()
     finder.shared_state.solve_state = lambda: False
+    finder.shared_state.solution = lambda: PointingEstimate()
     finder.key_number_press(5)
     assert finder.command_queues["goto_guide"].empty()
 
@@ -295,19 +299,24 @@ def imu_only(finder):
         quaternion.quaternion(1, 0, 0, 0), time.time(), status=3
     )
     finder.shared_state.imu = lambda: finder.test_imu
-    # This is a chart feature, regardless of the SkySafari setting.
+    # Finder pointing is independent of the SkySafari setting in both modes.
     finder.test_settings["skysafari_imu_fallback"] = False
     return finder
 
 
-def test_unsolved_chart_uses_real_imu_projection_and_goto(imu_only):
+@pytest.mark.parametrize("mode", ("camera", "chart"))
+def test_unsolved_finder_uses_real_imu_projection_and_goto(imu_only, mode):
     finder = imu_only
-    finder.key_square()
+    if mode == "chart":
+        finder.key_square()
+    else:
+        finder.update()
     initial = finder.serialize_ui_state()
-    assert initial["pointing_source"] == "imu"
+    assert finder._chart_pointing_source == "imu"
     ra, dec = initial["goto_center"]
     assert 0 <= ra < 360 and -90 <= dec <= 90
-    assert finder._chart_backdrop is not None
+    if mode == "chart":
+        assert finder._chart_backdrop is not None
     finder.key_number(5)
     assert finder.command_queues["goto_guide"].get_nowait() == {
         "type": "goto_target",
@@ -333,29 +342,74 @@ def test_unsolved_chart_uses_real_imu_projection_and_goto(imu_only):
     assert not finder.shared_state.solve_state()
 
 
-def test_imu_chart_recovers_to_optical_solve_and_keeps_failed_plate_estimate(imu_only):
+@pytest.mark.parametrize("mode", ("camera", "chart"))
+@pytest.mark.parametrize("command", ("key", "press", "align"))
+def test_unsolved_goto_freezes_displayed_imu_coordinates(imu_only, mode, command):
     finder = imu_only
-    finder.key_square()
-    assert finder.serialize_ui_state()["pointing_source"] == "imu"
+    if mode == "chart":
+        finder.key_square()
+    else:
+        finder.update()
+    ra, dec = finder.serialize_ui_state()["goto_center"]
+    finder.test_imu = replace(
+        finder.test_imu,
+        quat=quaternion.from_rotation_vector([0.1, 0.2, 0.3]),
+        timestamp=time.time(),
+    )
+    if command == "key":
+        finder.key_number(5)
+    elif command == "press":
+        finder.key_number_press(5)
+        finder.key_number_release(5)
+    else:
+        finder.mm_align(None, None)
+    queue = finder.command_queues["goto_guide"]
+    assert queue.get_nowait() == {"type": "goto_target", "ra": ra, "dec": dec}
+    assert queue.empty()
+    assert finder.command_queues["align_command"].empty()
+
+
+@pytest.mark.parametrize("mode", ("camera", "chart"))
+def test_imu_finder_recovers_to_optical_solve_and_keeps_failed_plate_estimate(
+    imu_only, mode
+):
+    finder = imu_only
+    if mode == "chart":
+        finder.key_square()
+    else:
+        finder.update()
+    assert finder._chart_pointing_source == "imu"
     # A new plate can have an older epoch than the last displayed IMU sample.
     plate = solution()
     plate.solve_source = SolveSource.CAMERA
     finder.shared_state.solution = lambda: plate
     finder.update()
-    assert finder.serialize_ui_state()["pointing_source"] == "solve"
+    assert finder._chart_pointing_source == "solve"
     assert finder.serialize_ui_state()["goto_center"] == (123.45, -32.1)
     for source in (SolveSource.IMU, SolveSource.CAMERA_FAILED):
         plate.solve_source = source
         plate.pointing.aligned.estimate.RA = 124.0
         finder.update()
-        assert finder.serialize_ui_state()["pointing_source"] == "imu"
+        assert finder._chart_pointing_source == "imu"
         assert finder.serialize_ui_state()["goto_center"] == (124.0, -32.1)
+        finder.key_number(5)
+        assert finder.command_queues["goto_guide"].get_nowait() == {
+            "type": "goto_target",
+            "ra": 124.0,
+            "dec": -32.1,
+        }
 
 
 @pytest.mark.parametrize("failure", ("stale", "unhealthy", "uncalibrated", "location"))
-def test_imu_fallback_loss_clears_chart_and_blocks_goto(imu_only, failure):
+@pytest.mark.parametrize("mode", ("camera", "chart"))
+@pytest.mark.parametrize("redraw", (False, True))
+def test_imu_fallback_loss_blocks_goto(imu_only, failure, mode, redraw):
     finder = imu_only
-    finder.key_square()
+    if mode == "chart":
+        finder.key_square()
+    else:
+        finder.update()
+    assert finder.serialize_ui_state()["goto_center"] is not None
     if failure == "stale":
         finder.test_imu = replace(finder.test_imu, timestamp=time.time() - 60)
     elif failure == "unhealthy":
@@ -364,20 +418,25 @@ def test_imu_fallback_loss_clears_chart_and_blocks_goto(imu_only, failure):
         finder.test_imu = replace(finder.test_imu, status=0)
     else:
         finder.shared_state.location = lambda: None
-    finder.update()
-    assert finder._chart_backdrop is None
-    assert finder.serialize_ui_state()["goto_center"] is None
+    if redraw:
+        finder.update()
+        assert finder._chart_backdrop is None
+        assert finder.serialize_ui_state()["goto_center"] is None
     finder.key_number(5)
     assert finder.command_queues["goto_guide"].empty()
 
 
-def test_imu_chart_can_use_saved_observing_site_without_gps_lock(imu_only):
+@pytest.mark.parametrize("mode", ("camera", "chart"))
+def test_imu_finder_can_use_saved_observing_site_without_gps_lock(imu_only, mode):
     finder = imu_only
     finder.shared_state.location = lambda: None
     finder.test_settings["locations.default"] = SimpleNamespace(
         latitude=37.5, longitude=127.0, height=30.0
     )
-    finder.key_square()
-    assert finder.serialize_ui_state()["pointing_source"] == "imu"
+    if mode == "chart":
+        finder.key_square()
+    else:
+        finder.update()
+    assert finder._chart_pointing_source == "imu"
     assert finder.serialize_ui_state()["goto_center"] is not None
     assert finder.shared_state.location() is None

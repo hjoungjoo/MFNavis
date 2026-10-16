@@ -96,8 +96,9 @@ class UIFinder(GuideKeyMixin, UIChart):
                 outline=self.colors.get(0),
                 diameters=(2, 0.5) if self.camera_zoom_level == 2 else (4, 2, 0.5),
             )
-            if self.shared_state.solve_state():
-                self._displayed_center = self._reticle_radec(solution)
+            # Use the same plate-anchored/absolute-IMU pointing as the chart,
+            # including before the first successful plate solve.
+            self._displayed_center = self._reticle_radec(self._chart_solution())
         return self.screen_update(title_bar=False, button_hints=False)
 
     def key_square(self):
@@ -119,11 +120,7 @@ class UIFinder(GuideKeyMixin, UIChart):
 
     def _mount_command(self, number, target=None, target_object=None):
         if number == 5:
-            available = (
-                self._chart_solution() is not None
-                if self.display_mode == "chart"
-                else self.shared_state.solve_state()
-            )
+            available = self._chart_solution() is not None
             if self._displayed_center is None or not available:
                 self.message(_("No solve"), 1)
                 return False
