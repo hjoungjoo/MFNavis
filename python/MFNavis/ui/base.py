@@ -468,15 +468,33 @@ class UIModule:
             str(saved_method) if saved_method in self._GOTO_METHOD_CYCLE else "mfnavis"
         )
 
+    def _titlebar_status_positions(self):
+        gap = max(4, round(self.display_class.resX / 64))
+        icon_width = max(
+            self.fonts.icon_bold_large.width,
+            self.fonts.icon_bold_large.font.getbbox(self._GPS_ICON)[2],
+            self.fonts.icon_bold_large.font.getbbox(self._CAM_ICON)[2],
+        )
+        text_width = max(
+            font.font.getbbox(glyph)[2]
+            for font in (self.fonts.bold, self.fonts.regular)
+            for glyph in ("M", "I", "T")
+        )
+        camera_x = self.display_class.resX - 4 - icon_width
+        mount_x = camera_x - gap - text_width
+        gps_x = mount_x - gap - icon_width
+        clock_x = gps_x - gap - text_width if self._clock_untrusted() else gps_x
+        return gps_x, mount_x, camera_x, clock_x
+
     def _draw_indi_indicator(self, y):
         glyph, state = self._indi_indicator_spec()
         if glyph is None or state is None:
             return
 
         fill = self.colors.get(0 if state == "ok" else 32)
-        x = int(self.display_class.resX * 0.865)
+        _gps_x, indicator_x, _camera_x, _clock_x = self._titlebar_status_positions()
         font = self.fonts.bold.font if state == "ok" else self.fonts.regular.font
-        self.draw.text((x, y), glyph, font=font, fill=fill)
+        self.draw.text((indicator_x, y), glyph, font=font, fill=fill)
 
     def _clock_untrusted(self) -> bool:
         """True while the system clock has not been GPS/NTP-synchronized this
@@ -501,8 +519,10 @@ class UIModule:
         # Blink like the INDI problem indicator so it reads as a warning.
         if int(time.time() * 2) % 2 == 0:
             return
-        x = int(self.display_class.resX * 0.93)
-        self.draw.text((x, y), "T", font=self.fonts.bold.font, fill=self.colors.get(32))
+        _gps_x, _mount_x, _camera_x, clock_x = self._titlebar_status_positions()
+        self.draw.text(
+            (clock_x, y), "T", font=self.fonts.bold.font, fill=self.colors.get(32)
+        )
 
     def draw_rotating_info(self, x=10, y=92, font=None):
         """Draw rotating constellation/SQM display with cross-fade."""
@@ -540,13 +560,15 @@ class UIModule:
             title_y = max(0, (tb_height - self.fonts.bold.height) // 2)
             icon_y = (tb_height - self.fonts.icon_bold_large.height) // 2
             title_text = str(self.fps) if self.ui_state.show_fps() else _(self.title)
-            # Truncate so the title never runs under the right-side status icons.
-            # They start at the GPS icon (~0.8*resX); leave a small gap. Derived
-            # from the screen size + bold font, so it adapts to 128/176/320.
-            title_max_px = int(self.display_class.resX * 0.8) - 6 - 4
-            title_max_chars = max(1, title_max_px // self.fonts.bold.width)
-            if len(title_text) > title_max_chars:
-                title_text = title_text[: title_max_chars - 1] + "…"
+            gps_x, _mount_x, camera_x, status_left = self._titlebar_status_positions()
+            title_max_px = status_left - 6 - 4
+            if self.fonts.bold.font.getbbox(title_text)[2] > title_max_px:
+                while (
+                    title_text
+                    and self.fonts.bold.font.getbbox(title_text + "…")[2] > title_max_px
+                ):
+                    title_text = title_text[:-1]
+                title_text += "…"
             self.draw.text((6, title_y), title_text, font=self.fonts.bold.font, fill=fg)
             imu = self.shared_state.imu()
             moving = bool(imu and imu.is_usable() and imu.moving)
@@ -566,7 +588,7 @@ class UIModule:
                 self._gps_brightness if self._gps_brightness > 0 else 0
             )
             self.draw.text(
-                (self.display_class.resX * 0.8, icon_y),
+                (gps_x, icon_y),
                 self._GPS_ICON,
                 font=self.fonts.icon_bold_large.font,
                 fill=_gps_color,
@@ -592,23 +614,27 @@ class UIModule:
 
                     if self._unmoved:
                         self.draw.text(
-                            (self.display_class.resX * 0.91, icon_y),
+                            (camera_x, icon_y),
                             self._CAM_ICON,
                             font=self.fonts.icon_bold_large.font,
                             fill=var_fg,
                         )
 
-                    if len(self.title) < 9:
+                    info_x = int(self.display_class.resX * 0.54)
+                    if (
+                        len(self.title) < 9
+                        and info_x + 5 * self.fonts.bold.width <= status_left - 4
+                    ):
                         # Draw rotating constellation/SQM wheel (replaces static constellation)
                         self._draw_titlebar_rotating_info(
-                            x=int(self.display_class.resX * 0.54),
+                            x=info_x,
                             y=title_y,
                             fg=fg if self._unmoved else self.colors.get(32),
                         )
                 else:
                     # no solve yet....
                     self.draw.text(
-                        (self.display_class.resX * 0.91, title_y),
+                        (camera_x, title_y),
                         "X",
                         font=self.fonts.bold.font,
                         fill=fg,

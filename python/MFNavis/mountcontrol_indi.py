@@ -31,6 +31,7 @@ from PiFinder import sys_utils, utils
 from PiFinder.guide_pid import GuidePID, approach_gain
 from PiFinder.guide_holdover import GuideHoldover
 from PiFinder.mount_motion_limits import MountMotionLimitsMixin
+from PiFinder.goto_manual_approach import ManualGotoApproachMixin
 from PiFinder.operation_errors import ErrorNotifier, mount_failure
 from PiFinder.indi_align import (
     BRIGHT_ALIGN_STARS,
@@ -643,7 +644,9 @@ else:
         pass
 
 
-class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
+class MountControlIndi(
+    ManualGotoApproachMixin, MountMotionLimitsMixin, BacklashCalibrationMixin
+):
     """Translate MFNavis queue commands into INDI telescope commands."""
 
     def __init__(
@@ -682,6 +685,9 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         self.user_manual_slew_rate = 7
         self._manual_speed_request: Optional[dict[str, Any]] = None
         self._manual_speed_apply_state = "idle"
+        self._manual_approach = None
+        self._guide_manual_approach = False
+        self._manual_approach_progress = None
         self.guide_rate_we = GUIDE_RATE_FINE_X
         self.guide_rate_ns = GUIDE_RATE_FINE_X
         self._load_motion_rates()
@@ -909,6 +915,8 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
     def _status_fields(self, state: str = "", **extra: Any) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "motion_limit": dict(getattr(self, "_motion_limit", {})),
+            "motion_limit_ack": dict(getattr(self, "_motion_limit_ack", {})),
+            "manual_approach": dict(self._manual_approach or {}),
             "connection_epoch": self._client_generation,
             "connection_established": self._connection_announced,
             "initial_location_sync_state": (
@@ -1602,12 +1610,16 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         self,
         direction: str,
         lease_seconds: Any = None,
+        origin: str = "user",
     ) -> None:
         now = time.monotonic()
         self._manual_motion_direction = direction
-        self._manual_motion_origin = "user"
-        self._last_user_motion_started_wall = time.time()
-        self._alignment_motion("motion_start", "observation", now)
+        self._manual_motion_origin = origin
+        if origin == "user":
+            self._last_user_motion_started_wall = time.time()
+        self._alignment_motion(
+            "motion_start", "observation" if origin == "user" else "correction", now
+        )
         self._manual_motion_deadline = now + self._manual_motion_lease(lease_seconds)
         self._manual_motion_started_at = now
         self._manual_motion_refreshed_at = now
@@ -2488,6 +2500,9 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         return True
 
     def disconnect(self) -> None:
+        if self._manual_approach is not None:
+            self._guide_correction_enabled = False
+            self._cancel_manual_approach()
         if self.client is not None:
             try:
                 self.client.disconnectServer()
@@ -3986,6 +4001,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         observation_after_wall: float = 0.0,
         continue_on_solve_loss: bool = False,
         reset_convergence: bool = False,
+        manual_approach: bool = False,
     ) -> bool:
         if self._smooth_runtime is not None and self._smooth_runtime.claimed:
             # A delayed legacy disable also changes the guide rate. Handover
@@ -3997,6 +4013,9 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             enabled = not self._guide_correction_enabled
 
         if not enabled:
+            if not self._cancel_manual_approach():
+                return False
+            self._guide_manual_approach = False
             self._guide_centering_active = False
             self._guide_rearm_candidate = None
             self._guide_rearm_intervals.clear()
@@ -4045,6 +4064,11 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         if target_changed or reset_convergence or not self._guide_correction_enabled:
             self._guide_holdover.reset()
         self._guide_continue_on_solve_loss = continue_on_solve_loss
+        self._guide_manual_approach = bool(
+            manual_approach and not continue_on_solve_loss
+        )
+        if manual_approach:
+            self._manual_approach_progress = None
         self._guide_correction_enabled = True
         from PiFinder.tracking_commands import control_epoch
 
@@ -4160,6 +4184,8 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         return False
 
     def _check_guide_correction(self) -> None:
+        if self._check_manual_approach():
+            return
         if self._smooth_runtime is not None and self._smooth_runtime.claimed:
             return
         if self._pending_guide_rate is not None:
@@ -4189,20 +4215,24 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
 
         solved = self._current_plate_solve()
         if solved is None:
+            self._cancel_manual_approach()
             self._check_guide_holdover()
             return
 
         current_ra, current_dec, solve_time = solved
         if solve_time is None:
+            self._cancel_manual_approach()
             self._check_guide_holdover()
             return
         # Being newer than the previous pulse does not make an old camera
         # observation recent. Leave it unconsumed so a valid solve can resume.
         solve_age = time.time() - solve_time
         if not all(math.isfinite(v) for v in (current_ra, current_dec, solve_age)):
+            self._cancel_manual_approach()
             self._check_guide_holdover()
             return
         if not 0.0 <= solve_age <= GUIDE_CORRECTION_MAX_SOLVE_AGE_SECONDS:
+            self._cancel_manual_approach()
             self._check_guide_holdover()
             return
         target_ra, target_dec = self._guide_correction_target
@@ -4243,6 +4273,10 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             return
         error = max(separation, axis_error)
         if not math.isfinite(error):
+            return
+        if self._apply_manual_approach(
+            current_ra, current_dec, target_ra, target_dec, error, solve_time
+        ):
             return
         if not self._guide_rearm_confirmed(error, solve_time, ns_error, we_error):
             self._guide_correction_last_solve_time = solve_time
@@ -4303,12 +4337,12 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
                 self._guide_correction_mode = "reacquire"
                 self._write_controller_status(
                     "guide_correction",
-                    "Pulse correction not converging; requesting GoTo recovery if outside the near threshold",
+                    "Pulse correction not converging; requesting optical recovery",
                     guide_error_arcmin=error,
                 )
                 logger.warning(
                     "Pulse correction not converging: best %.2f, now %.2f arcmin; "
-                    "requesting GoTo recovery if outside the near threshold",
+                    "requesting optical recovery",
                     self._guide_pulse_best_error,
                     error,
                 )
@@ -5447,6 +5481,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             # Explicit 0-key Stop cancels every source of further motion.
             # Direction-key release still stops only the manual axes below.
             self._pending_goto_refine = None
+            self._guide_manual_approach = False
             self._guide_correction_enabled = False
             self._guide_predictive_tracking = False
             self._guide_correction_mode = "off"
@@ -5500,6 +5535,8 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             # The command ACK is not physical completion. Recheck idle/axis
             # state in the event loop before starting the solve deadline.
             self._alignment_stop_pending = "observation"
+        elif self._manual_motion_origin == "goto_approach":
+            self._alignment_stop_pending = "correction"
         elif self._goto_motion is not None:
             self._alignment_stop_pending = self._goto_motion.get(
                 "motion_purpose", "observation"
@@ -5522,6 +5559,8 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             return False
         if used_abort and was_tracking and not self.set_tracking(True):
             return False
+        if not self._restore_manual_approach_speed():
+            return False
         logger.info("Mount stop command sent")
         self._console("INDI mount\nstopped")
         return True
@@ -5533,6 +5572,9 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
         reassert_slew_rate: bool = True,
         origin: str = "user",
     ) -> bool:
+        if not self._cancel_manual_approach():
+            return False
+        self._guide_manual_approach = False
         if not self._guard_motion():
             return False
         direction = direction.lower()
@@ -5731,6 +5773,8 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
 
     def set_slew_rate(self, rate: int) -> bool:
         rate = max(0, min(9, int(rate)))
+        if not self._cancel_manual_approach():
+            return False
         if (
             self._manual_speed_request is not None
             and self._manual_speed_request["rate"] == rate
@@ -6703,6 +6747,14 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
 
         if stale_command(command, getattr(self, "mount_queue", None)):
             return True
+        if self._manual_approach is not None and command_type in INVALIDATING_COMMANDS:
+            self._guide_manual_approach = False
+            self._guide_correction_enabled = False
+            if not self._cancel_manual_approach() and command_type not in {
+                "stop_movement",
+                "shutdown",
+            }:
+                return True
         if command_type in INVALIDATING_COMMANDS and not (
             command_type == "stop_movement" and command.get("origin") == "goto_error"
         ):
@@ -6715,8 +6767,44 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
             self._check_motion_limits(sync_preparation=True)
         else:
             self._check_motion_limits()
+        if (
+            command_type in {"goto_target", "sync_and_goto"}
+            and command.get("acknowledge_motion_limit") is True
+            and time.monotonic() >= command.get("limit_recovery_deadline", float("inf"))
+        ):
+            self._motion_limit_ack = {
+                "request_id": command.get("request_id"),
+                "cleared": False,
+            }
+            self._write_controller_status(
+                "goto_failed", "Limit recovery request expired"
+            )
+            return True
+        if (
+            command_type in {"goto_target", "sync_and_goto"}
+            and command.get("acknowledge_motion_limit") is True
+            and not getattr(self, "_motion_limit", {}).get("latched")
+        ):
+            self._motion_limit_ack = {
+                "request_id": command.get("request_id"),
+                "cleared": True,
+            }
         if getattr(self, "_motion_limit", {}).get("latched"):
             if (
+                command_type in {"goto_target", "sync_and_goto"}
+                and command.get("acknowledge_motion_limit") is True
+            ):
+                cleared = self._acknowledge_goto_motion_limit(command)
+                self._motion_limit_ack = {
+                    "request_id": command.get("request_id"),
+                    "cleared": cleared,
+                }
+                if not cleared:
+                    self._write_controller_status(
+                        "limit_exceeded", self._motion_limit["message"]
+                    )
+                    return True
+            elif (
                 command_type == "set_tracking"
                 and command.get("enabled") is True
                 and command.get("origin") in {None, "user"}
@@ -6840,6 +6928,7 @@ class MountControlIndi(MountMotionLimitsMixin, BacklashCalibrationMixin):
                 command.get("target_dec"),
                 command.get("accuracy_arcmin"),
                 predictive_tracking=bool(command.get("predictive_tracking", False)),
+                manual_approach=bool(command.get("goto_manual_approach", False)),
                 observation_after_wall=float(
                     command.get("observation_after_wall", 0.0)
                 ),

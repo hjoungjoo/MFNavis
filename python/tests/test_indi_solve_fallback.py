@@ -279,14 +279,9 @@ def test_fresh_solve_uses_arrival_error_for_fine_alignment(rig, residual):
     solve(rig, dec=30 + residual / 60)
     service._tick_state_machine()
     cmd = commands(service)[-1]
-    if residual == 12.0:
-        assert service.phase == "pifinder_goto"
-        assert cmd["type"] == "sync_and_goto"
-        assert cmd["pointing_source"] == "solve"
-        assert service.correction_count == 2
-        return
     assert service.phase == "pifinder_pulse_align"
     assert cmd["type"] == "toggle_guide_correction"
+    assert cmd["goto_manual_approach"]
     assert "manual_approach" not in cmd
     assert "manual_fallback" not in cmd
     assert service.correction_count == 1
@@ -325,7 +320,7 @@ def test_recovered_solve_at_batch_limit_waits_instead_of_slewing(rig):
     assert service.solve_anchor_required_after_wall > clock[0]
 
 
-def test_solve_recovery_does_not_reenable_unconverged_pulses(rig):
+def test_solve_recovery_uses_manual_approach_before_retrying_failed_pulses(rig):
     service, clock, _, _ = rig
     start(rig)
     acknowledge(rig)
@@ -333,9 +328,11 @@ def test_solve_recovery_does_not_reenable_unconverged_pulses(rig):
     clock[0] += 1
     solve(rig, dec=30.2)
     service._tick_state_machine()
-    assert service.pulse_alignment_unreliable
-    assert service.phase == "pifinder_goto"
-    assert commands(service)[-1]["type"] == "sync_and_goto"
+    assert not service.pulse_alignment_unreliable
+    assert service.phase == "pifinder_pulse_align"
+    command = commands(service)[-1]
+    assert command["type"] == "toggle_guide_correction"
+    assert command["goto_manual_approach"]
 
 
 def test_solve_during_slew_is_not_a_recovery_anchor(rig):

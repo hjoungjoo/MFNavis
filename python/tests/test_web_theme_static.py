@@ -7,6 +7,16 @@ VIEWS_DIR = Path(__file__).resolve().parents[1] / "views"
 SERVER_PATH = Path(__file__).resolve().parents[1] / "PiFinder" / "server.py"
 
 
+def test_smooth_tracking_is_the_last_indi_settings_panel():
+    indi_html = (VIEWS_DIR / "indi_mount.html").read_text()
+    content = indi_html.split("{% block content %}", 1)[1].split("{% endblock %}", 1)[0]
+    include = '{% include "smooth_tracking.html" %}'
+
+    assert indi_html.count(include) == 1
+    assert content.rstrip().endswith(include)
+    assert content.index('id="goto_guide_last_action_value"') < content.index(include)
+
+
 def test_base_template_exposes_theme_selector():
     base_html = (VIEWS_DIR / "base.html").read_text()
 

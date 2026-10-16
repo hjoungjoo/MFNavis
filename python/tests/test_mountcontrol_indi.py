@@ -3219,6 +3219,124 @@ def test_tracking_can_seed_the_already_consumed_arrival_frame(monkeypatch):
     assert mount._guide_holdover.sample is None
 
 
+def _latched_goto_mount(monkeypatch):
+    mount, command = _sync_limit_test_mount(monkeypatch)
+    mount._motion_limit = {"latched": True, "message": "Above Overhead limit"}
+    mount._pending_motion_limit = "Above Overhead limit"
+    mount._last_fresh_onstep_status_at = time.monotonic()
+    monkeypatch.setattr(mount, "_raw_onstep_status", lambda: "nNpvAT220")
+    mount.receive_sync_property(
+        "EQUATORIAL_EOD_COORD", "ok", {"RA": 0, "DEC": 0}, mount._client_generation
+    )
+    monkeypatch.setattr(mount, "_indi_mount_is_busy", lambda: False)
+    command["acknowledge_motion_limit"] = True
+    return mount, command
+
+
+def test_new_goto_recovers_limit_with_fresh_sync_and_retains_ack_gates(monkeypatch):
+    mount, command = _latched_goto_mount(monkeypatch)
+    mount.handle_command(command)
+    assert not mount._motion_limit
+    assert mount._motion_limit_ack == {"request_id": "first", "cleared": True}
+    assert mount._pending_sync_goto["stage"] == "waiting_sync_mode"
+    mount._check_motion_limits()
+    assert not mount._motion_limit
+    assert mount.moves == []
+    assert not any(switch[2] == "TRACK_ON" for switch in mount.client.switches)
+    _sync_ack(mount, "ON_COORD_SET", {"SYNC": True})
+    _sync_ack(mount, "EQUATORIAL_EOD_COORD", {"RA": 132 / 15, "DEC": 49.5})
+    assert mount.moves == []
+    _sync_ack(mount, "ON_COORD_SET", {"SLEW": True})
+    assert mount.moves == [(140.0, 45.0)]
+
+
+@pytest.mark.parametrize(
+    "blocked",
+    [
+        "fault",
+        "stale",
+        "unknown",
+        "busy",
+        "parked",
+        "disconnected",
+        "no_position",
+        "sync_limit",
+        "target_limit",
+        "invalid",
+        "automatic",
+    ],
+)
+def test_new_goto_cannot_clear_unsafe_or_unverified_limit(monkeypatch, blocked):
+    mount, command = _latched_goto_mount(monkeypatch)
+    if blocked == "fault":
+        monkeypatch.setattr(mount, "_raw_onstep_status", lambda: "nNpvAT223")
+    elif blocked == "stale":
+        mount._last_fresh_onstep_status_at -= 10
+    elif blocked == "unknown":
+        monkeypatch.setattr(mount, "_raw_onstep_status", lambda: "")
+    elif blocked == "busy":
+        monkeypatch.setattr(mount, "_indi_mount_is_busy", lambda: True)
+    elif blocked == "parked":
+        monkeypatch.setattr(mount, "_raw_onstep_status", lambda: "nNPvAT220")
+    elif blocked == "disconnected":
+        mount.connected = False
+    elif blocked == "no_position":
+        mount._sync_property_receipts.clear()
+    elif blocked == "sync_limit":
+        command.update(sync_ra=0, sync_dec=0)
+    elif blocked == "target_limit":
+        command.update(ra=0, dec=0)
+    elif blocked == "invalid":
+        command["sync_dec"] = float("nan")
+    elif blocked == "automatic":
+        command.pop("acknowledge_motion_limit")
+    mount.handle_command(command)
+    assert mount._motion_limit["latched"]
+    assert mount._pending_sync_goto is None
+    assert mount.moves == []
+    assert mount.client.switches == []
+    if blocked != "automatic":
+        assert mount._motion_limit_ack["cleared"] is False
+
+
+def test_direct_goto_limit_recovery_checks_current_mount_frame(monkeypatch):
+    mount, command = _latched_goto_mount(monkeypatch)
+    command["type"] = "goto_target"
+    mount.handle_command(command)
+    assert mount._motion_limit["latched"]
+    assert mount.moves == []
+    mount.receive_sync_property(
+        "EQUATORIAL_EOD_COORD",
+        "ok",
+        {"RA": 132 / 15, "DEC": 49.5},
+        mount._client_generation,
+    )
+    monkeypatch.setattr(
+        mount,
+        "goto_target",
+        lambda ra, dec, **kwargs: mount.moves.append((ra, dec)) or True,
+    )
+    mount.handle_command(command)
+    assert not mount._motion_limit
+    assert mount.moves == [(140.0, 45.0)]
+
+
+@pytest.mark.parametrize("latched", [False, True])
+def test_expired_limit_goto_cannot_start_even_after_external_unlock(
+    monkeypatch, latched
+):
+    mount, command = _latched_goto_mount(monkeypatch)
+    if not latched:
+        mount._motion_limit = {}
+        mount._pending_motion_limit = ""
+    command["limit_recovery_deadline"] = time.monotonic() - 1
+    mount.handle_command(command)
+    assert mount._motion_limit_ack["cleared"] is False
+    assert mount._pending_sync_goto is None
+    assert mount.client.switches == []
+    assert mount.moves == []
+
+
 def test_tracking_guide_does_not_enable_manual_approach(monkeypatch):
     mount, _clock, _observation, _errors, motions, pulses = _pulse_correction_mount(
         monkeypatch

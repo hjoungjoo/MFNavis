@@ -647,6 +647,7 @@ def test_internal_alignment_sync_retains_epoch_and_acknowledges_real_mount_resul
         mount_queue=commands,
         _smooth_runtime=None,
         shared_state=SimpleNamespace(tracking_alignment=ledger.update),
+        _manual_approach=None,
         _check_motion_limits=Mock(),
         sync_mount=Mock(return_value=True),
     )
@@ -699,6 +700,7 @@ def test_aborted_goto_aligns_only_after_physical_idle_without_resetting_correcti
         _apply_indi_properties=Mock(return_value=True),
         _indi_property_on=lambda prop: prop,
         _clear_manual_motion_deadline=Mock(),
+        _restore_manual_approach_speed=Mock(return_value=True),
         _console=Mock(),
         _indi_mount_is_busy=lambda: busy[0],
         _device_switch_on=lambda *args: False,
@@ -776,6 +778,7 @@ def test_align_hold_cancels_pending_recovery_and_drops_old_automatic_packets():
         mount_queue=commands,
         _smooth_runtime=None,
         _cancel_sync_goto=Mock(),
+        _manual_approach=None,
         _pending_goto_refine="old",
         _mfnavis_sync_preparation=Mock(return_value=False),
         _check_motion_limits=Mock(),

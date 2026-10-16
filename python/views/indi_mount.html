@@ -40,7 +40,6 @@
 </div>
 {% endif %}
 
-{% include "smooth_tracking.html" %}
 <div class="card grey darken-2">
   <div class="card-content">
     <h5 class="grey-text">{{ _('Current INDI Driver State') }}</h5>
@@ -624,6 +623,7 @@
       <strong id="goto_guide_last_action_value">{{ (goto_guide_status.get('last_action') or '-')|string|replace("PiFinder", "MFNavis")|replace("pifinder", "MFNavis") }}</strong></p>
   </div>
 </div>
+{% include "smooth_tracking.html" %}
 {% endblock %}
 
 {% block scripts %}

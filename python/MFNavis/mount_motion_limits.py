@@ -169,11 +169,70 @@ class MountMotionLimitsMixin:
             else:
                 self._guard_motion()
 
-    def _acknowledge_motion_limit(self):
-        """An explicit tracking-on request can release a cleared interlock."""
+    def _acknowledge_motion_limit(self, *, current_position=None, target=None):
+        """An explicit user request can release a cleared interlock."""
         # Driver rejection text is an event, unlike current firmware status.
         self._pending_motion_limit = ""
-        if self._motion_limit_reason():
+        reason = (
+            self._motion_limit_reason(current_position=current_position)
+            if current_position is not None
+            else self._motion_limit_reason()
+        )
+        if reason or (target is not None and self._motion_limit_reason(target)):
             return False
         self._motion_limit = {}
+        self._motion_limit_retry_at = 0.0
         return True
+
+    def _acknowledge_goto_motion_limit(self, command):
+        if not self.connected or self.device is None:
+            return False
+        if time.monotonic() >= command.get("limit_recovery_deadline", float("inf")):
+            return False
+        receipt = self._motion_property_receipt("EQUATORIAL_EOD_COORD")
+        if receipt is None or receipt["state"] not in {"idle", "ok"}:
+            return False
+        if "onstep" in self._indi_device_name().lower():
+            raw = self._raw_onstep_status().rstrip("#")
+            limits = self._limit_numbers("Slew elevation Limit")
+            if (
+                not 0 <= time.monotonic() - self._last_fresh_onstep_status_at <= 3
+                or not {"n", "N", "p"}.issubset(raw)
+                or not raw.endswith("0")
+                or not -90
+                <= limits.get("minAlt", -91)
+                <= limits.get("maxAlt", 91)
+                <= 90
+            ):
+                return False
+        if self._indi_mount_is_busy() is not False:
+            return False
+        latitude, longitude, _, _ = self._shared_location_time_values()
+        site = self._limit_numbers("GEOGRAPHIC_COORD")
+        if "LAT" in site and "LONG" in site and abs(site["LAT"]) <= 90:
+            latitude, longitude = site["LAT"], site["LONG"]
+        if latitude is None or longitude is None:
+            return False
+        if not all(math.isfinite(value) for value in (latitude, longitude)):
+            return False
+        try:
+            target = float(command["ra"]), float(command["dec"])
+            current_position = (
+                float(receipt["values"]["RA"]) * 15,
+                float(receipt["values"]["DEC"]),
+            )
+            if command["type"] == "sync_and_goto" and self._mfnavis_sync_preparation(
+                command
+            ):
+                current_position = float(command["sync_ra"]), float(command["sync_dec"])
+            for position in (target, current_position):
+                if position is not None and (
+                    not all(math.isfinite(value) for value in position)
+                    or abs(position[1]) > 90
+                ):
+                    return False
+        except (KeyError, TypeError, ValueError):
+            return False
+        return self._acknowledge_motion_limit(
+            current_position=current_position, target=target
+        )
