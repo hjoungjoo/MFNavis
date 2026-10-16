@@ -15,6 +15,7 @@ import PiFinder.i18n  # noqa: F401
 from PiFinder.displays import DisplayHeadless, DisplayHeadless176, DisplayHeadless320
 from PiFinder.state import UIState
 from PiFinder.ui import chart as chart_module, menu_structure
+from PiFinder.ui import finder as finder_module
 from PiFinder.ui.finder import UIFinder
 from PiFinder.ui.menu_manager import MenuManager
 from PiFinder.types.positioning import ImuSample, PointingEstimate, SolveSource
@@ -73,8 +74,15 @@ def finder(request, monkeypatch):
     screen.screen_update = Mock(return_value=screen.screen)
     screen.message = Mock()
     screen.test_settings = settings
+    screen.test_now = 100.0
+    monkeypatch.setattr(finder_module, "monotonic", lambda: screen.test_now)
     screen.active()
     return screen
+
+
+def advance(finder, seconds=1.0):
+    finder.test_now += seconds
+    finder.update()
 
 
 def test_finder_is_immediately_above_chart_in_main_menu():
@@ -184,6 +192,7 @@ def test_right_shortcuts_stay_in_finder_with_center_and_recent_objects(finder, m
     assert queue.get_nowait()["direction"] == "north"
     assert queue.get_nowait() == {"type": "stop_movement"}
     finder.key_number(5)
+    advance(finder)
     assert finder.command_queues["goto_guide"].get_nowait() == {
         "type": "goto_target",
         "ra": center[0],
@@ -193,12 +202,12 @@ def test_right_shortcuts_stay_in_finder_with_center_and_recent_objects(finder, m
 
 @pytest.mark.parametrize("mode", ("camera", "chart"))
 @pytest.mark.parametrize("command", ("key", "press", "align"))
-def test_goto_uses_displayed_aligned_centre_for_every_input(finder, mode, command):
+def test_goto_waits_one_second_and_uses_settled_centre(finder, mode, command):
     if mode == "chart":
         finder.key_square()
     finder.update()
     assert finder.serialize_ui_state()["goto_center"] == (123.45, -32.1)
-    # A later estimator update must not replace the coordinates the user saw.
+    # Keypress motion must settle before choosing the GoTo coordinates.
     finder.shared_state.solution = lambda: solution(222.0, 44.0, 11.0)
     if command == "key":
         finder.key_number(5)
@@ -209,7 +218,13 @@ def test_goto_uses_displayed_aligned_centre_for_every_input(finder, mode, comman
         submenu = finder.marking_menu.down.callback
         assert submenu.right.callback(submenu, submenu.right) is True
     queue = finder.command_queues["goto_guide"]
-    assert queue.get_nowait() == {"type": "goto_target", "ra": 123.45, "dec": -32.1}
+    assert queue.empty()
+    advance(finder, 0.99)
+    assert queue.empty()
+    finder.shared_state.solution = lambda: solution(223.0, 45.0, 12.0)
+    advance(finder, 0.01)
+    assert queue.get_nowait() == {"type": "goto_target", "ra": 223.0, "dec": 45.0}
+    advance(finder)
     assert queue.empty()
     assert finder.command_queues["align_command"].empty()
 
@@ -256,6 +271,7 @@ def test_no_camera_reticle_means_no_goto(finder, pixel):
     finder.shared_state.target_pixel = lambda: pixel
     finder.update()
     finder.key_number(5)
+    advance(finder)
     assert finder.command_queues["goto_guide"].empty()
 
 
@@ -263,10 +279,12 @@ def test_mount_disabled_and_goto_off_do_not_send_goto(finder):
     finder.update()
     finder.test_settings["mount_control"] = False
     finder.key_number(5)
+    advance(finder)
     assert finder.command_queues["goto_guide"].empty()
     finder.test_settings["mount_control"] = True
     finder.test_settings["indi_goto_method"] = "off"
     finder.key_number(5)
+    advance(finder)
     assert finder.command_queues["goto_guide"].empty()
 
 
@@ -274,6 +292,7 @@ def test_goto_falls_back_to_mount_queue_and_stop_is_preserved(finder):
     finder.command_queues.pop("goto_guide")
     finder.update()
     finder.mm_align(None, None)
+    advance(finder)
     assert finder.command_queues["mountcontrol"].get_nowait() == {
         "type": "goto_target",
         "ra": 123.45,
@@ -285,6 +304,86 @@ def test_goto_falls_back_to_mount_queue_and_stop_is_preserved(finder):
     while not queue.empty():
         commands.append(queue.get_nowait())
     assert commands[-1] == {"type": "stop_movement", "stop_tracking": True}
+
+
+@pytest.mark.parametrize("mode", ("camera", "chart"))
+@pytest.mark.parametrize(
+    "action",
+    ("stop", "jog", "text_jog", "inactive", "covered", "square", "cancel"),
+)
+def test_pending_goto_is_cancelled_by_other_actions(finder, mode, action):
+    if mode == "chart":
+        finder.key_square()
+    finder.update()
+    finder.key_number_press(5)
+    advance(finder, 0.5)
+    if action == "stop":
+        finder.key_number(0)
+        assert finder.command_queues["goto_guide"].get_nowait() == {
+            "type": "stop_movement",
+            "stop_tracking": True,
+        }
+    elif action == "jog":
+        finder.key_number_press(8)
+        finder.key_number_release(8)
+    elif action == "text_jog":
+        finder.key_text_press("w")
+        finder.key_text_release("w")
+    elif action == "inactive":
+        finder.inactive()
+        finder.active()
+    elif action == "covered":
+        finder.covered()
+    elif action == "square":
+        finder.key_square()
+    else:
+        finder.mm_cancel(None, None)
+    advance(finder)
+    assert finder.command_queues["goto_guide"].empty()
+
+
+@pytest.mark.parametrize("mode", ("camera", "chart"))
+def test_repeated_goto_restarts_delay_and_sends_once(finder, mode):
+    if mode == "chart":
+        finder.key_square()
+    finder.update()
+    finder.key_number(5)
+    advance(finder, 0.5)
+    finder.key_number(5)
+    advance(finder, 0.5)
+    queue = finder.command_queues["goto_guide"]
+    assert queue.empty()
+    advance(finder, 0.5)
+    assert queue.get_nowait()["type"] == "goto_target"
+    advance(finder)
+    assert queue.empty()
+
+
+@pytest.mark.parametrize("mode", ("camera", "chart"))
+@pytest.mark.parametrize("loss", ("pointing", "mount", "off", "reticle"))
+def test_pending_goto_rechecks_availability(finder, mode, loss):
+    if mode == "chart":
+        finder.key_square()
+    finder.update()
+    finder.key_number(5)
+    if loss == "pointing":
+        finder.shared_state.solution = lambda: PointingEstimate()
+    elif loss == "mount":
+        finder.test_settings["mount_control"] = False
+    elif loss == "off":
+        finder.test_settings["indi_goto_method"] = "off"
+    elif mode == "camera":
+        finder.shared_state.target_pixel = lambda: None
+    else:
+        finder.shared_state.solution = lambda: None
+    advance(finder)
+    assert finder.command_queues["goto_guide"].empty()
+    # Recovery must not resurrect an already rejected request.
+    finder.shared_state.solution = lambda: solution()
+    finder.shared_state.target_pixel = lambda: (230.25, 310.75)
+    finder.test_settings.update(mount_control=True, indi_goto_method="mfnavis")
+    advance(finder)
+    assert finder.command_queues["goto_guide"].empty()
 
 
 @pytest.fixture
@@ -318,6 +417,7 @@ def test_unsolved_finder_uses_real_imu_projection_and_goto(imu_only, mode):
     if mode == "chart":
         assert finder._chart_backdrop is not None
     finder.key_number(5)
+    advance(finder)
     assert finder.command_queues["goto_guide"].get_nowait() == {
         "type": "goto_target",
         "ra": ra,
@@ -332,6 +432,7 @@ def test_unsolved_finder_uses_real_imu_projection_and_goto(imu_only, mode):
     moved = finder.serialize_ui_state()["goto_center"]
     assert moved != (ra, dec)
     finder.mm_align(None, None)
+    advance(finder)
     assert finder.command_queues["goto_guide"].get_nowait() == {
         "type": "goto_target",
         "ra": moved[0],
@@ -344,7 +445,7 @@ def test_unsolved_finder_uses_real_imu_projection_and_goto(imu_only, mode):
 
 @pytest.mark.parametrize("mode", ("camera", "chart"))
 @pytest.mark.parametrize("command", ("key", "press", "align"))
-def test_unsolved_goto_freezes_displayed_imu_coordinates(imu_only, mode, command):
+def test_unsolved_goto_uses_imu_coordinates_after_delay(imu_only, mode, command):
     finder = imu_only
     if mode == "chart":
         finder.key_square()
@@ -364,7 +465,18 @@ def test_unsolved_goto_freezes_displayed_imu_coordinates(imu_only, mode, command
     else:
         finder.mm_align(None, None)
     queue = finder.command_queues["goto_guide"]
-    assert queue.get_nowait() == {"type": "goto_target", "ra": ra, "dec": dec}
+    assert queue.empty()
+    advance(finder, 0.99)
+    assert queue.empty()
+    advance(finder, 0.01)
+    settled = finder.serialize_ui_state()["goto_center"]
+    assert settled != (ra, dec)
+    assert queue.get_nowait() == {
+        "type": "goto_target",
+        "ra": settled[0],
+        "dec": settled[1],
+    }
+    advance(finder)
     assert queue.empty()
     assert finder.command_queues["align_command"].empty()
 
@@ -393,6 +505,7 @@ def test_imu_finder_recovers_to_optical_solve_and_keeps_failed_plate_estimate(
         assert finder._chart_pointing_source == "imu"
         assert finder.serialize_ui_state()["goto_center"] == (124.0, -32.1)
         finder.key_number(5)
+        advance(finder)
         assert finder.command_queues["goto_guide"].get_nowait() == {
             "type": "goto_target",
             "ra": 124.0,
@@ -410,6 +523,7 @@ def test_imu_fallback_loss_blocks_goto(imu_only, failure, mode, redraw):
     else:
         finder.update()
     assert finder.serialize_ui_state()["goto_center"] is not None
+    finder.key_number(5)
     if failure == "stale":
         finder.test_imu = replace(finder.test_imu, timestamp=time.time() - 60)
     elif failure == "unhealthy":
@@ -422,7 +536,7 @@ def test_imu_fallback_loss_blocks_goto(imu_only, failure, mode, redraw):
         finder.update()
         assert finder._chart_backdrop is None
         assert finder.serialize_ui_state()["goto_center"] is None
-    finder.key_number(5)
+    advance(finder)
     assert finder.command_queues["goto_guide"].empty()
 
 

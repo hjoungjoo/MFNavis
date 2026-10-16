@@ -1,6 +1,8 @@
 """Camera/chart finder with GoTo at the displayed alignment reticle."""
 
 import math
+from time import monotonic
+from typing import Optional
 
 from PiFinder.mf_manual_lens import manual_focal_from_state
 from PiFinder.optics import OpticalTrainResolver
@@ -25,6 +27,7 @@ class UIFinder(GuideKeyMixin, UIChart):
         self.camera_zoom_level = 0
         self._camera_optics = OpticalTrainResolver()
         self._displayed_center = None
+        self._goto_due_at: Optional[float] = None
         self.marking_menu = MarkingMenu(
             left=MarkingMenuOption(label=_("Settings"), menu_jump="chart_settings"),
             right=MarkingMenuOption(),
@@ -63,11 +66,21 @@ class UIFinder(GuideKeyMixin, UIChart):
     def active(self):
         super().active()
         self._displayed_center = None
+        self._goto_due_at = None
+
+    def inactive(self):
+        self._goto_due_at = None
+        super().inactive()
+
+    def covered(self):
+        self._goto_due_at = None
+        super().covered()
 
     def update(self, force=False):
         if self.display_mode == "chart":
             result = super().update(force=force)
             self._displayed_center = self._chart_center
+            self._run_pending_goto()
             return result
 
         self.clear_screen()
@@ -99,9 +112,11 @@ class UIFinder(GuideKeyMixin, UIChart):
             # Use the same plate-anchored/absolute-IMU pointing as the chart,
             # including before the first successful plate solve.
             self._displayed_center = self._reticle_radec(self._chart_solution())
+        self._run_pending_goto()
         return self.screen_update(title_bar=False, button_hints=False)
 
     def key_square(self):
+        self._goto_due_at = None
         self.cycle_display_mode()
         self._displayed_center = None
         self.update(force=True)
@@ -118,16 +133,35 @@ class UIFinder(GuideKeyMixin, UIChart):
         self.camera_zoom_level = max(0, self.camera_zoom_level - 1)
         self.update()
 
+    def _guide_move(self, direction, keepalive=False):
+        self._goto_due_at = None
+        return super()._guide_move(direction, keepalive=keepalive)
+
+    def _run_pending_goto(self):
+        if self._goto_due_at is None or monotonic() < self._goto_due_at:
+            return
+        self._goto_due_at = None
+        # Sample after the settling delay, using this frame's aligned pointing.
+        # Keep updating the UI while waiting so Stop and navigation still work.
+        if self._displayed_center is None or self._chart_solution() is None:
+            self.message(_("No solve"), 1)
+            return
+        super()._mount_command(5, target=self._displayed_center)
+
     def _mount_command(self, number, target=None, target_object=None):
+        self._goto_due_at = None
         if number == 5:
             available = self._chart_solution() is not None
             if self._displayed_center is None or not available:
                 self.message(_("No solve"), 1)
                 return False
-            # Freeze exactly the displayed centre, even if a newer estimate
-            # arrived between drawing this frame and receiving the key.
             target = self._displayed_center
             target_object = None
+            if self._mount_control_queue() is None:
+                return False
+            if self.config_object.get_option("indi_goto_method", "mfnavis") != "off":
+                self._goto_due_at = monotonic() + 1.0
+                return True
         return super()._mount_command(
             number, target=target, target_object=target_object
         )
@@ -137,6 +171,7 @@ class UIFinder(GuideKeyMixin, UIChart):
         return True
 
     def mm_cancel(self, _marking_menu, _menu_item):
+        self._goto_due_at = None
         return True
 
     def serialize_ui_state(self):
