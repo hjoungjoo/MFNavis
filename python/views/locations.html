@@ -56,6 +56,7 @@
 
     <div class="row">
       <div class="col s12">
+        <div class="pf-table-scroll" role="region" aria-label="{{ _('Location Management') }}" tabindex="0">
         <table class="striped">
           <thead>
             <tr>
@@ -100,6 +101,7 @@
             {% endfor %}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   </div>
@@ -126,39 +128,39 @@
           </div>
         </div>
         <div class="row" id="decimalFormat-edit_form_{{ loop.index0 }}">
-          <div class="input-field col s6">
+          <div class="input-field col s12 m6">
             <input id="latitude-edit_form_{{ loop.index0 }}" type="text" inputmode="decimal" name="latitude" value="{{ location.latitude }}" required/>
             <label class="active" for="latitude-edit_form_{{ loop.index0 }}">{{ _('Latitude (Decimal)') }}</label>
             <span class="helper-text"></span>
           </div>
-          <div class="input-field col s6">
+          <div class="input-field col s12 m6">
             <input id="longitude-edit_form_{{ loop.index0 }}" type="text" inputmode="decimal" name="longitude" value="{{ location.longitude }}" required/>
             <label class="active" for="longitude-edit_form_{{ loop.index0 }}">{{ _('Longitude (Decimal)') }}</label>
             <span class="helper-text"></span>
           </div>
         </div>
         <div class="row" id="dmsFormat-edit_form_{{ loop.index0 }}" style="display:none;">
-          <div class="input-field col s4">
+          <div class="input-field col s12 m4">
             <input id="latitudeD-edit_form_{{ loop.index0 }}" type="text" inputmode="decimal" name="latitudeD"/>
             <label for="latitudeD-edit_form_{{ loop.index0 }}">{{ _('Latitude Degrees') }}</label>
           </div>
-          <div class="input-field col s4">
+          <div class="input-field col s12 m4">
             <input id="latitudeM-edit_form_{{ loop.index0 }}" type="text" inputmode="decimal" name="latitudeM"/>
             <label for="latitudeM-edit_form_{{ loop.index0 }}">{{ _('Latitude Minutes') }}</label>
           </div>
-          <div class="input-field col s4">
+          <div class="input-field col s12 m4">
             <input id="latitudeS-edit_form_{{ loop.index0 }}" type="text" inputmode="decimal" name="latitudeS"/>
             <label for="latitudeS-edit_form_{{ loop.index0 }}">{{ _('Latitude Seconds') }}</label>
           </div>
-          <div class="input-field col s4">
+          <div class="input-field col s12 m4">
             <input id="longitudeD-edit_form_{{ loop.index0 }}" type="text" inputmode="decimal" name="longitudeD"/>
             <label for="longitudeD-edit_form_{{ loop.index0 }}">{{ _('Longitude Degrees') }}</label>
           </div>
-          <div class="input-field col s4">
+          <div class="input-field col s12 m4">
             <input id="longitudeM-edit_form_{{ loop.index0 }}" type="text" inputmode="decimal" name="longitudeM"/>
             <label for="longitudeM-edit_form_{{ loop.index0 }}">{{ _('Longitude Minutes') }}</label>
           </div>
-          <div class="input-field col s4">
+          <div class="input-field col s12 m4">
             <input id="longitudeS-edit_form_{{ loop.index0 }}" type="text" inputmode="decimal" name="longitudeS"/>
             <label for="longitudeS-edit_form_{{ loop.index0 }}">{{ _('Longitude Seconds') }}</label>
           </div>
@@ -171,12 +173,12 @@
           </div>
         </div>
         <div class="row">
-          <div class="input-field col s6">
+          <div class="input-field col s12 m6">
             <input id="error_in_m-edit_form_{{ loop.index0 }}" type="text" inputmode="decimal" name="error_in_m" value="{{ location.error_in_m }}"/>
             <label class="active" for="error_in_m-edit_form_{{ loop.index0 }}">{{ _('Error (meters)') }}</label>
             <span class="helper-text"></span>
           </div>
-          <div class="input-field col s6">
+          <div class="input-field col s12 m6">
             <input id="source-edit_form_{{ loop.index0 }}" type="text" name="source" value="{{ location.source }}"/>
             <label class="active" for="source-edit_form_{{ loop.index0 }}">{{ _('Source') }}</label>
           </div>

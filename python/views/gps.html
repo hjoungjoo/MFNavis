@@ -25,57 +25,57 @@
             </div>
         </div>
         <div class="row" id="decimalFormat">
-            <div class="input-field col s6">
+            <div class="input-field col s12 m6">
                 <input id="latitudeDecimal" type="text" inputmode="decimal" name="latitudeDecimal" value="{% if lat is not none %}{{ lat }}{% endif %}"/>
                 <label for="latitudeDecimal">{{ _('Latitude (Decimal)') }}</label>
             </div>
-            <div class="input-field col s6">
+            <div class="input-field col s12 m6">
                 <input id="longitudeDecimal" type="text" inputmode="decimal" name="longitudeDecimal" value="{% if lon is not none %}{{ lon }}{% endif %}"/>
                 <label for="longitudeDecimal">{{ _('Longitude (Decimal)') }}</label>
             </div>
         </div>
         <div class="row" id="dmsFormat" style="display:none;">
-            <div class="input-field col s4">
+            <div class="input-field col s12 m4">
                 <input id="latitudeD" type="text" name="latitudeD"/>
                 <label for="latitudeD">{{ _('Latitude Degrees') }}</label>
             </div>
-            <div class="input-field col s4">
+            <div class="input-field col s12 m4">
                 <input id="latitudeM" type="text" name="latitudeM"/>
                 <label for="latitudeM">{{ _('Latitude Minutes') }}</label>
             </div>
-            <div class="input-field col s4">
+            <div class="input-field col s12 m4">
                 <input id="latitudeS" type="text" name="latitudeS"/>
                 <label for="latitudeS">{{ _('Latitude Seconds') }}</label>
             </div>
-            <div class="input-field col s4">
+            <div class="input-field col s12 m4">
                 <input id="longitudeD" type="text" name="longitudeD"/>
                 <label for="longitudeD">{{ _('Longitude Degrees') }}</label>
             </div>
-            <div class="input-field col s4">
+            <div class="input-field col s12 m4">
                 <input id="longitudeM" type="text" name="longitudeM"/>
                 <label for="longitudeM">{{ _('Longitude Minutes') }}</label>
             </div>
-            <div class="input-field col s4">
+            <div class="input-field col s12 m4">
                 <input id="longitudeS" type="text" name="longitudeS"/>
                 <label for="longitudeS">{{ _('Longitude Seconds') }}</label>
             </div>
         </div>
         <div class="row">
-            <div class="input-field col s8">
+            <div class="input-field col s12">
                 <input id="altitude" type="text" inputmode="decimal" name="altitude" value="{% if altitude is not none %}{{ altitude }}{% endif %}"/>
                 <label for="altitude">{{ _('Altitude in meter') }}</label>
             </div>
             </div>
         <div class="row">
-            <div class="input-field col s4">
+            <div class="input-field col s12 m6">
                 <input id="date" type="date" name="date"/>
                 <label for="date">{{ _('Date') }}</label>
             </div>
-            <div class="input-field col s4">
+            <div class="input-field col s12 m6">
                 <input id="time" type="text" name="time"/>
                 <label for="time">{{ _('UTC Time (h:m:s)') }}</label>
             </div>
-            <div class="input-field col s8">
+            <div class="input-field col s12">
                  <button type="button" class="waves-effect waves-light btn" onclick="setBrowserDateTime()">{{ _('Set to Browser Date/Time') }}</button>
             </div>
         </div>
@@ -142,13 +142,13 @@ function focusFirstDMSField() {
 function setBrowserDateTime() {
     var now = new Date();
     var dateString = now.toISOString().split('T')[0]; // Extract date in YYYY-MM-DD format
-    var timeString = now.getUTCHours() + ":" + now.getUTCMinutes() + ":" + now.getUTCSeconds();
+    var timeString = now.toISOString().slice(11, 19);
 
     document.getElementById("date").value = dateString;
     document.getElementById("time").value = timeString;
 
-    // Set focus to the 'date' field if needed
-    document.getElementById("date").focus();
+    // Programmatic values do not emit input events for floating labels.
+    M.updateTextFields();
 }
 
 // Function to check if all fields are filled with numbers.  Top level, so

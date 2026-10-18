@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="{{ web_language() }}">
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="/css/style.css?v=11">
+<link rel="stylesheet" href="/css/style.css?v=14">
 <title>{{ _("Plate-solving diagnostic capture") }}</title>
 <style>
 body{max-width:720px;margin:24px auto;padding:0 18px;background:#151515;color:#eee;font:16px system-ui}
 label{display:block;margin:14px 0}input,select,textarea,button{font:inherit;padding:9px;background:#252525;color:#eee;border:1px solid #777;border-radius:5px}
-textarea{width:95%}button{margin:8px 8px 8px 0;cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#222;padding:14px}small{color:#bbb}
+input,select,textarea{box-sizing:border-box;max-width:100%}select,textarea{width:100%}button{margin:8px 8px 8px 0;cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#222;padding:14px}small{color:#bbb}
 </style>
 <h1>{{ _("Plate-solving diagnostic capture") }}</h1>
 <p>{{ _("Choose the light pollution level and start recording. Raw frames, plate-solving results, timing, coordinate updates and current settings are saved automatically.") }}</p>

@@ -464,4 +464,4 @@ def test_style_css_cache_buster_is_bumped_when_the_file_changes():
     # base.html pins ?v=N; browsers keep serving the old sheet until it moves.
     base_html = (VIEWS_DIR / "base.html").read_text()
 
-    assert "/css/style.css?v=11" in base_html
+    assert "/css/style.css?v=14" in base_html

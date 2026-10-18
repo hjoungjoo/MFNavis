@@ -1,13 +1,14 @@
 /* Tools: reconnect to the server-owned cache download after navigation. */
 (function () {
   "use strict";
-  const alive = window.pfPageAlive || (() => true);
-
   function init() {
     const root = document.getElementById("cache-download");
-    if (!root) return;
+    if (!root || root.dataset.cacheDownloadBound) return;
+    root.dataset.cacheDownloadBound = "true";
+    // The bundle is cached across SPA visits; capture the current page here.
+    const alive = window.pfPageAlive || (() => true);
     const labels = JSON.parse(root.dataset.labels);
-    const el = (name) => document.getElementById("cache-" + name);
+    const el = (name) => root.querySelector("#cache-" + name);
     let state = null;
     let busy = false;
     let requestSerial = 0;
@@ -80,7 +81,13 @@
         const data = await response.json();
         if (alive() && serial === requestSerial) render(data);
       } catch (error) {
-        if (alive() && serial === requestSerial) el("error").textContent = labels.connection_error;
+        if (alive() && serial === requestSerial) {
+          el("error").textContent = labels.connection_error;
+          if (!state) {
+            el("state").textContent = labels.connection_error;
+            el("progress").value = 0;
+          }
+        }
       } finally {
         if (alive() && serial === requestSerial) timer = setTimeout(poll, 2000);
       }
@@ -122,5 +129,6 @@
     });
     poll();
   }
+  window.pfInitCacheDownload = init;
   document.addEventListener("DOMContentLoaded", init);
 })();

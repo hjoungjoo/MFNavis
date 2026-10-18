@@ -24,15 +24,15 @@
 {% endif %}
 
 <div class="row">
-    <div class="col s3 center-align grey-text">
+    <div class="col s12 m4 center-align grey-text">
         <h6 class="grey-text text-lighten-1">{{ _('Instruments') }}</h6>
             {{ equipment.telescopes|length }}
     </div>
-    <div class="col s3 center-align grey-text">
+    <div class="col s12 m4 center-align grey-text">
         <h6 class="grey-text text-lighten-1">{{ _('Eyepieces') }}</h6>
             {{ equipment.eyepieces|length }}
     </div>
-    <div class="col s3 center-align grey-text">
+    <div class="col s12 m4 center-align grey-text">
         <h6 class="grey-text text-lighten-1">{{ _('Import from DeepskyLog') }}</h6>
         <a href="#modal_import_from_deepskylog" class="modal-trigger"><i
                     class="material-icons small">download</i></a>
@@ -63,6 +63,7 @@
 <a href="/equipment/edit_eyepiece/-1" class="btn modal-trigger">{{ _('Add new eyepiece') }}</a>
 
 <h5 class="grey-text" id="instruments-heading">{{ _('Instruments') }}</h5>
+<div class="pf-table-scroll" role="region" aria-labelledby="instruments-heading" tabindex="0">
 <table id="instruments-table" class="grey darken-2 grey-text z-depth-1">
     <tr>
         <th>{{ _('Make') }}</th>
@@ -109,8 +110,10 @@
     </tr>
     {% endfor %}
 </table>
+</div>
 
 <h5 class="grey-text" id="eyepieces-heading">{{ _('Eyepieces') }}</h5>
+<div class="pf-table-scroll" role="region" aria-labelledby="eyepieces-heading" tabindex="0">
 <table id="eyepieces-table" class="grey darken-2 grey-text z-depth-1">
     <tr>
         <th>{{ _('Make') }}</th>
@@ -148,6 +151,7 @@
     </tr>
     {% endfor %}
 </table>
+</div>
 
 <br/>
 {% endblock %}

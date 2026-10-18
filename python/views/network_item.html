@@ -1,17 +1,19 @@
   <tr class="grey-text text-lighten-1">
-      <td style="width: 56px; white-space: nowrap;">
+      <td class="network-priority">
+        <div class="network-row-actions">
         {% if network["id"] > 0 %}
-        <a href="/network/move/{{ network["id"] }}/up" class="grey-text" title="{{ _('Higher priority') }}">
-          <i class="material-icons">arrow_upward</i>
+        <a href="/network/move/{{ network["id"] }}/up" class="grey-text network-icon-action" title="{{ _('Higher priority') }}" aria-label="{{ _('Higher priority') }}">
+          <i class="material-icons" aria-hidden="true">arrow_upward</i>
         </a>
         {% endif %}
         {% if network["id"] < net.get_wifi_networks()|length - 1 %}
-        <a href="/network/move/{{ network["id"] }}/down" class="grey-text" title="{{ _('Lower priority') }}">
-          <i class="material-icons">arrow_downward</i>
+        <a href="/network/move/{{ network["id"] }}/down" class="grey-text network-icon-action" title="{{ _('Lower priority') }}" aria-label="{{ _('Lower priority') }}">
+          <i class="material-icons" aria-hidden="true">arrow_downward</i>
         </a>
         {% endif %}
+        </div>
       </td>
-      <td>
+      <td class="network-details">
           <h5>{{ network["ssid"] }}
           {% if connected_ssid and network["ssid"] == connected_ssid %}
           <span class="green-text text-lighten-2" style="font-size: 0.55em; vertical-align: middle; white-space: nowrap;">
@@ -21,28 +23,30 @@
           </h5>
           {{ _('Security') }}: <b>{{ network["key_mgmt"] }}</b>
       </td>
-      <td style="white-space: nowrap;">
+      <td class="network-actions">
+        <div class="network-row-actions">
         {% if connected_ssid and network["ssid"] == connected_ssid %}
-        <i class="material-icons green-text text-lighten-2" title="{{ _('Currently connected') }}">wifi</i>
+        <span class="network-icon-action green-text text-lighten-2" title="{{ _('Currently connected') }}" aria-label="{{ _('Currently connected') }}"><i class="material-icons" aria-hidden="true">wifi</i></span>
         {% else %}
         <form action="/network/connect/{{ network["id"] }}" method="post" style="display: inline; margin: 0px;">
-          <button type="submit" class="btn-flat grey-text" title="{{ _('Connect to this network now') }}" style="padding: 0px;">
-            <i class="material-icons">wifi</i>
+          <button type="submit" class="btn-flat grey-text network-icon-action" title="{{ _('Connect to this network now') }}" aria-label="{{ _('Connect to this network now') }}">
+            <i class="material-icons" aria-hidden="true">wifi</i>
           </button>
         </form>
         {% endif %}
-        <a href="#modal{{ network["id"] }}" class="grey-text modal-trigger">
-          <i class="material-icons">delete</i>
+        <a href="#modal{{ network["id"] }}" class="grey-text modal-trigger network-icon-action" title="{{ _('Delete') }}" aria-label="{{ _('Delete') }}">
+          <i class="material-icons" aria-hidden="true">delete</i>
         </a>
+        </div>
+        <div id="modal{{ network["id"] }}" class="modal">
+          <div class="modal-content">
+            <h4>{{ _('Delete') }} {{ network["ssid"] }}</h4>
+            <p>{{ _('This removes the saved network. It takes effect when you apply the pending changes.') }}</p>
+          </div>
+          <div class="modal-footer">
+            <a href="/network/delete/{{ network["id"] }}" class="modal-close btn-flat">{{ _('Delete') }}</a>
+            <a href="#!" class="modal-close btn-flat">{{ _('Cancel') }}</a>
+          </div>
+        </div>
       </td>
   </tr>
-  <div id="modal{{ network["id"] }}" class="modal">
-    <div class="modal-content">
-      <h4>{{ _('Delete') }} {{ network["ssid"] }}</h4>
-      <p>{{ _('This removes the saved network. It takes effect when you apply the pending changes.') }}</p>
-    </div>
-    <div class="modal-footer">
-      <a href="/network/delete/{{ network["id"] }}" class="modal-close btn-flat">{{ _('Delete') }}</a>
-      <a href="#!" class="modal-close btn-flat">{{ _('Cancel') }}</a>
-    </div>
-  </div>

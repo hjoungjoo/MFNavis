@@ -32,6 +32,9 @@ body {
   --pf-button: #555;
   --pf-button-hover: #777;
   --pf-button-pressed: #000;
+  --pf-button-disabled: #3b3b3b;
+  --pf-button-disabled-text: #969696;
+  --pf-button-disabled-border: #666;
   --pf-text: #e0e0e0;
   --pf-text-muted: #9e9e9e;
   --pf-border: #777;
@@ -49,6 +52,9 @@ html[data-theme="red"] {
   --pf-button: #3a0606;
   --pf-button-hover: #590b0b;
   --pf-button-pressed: #000;
+  --pf-button-disabled: #160303;
+  --pf-button-disabled-text: #8c3a34;
+  --pf-button-disabled-border: #54201b;
   --pf-text: #e84b3f;
   --pf-text-muted: #b3362f;
   --pf-border: #5a1512;
@@ -334,19 +340,22 @@ main > .container:not(.pf-livecam-container),
   background-color: var(--pf-button-pressed) !important;
 }
 
-.btn, .btn:focus {
+.btn, .btn:focus,
+.btn-small, .btn-small:focus,
+.btn-large, .btn-large:focus,
+.btn-floating, .btn-floating:focus {
   background-color: var(--pf-button);
   color: var(--pf-text);
 }
 
 @media (hover: hover) {
-  .btn:hover {
+  .btn:hover, .btn-small:hover, .btn-large:hover, .btn-floating:hover {
     background-color: var(--pf-button-hover);
   }
 }
 
 @media (hover: none) {
-  .btn:hover {
+  .btn:hover, .btn-small:hover, .btn-large:hover, .btn-floating:hover {
     background-color: var(--pf-button);
   }
 }
@@ -417,17 +426,38 @@ html[data-theme="red"] .btn-floating.red {
   color: var(--pf-link) !important;
 }
 
-html[data-theme="red"] .btn.disabled,
-html[data-theme="red"] .btn:disabled,
-html[data-theme="red"] .btn[disabled],
-html[data-theme="red"] .btn-small.disabled,
-html[data-theme="red"] .btn-small:disabled,
-html[data-theme="red"] .btn-small[disabled],
-html[data-theme="red"] .btn-large.disabled,
-html[data-theme="red"] .btn-large:disabled,
-html[data-theme="red"] .btn-large[disabled] {
-  background-color: var(--pf-surface-alt) !important;
-  color: var(--pf-text-muted) !important;
+.btn-flat {
+  color: var(--pf-text);
+}
+
+.btn-floating i {
+  color: inherit;
+}
+
+/* Neutral utility buttons (including file pickers) use the shared palette. */
+:root :is(.btn, .btn-small, .btn-large, .btn-floating).grey {
+  background-color: var(--pf-button) !important;
+  color: var(--pf-text) !important;
+}
+
+/* All button sizes and custom controls share the same inactive appearance.
+   A recessed surface, dashed edge and no shadow distinguish availability
+   without relying on colour alone. This also overrides danger/hover colours. */
+:root :is(button, input[type="button"], input[type="submit"], .btn, .btn-small, .btn-large, .btn-floating, .btn-flat):is(:disabled, [disabled], .disabled, [aria-disabled="true"]) {
+  background-color: var(--pf-button-disabled) !important;
+  color: var(--pf-button-disabled-text) !important;
+  border-color: var(--pf-button-disabled-border) !important;
+  outline: 1px dashed var(--pf-button-disabled-border) !important;
+  outline-offset: -1px;
+  box-shadow: none !important;
+  opacity: 1 !important;
+  cursor: default;
+  pointer-events: none;
+}
+
+:root :is(button, .btn, .btn-small, .btn-large, .btn-floating, .btn-flat):focus-visible:not(:disabled, [disabled], .disabled, [aria-disabled="true"]) {
+  outline: 2px solid var(--pf-link);
+  outline-offset: 2px;
 }
 
 /* Materialize paints the side menu #fff and modals #fafafa, but their text
@@ -545,17 +575,74 @@ select option {
   padding-top: 0;
   padding-bottom: 0;
   box-sizing: border-box;
+  padding-right: 2rem;
 }
 
-.input-field .select-wrapper + label {
-  /* Keep the caption above the opaque select input, including its transform. */
-  top: 0;
-  transform: translateY(-100%) scale(0.8);
-  transform-origin: 0 0;
+.input-field:has(> .select-wrapper + label) {
+  display: flex;
+  flex-direction: column;
+}
+
+.input-field .select-wrapper + label,
+.input-field .select-wrapper + label.active {
+  /* Reserve real space for captions that wrap in narrow or translated forms. */
+  position: static;
+  order: -1;
+  transform: none;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  margin-bottom: 0.25rem;
+  max-width: 100%;
 }
 
 .select-wrapper .caret {
   fill: var(--pf-text);
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Framework display rules must not reveal unavailable actions. */
+[hidden] {
+  display: none !important;
+}
+
+/* Contain positioned controls as well as wide table contents. */
+.pf-table-scroll {
+  position: relative;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pf-table-scroll th {
+  white-space: nowrap;
+}
+
+.pf-table-scroll td {
+  word-break: keep-all;
+}
+
+.pf-equipment-form > .row {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.advanced-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0.5rem;
+}
+
+.advanced-actions .btn,
+.indi-park-actions .btn,
+#smooth_calibration_download,
+#smooth_local_optics_download {
+  height: auto;
+  min-height: 44px;
+  padding: 0.6rem 0.75rem;
+  line-height: 1.4;
+  white-space: normal;
 }
 
 .select-wrapper.disabled input.select-dropdown,
@@ -613,6 +700,108 @@ table.striped.grey-text > thead > tr > th {
   color: var(--pf-text) !important;
 }
 
+/* STA editing must not inherit the narrow priority column of the saved list. */
+.network-heading,
+.network-pending,
+.network-form-actions,
+.network-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.network-heading {
+  justify-content: space-between;
+}
+
+.network-heading h5 {
+  min-width: 0;
+}
+
+.network-heading .network-add {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+}
+
+.network-heading .network-add i {
+  line-height: 44px;
+}
+
+.network-pending,
+.network-form-actions {
+  flex-wrap: wrap;
+}
+
+.network-pending > div:first-child {
+  flex: 1 1 16rem;
+}
+
+#new_network_form {
+  width: 100%;
+  min-width: 0;
+}
+
+.network-scan-field label {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+#new_network_form .helper-text {
+  color: var(--pf-text-muted);
+}
+
+.network-form-actions .btn {
+  min-height: 44px;
+  line-height: 44px;
+}
+
+.network-list {
+  table-layout: fixed;
+}
+
+.network-list .network-priority,
+.network-list .network-actions {
+  width: 98px;
+  padding: 10px 3px;
+}
+
+.network-row-actions {
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.network-icon-action,
+.network-icon-action.btn-flat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.network-icon-action .material-icons {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.network-details {
+  overflow-wrap: anywhere;
+}
+
+@media only screen and (max-width: 600px) {
+  .network-list .network-priority,
+  .network-list .network-actions {
+    width: 50px;
+  }
+
+  .network-details h5 {
+    font-size: 1.2rem;
+  }
+}
+
 .ap-password-field {
   position: relative;
 }
@@ -665,11 +854,6 @@ table.striped.grey-text > thead > tr > th {
   line-height: 5rem;
   padding: 0;
   touch-action: none;
-}
-
-.indi-motion-grid .btn.disabled {
-  background-color: var(--pf-surface-alt) !important;
-  color: var(--pf-text-muted) !important;
 }
 
 .indi-park-actions {

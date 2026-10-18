@@ -172,23 +172,19 @@
     {% endif %}
   </div>
 </div>
-<div class="row valign-wrapper" style="margin: 0px;">
-  <div class="col s10">
-        <h5 class="grey-text">{{ _('Wifi Networks') }}</h5>
-  </div>
-  <div class="col s2">
+<div class="network-heading">
+  <h5 class="grey-text">{{ _('Wifi Networks') }}</h5>
 {% if not show_new_form %}
-    <a class="btn-floating btn-small grey" href="/network?add_new=1"><i class="material-icons">add</i></a>
+  <a class="btn-floating grey network-add" href="/network?add_new=1" aria-label="{{ _('Add') }}" title="{{ _('Add') }}"><i class="material-icons" aria-hidden="true">add</i></a>
 {% endif %}
-  </div>
 </div>
 {% if net.sta_dirty %}
 <div class="card orange darken-3">
-  <div class="card-content white-text row valign-wrapper" style="margin-bottom: 0px;">
-    <div class="col s8">
+  <div class="card-content white-text network-pending">
+    <div>
       {{ _('Saved network changes are not applied yet. Applying may briefly drop the Wifi connection.') }}
     </div>
-    <div class="col s4 right-align">
+    <div>
       <form action="/network/apply_sta" method="post" style="margin: 0px;">
         <button type="submit" class="btn white orange-text text-darken-3">{{ _('Apply Now') }}</button>
       </form>
@@ -198,33 +194,28 @@
 {% endif %}
 <div class="card grey darken-2">
   <div class="card-content">
-    <table class="grey-text">
 {% if show_new_form %}
-      <tr class="grey-text text-lighten-1">
-        <td> 
-        <form class="col s12" action="/network/add" method="post" id="new_network_form">
+        <form class="grey-text text-lighten-1" action="/network/add" method="post" id="new_network_form">
           {% if scan_error %}
           <div class="row">
             <div class="col s12 red-text text-lighten-2">{{ scan_error }}</div>
           </div>
           {% endif %}
-          {% if scanned_networks %}
           <div class="row">
-            <div class="input-field col s12">
-              <select name="ssid_select" id="ssid_select">
+            <div class="col s12 network-scan-field">
+              <label for="ssid_select">{{ _('Nearby Wi-Fi') }}</label>
+              <select class="browser-default" name="ssid_select" id="ssid_select">
                 <option value="" disabled selected>{{ _('Select scanned SSID') }}</option>
                 {% for ssid in scanned_networks %}
                 <option value="{{ ssid }}">{{ ssid }}</option>
                 {% endfor %}
-                <option value="__manual__">{{ _('Manual entry') }}</option>
+                <option value="__manual__" data-manual>{{ _('Manual entry') }}</option>
               </select>
-              <label>{{ _('Nearby Wi-Fi') }}</label>
             </div>
           </div>
-          {% endif %}
           <div class="row">
             <div class="input-field col s12">
-              <input placeholder="SSID" id="ssid" type="text" name="ssid">
+              <input placeholder="SSID" id="ssid" type="text" name="ssid" required autocomplete="off">
               <label for="ssid">{{ _('Name') }}</label>
             </div>
           </div>
@@ -236,21 +227,22 @@
             </div>
           </div>
           <div class="row">
-            <div class="input-field col s12">
-              <a href="#" class="btn modal-trigger" onClick="document.getElementById('new_network_form').submit();">{{ _('Save') }}</a>
-              &nbsp;
-              <a href="/network" class="btn modal-trigger">{{ _('Cancel') }}</a>
+            <div class="col s12 network-form-actions">
+              <button type="submit" class="btn">{{ _('Save') }}</button>
+              <a href="/network" class="btn">{{ _('Cancel') }}</a>
             </div>
           </div>
         </form>
-        </td>
-      </tr>
 {% endif %}
+    <table class="grey-text network-list">
+      <tbody>
 {% set connected_ssid = net.get_connected_ssid() %}
 {% for network in net.get_wifi_networks() %}
   {% include 'network_item.html' %}
 {% endfor %}
-   </table>
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}
 
@@ -269,25 +261,35 @@ function applyNetworkSettings() {
 window.addEventListener('pageshow', function() {
     document.getElementById('network-applying').hidden = true;
 });
-  document.addEventListener('DOMContentLoaded', function() {
-      var elems = document.querySelectorAll('select');
-          var instances = M.FormSelect.init(elems);
-            });
-
 document.addEventListener('DOMContentLoaded', function() {
-    var elems = document.querySelectorAll('.modal');
-        var instances = M.Modal.init(elems);
-          });
+    document.querySelectorAll('main select:not(.browser-default)').forEach(function(elem) {
+        if (!M.FormSelect.getInstance(elem)) M.FormSelect.init(elem);
+    });
+    document.querySelectorAll('main .modal').forEach(function(elem) {
+        if (!M.Modal.getInstance(elem)) M.Modal.init(elem);
+    });
+});
 
 document.addEventListener('DOMContentLoaded', function() {
     var ssidSelect = document.getElementById('ssid_select');
     var ssidInput = document.getElementById('ssid');
     if (ssidSelect && ssidInput) {
         ssidSelect.addEventListener('change', function() {
-            if (ssidSelect.value && ssidSelect.value !== '__manual__') {
-                ssidInput.value = ssidSelect.value;
+            var option = ssidSelect.options[ssidSelect.selectedIndex];
+            if (option && !option.disabled) {
+                if (option.hasAttribute('data-manual')) {
+                    ssidInput.value = '';
+                    ssidInput.focus();
+                } else {
+                    ssidInput.value = ssidSelect.value;
+                }
+                ssidInput.classList.remove('invalid', 'valid');
                 M.updateTextFields();
             }
+        });
+        ssidInput.addEventListener('input', function() {
+            // A typed SSID is authoritative, even after selecting a scan result.
+            ssidSelect.selectedIndex = ssidSelect.options.length - 1;
         });
     }
 });

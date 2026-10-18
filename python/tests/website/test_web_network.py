@@ -2,6 +2,7 @@ import pytest
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import Select
 from web_test_utils import login_to_network, login_with_password, get_homepage_url
 
 """
@@ -192,15 +193,99 @@ def test_network_add_form_elements(driver, window_size, viewport_name):
     assert helper_text is not None, "Password helper text not found"
 
     # Check Save button
-    save_button = driver.find_element(
-        By.XPATH,
-        "//a[contains(text(), 'Save') or contains(@onclick, 'new_network_form')]",
-    )
+    save_button = add_form.find_element(By.CSS_SELECTOR, "button[type='submit']")
     assert save_button is not None, "Save button not found"
 
     # Check Cancel button
     cancel_button = driver.find_element(By.CSS_SELECTOR, "a[href='/network']")
     assert cancel_button is not None, "Cancel button not found"
+
+
+@pytest.mark.parametrize("window_size", [(375, 850), (1280, 900)])
+@pytest.mark.parametrize("spa", [False, True])
+@pytest.mark.web
+def test_network_scan_selection_and_layout(driver, window_size, spa):
+    """Exercise scan selection through the widget after full and SPA navigation."""
+    driver.set_window_size(*window_size)
+    _login_to_network(driver)
+    if spa:
+        driver.find_element(By.CSS_SELECTOR, "a[href*='add_new=1']").click()
+    else:
+        driver.get(f"{get_homepage_url()}/network?add_new=1")
+    select_element = WebDriverWait(driver, 5).until(
+        EC.visibility_of_element_located((By.ID, "ssid_select"))
+    )
+    ssid = driver.find_element(By.ID, "ssid")
+    form = driver.find_element(By.ID, "new_network_form")
+    assert ssid.size["width"] >= form.size["width"] * 0.85
+    assert select_element.size["width"] >= form.size["width"] * 0.85
+    assert driver.execute_script(
+        "return document.documentElement.scrollWidth <= window.innerWidth"
+    )
+    for icon in driver.find_elements(By.CSS_SELECTOR, ".network-icon-action"):
+        assert icon.size["width"] >= 44
+        assert icon.size["height"] >= 44
+
+    # Supply deterministic scan results even when running without Wi-Fi hardware.
+    driver.execute_script(
+        """
+        const select = arguments[0];
+        for (const name of ['MFNavis_Test_Scan_A', 'MFNavis_Test_Scan_B']) {
+            select.add(new Option(name, name), select.options.length - 1);
+        }
+        """,
+        select_element,
+    )
+    scanned = Select(select_element)
+    scanned.select_by_visible_text("MFNavis_Test_Scan_A")
+    assert ssid.get_attribute("value") == "MFNavis_Test_Scan_A"
+    scanned.select_by_visible_text("MFNavis_Test_Scan_B")
+    assert ssid.get_attribute("value") == "MFNavis_Test_Scan_B"
+    scanned.select_by_index(len(scanned.options) - 1)
+    assert ssid.get_attribute("value") == ""
+    assert driver.switch_to.active_element == ssid
+    ssid.send_keys("Manual_Test_SSID")
+    assert scanned.first_selected_option.get_attribute("data-manual") is not None
+    scanned.select_by_visible_text("MFNavis_Test_Scan_A")
+    assert ssid.get_attribute("value") == "MFNavis_Test_Scan_A"
+
+
+@pytest.mark.web
+def test_network_save_validates_before_submitting(driver):
+    """Save must validate without writing profiles or changing the connection."""
+    _login_to_network(driver)
+    driver.get(f"{get_homepage_url()}/network?add_new=1")
+    form = driver.find_element(By.ID, "new_network_form")
+    driver.execute_script(
+        """
+        window.networkSubmissions = [];
+        arguments[0].addEventListener('submit', function(event) {
+            event.preventDefault();
+            window.networkSubmissions.push(Object.fromEntries(new FormData(this)));
+        });
+        """,
+        form,
+    )
+    save = form.find_element(By.CSS_SELECTOR, "button[type='submit']")
+    save.click()
+    assert driver.execute_script("return window.networkSubmissions") == []
+    ssid = driver.find_element(By.ID, "ssid")
+    ssid.send_keys("Manual_Test_SSID")
+    password = driver.find_element(By.ID, "password")
+    password.send_keys("short")
+    save.click()
+    assert driver.execute_script("return window.networkSubmissions") == []
+    password.clear()
+    save.click()
+    submissions = driver.execute_script("return window.networkSubmissions")
+    assert len(submissions) == 1
+    assert submissions[0]["ssid"] == "Manual_Test_SSID"
+    assert submissions[0]["psk"] == ""
+    password.send_keys("testpassword123")
+    save.click()
+    submissions = driver.execute_script("return window.networkSubmissions")
+    assert len(submissions) == 2
+    assert submissions[1]["psk"] == "testpassword123"
 
 
 @pytest.mark.parametrize(

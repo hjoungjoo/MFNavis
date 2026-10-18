@@ -15,7 +15,7 @@
     <a href="/observations/{{ session["UID"] }}?download=1" class="grey-text"><i class="material-icons medium">download</i></a>
   </div>
 </div>
-<center>
+<div class="pf-table-scroll" role="region" aria-label="{{ _('Observations') }}" tabindex="0">
 <table class="grey darken-2 grey-text z-depth-1">
 <tr>
 <th>{{ _('Time') }}</th><th>{{ _('Catalog') }}</th><th>{{ _('Sequence') }}</th><th>{{ _('Notes') }}</th>
@@ -29,5 +29,5 @@
 </tr>
 {% endfor %}
 </table>
-</center>
+</div>
 {% endblock %}

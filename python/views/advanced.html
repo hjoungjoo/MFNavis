@@ -3,7 +3,7 @@
 {% block content %}
 <div id="error" class="error-message"></div>
 <center>
-    <div style="display: grid; grid-template-columns: repeat(4, 1fr); margin: 0.5rem; justify-content: center; gap: 0.5rem;">
+    <div class="advanced-actions">
         <button class="btn remote-button" onclick="buttonClicked(this, 'LOC')">{{ _('GPS location lock') }}</button>
         <button class="btn remote-button" onclick="buttonClicked(this, 'TIME')">{{ _('GPS time lock') }}</button>
     </div>
