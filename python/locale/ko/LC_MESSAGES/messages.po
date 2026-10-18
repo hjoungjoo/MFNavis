@@ -6972,3 +6972,7 @@ msgstr "도착 확인: 솔빙 대기 중"
 
 msgid "Arrived; waiting for solve"
 msgstr "도착: 솔빙 대기"
+
+#: views/network.html:178
+msgid "Add"
+msgstr "추가"
