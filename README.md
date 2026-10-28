@@ -76,6 +76,12 @@ wget -O /tmp/mfnavis-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavi
 MFNAVIS_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh
 ```
 
+Fresh installations default to **IMX462**. Pi 5/CM5 Trixie also installs IMX678
+support without extra options. After installation, select **IMX678 (Auto)** in
+the camera menu. On CM5 this applies the CSI0 converter configuration
+(GPIO34/35, four lanes, 74.25 MHz) and reboots. Switching away and back preserves
+that configuration. See [camera setup](docs/mf_dev/setup_en.md#install-or-update-mfnavis).
+
 After the script reports successful completion, reboot:
 
 ```bash

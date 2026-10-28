@@ -71,6 +71,12 @@ wget -O /tmp/mfnavis-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavi
 MFNAVIS_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh
 ```
 
+새 설치의 기본 카메라는 **IMX462**입니다. Pi 5/CM5 Trixie에서는 별도 옵션
+없이 IMX678 지원도 함께 설치합니다. 설치 후 메뉴에서 **IMX678 (Auto)**를
+선택하면 CM5는 CSI0 컨버터(GPIO34/35, 4레인, 74.25 MHz) 설정을 적용하고
+재부팅합니다. 다른 카메라로 바꿨다가 돌아와도 이 설정을 유지합니다.
+[카메라 설정 안내](docs/mf_dev/setup_ko.md#mfnavis-설치갱신)를 참조하세요.
+
 설치 완료 메시지를 확인한 뒤 재부팅합니다.
 
 ```bash

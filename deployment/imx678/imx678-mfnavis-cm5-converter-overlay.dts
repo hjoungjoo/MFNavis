@@ -1,0 +1,87 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// MFNavis A0 PWR2-PD converter, CM5 CSI0 ONLY. Dedicated I2C6 bus.
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "brcm,bcm2712";
+
+    fragment@0 {
+        target = <&i2c_csi_dsi0>;
+        __overlay__ {
+            status = "okay";
+            #address-cells = <1>;
+            #size-cells = <0>;
+            // The sensor driver selects these on the adapter's pinctrl handle,
+            // under the I2C bus lock. No competing GPIO owner on SDA/SCL.
+            pinctrl-names = "default", "imx678-off";
+            pinctrl-0 = <&rp1_i2c6_38_39>;
+            pinctrl-1 = <&imx678_i2c_off>;
+            imx678@1a {
+                // No generic fallback: the board needs our sequencing patch.
+                compatible = "mfnavis,imx678-cm5-converter";
+                reg = <0x1a>;
+                clocks = <&cam0_clk>;
+                avdd-supply = <&cam0_reg>;
+                dvdd-supply = <&cam_dummy_reg>;
+                ovdd-supply = <&cam_dummy_reg>;
+                reset-gpios = <&rp1_gpio 35 1>; // XCLR active LOW
+                rotation = <0>;
+                orientation = <0>;
+                port {
+                    converter_sensor_ep: endpoint {
+                        remote-endpoint = <&converter_csi_ep>;
+                        clock-lanes = <0>;
+                        data-lanes = <1 2 3 4>;
+                        link-frequencies = /bits/ 64 <445500000>;
+                    };
+                };
+            };
+        };
+    };
+    fragment@1 {
+        target = <&csi0>;
+        __overlay__ {
+            status = "okay";
+            brcm,media-controller;
+            port {
+                converter_csi_ep: endpoint {
+                    remote-endpoint = <&converter_sensor_ep>;
+                    clock-lanes = <0>;
+                    data-lanes = <1 2 3 4>;
+                };
+            };
+        };
+    };
+    fragment@2 {
+        target = <&cam0_clk>;
+        __overlay__ {
+            status = "okay";
+            // U10 SG-8101CG; GPIO35 controls both XCLR and oscillator ST.
+            clock-frequency = <74250000>;
+        };
+    };
+    fragment@3 {
+        target = <&cam0_reg>;
+        __overlay__ {
+            status = "okay";
+            gpio = <&rp1_gpio 34 0>;
+            enable-active-high;
+            // U11 sequences DVDD -> OVDD -> AVDD; reverse on shutdown.
+            startup-delay-us = <150000>;
+            off-on-delay-us = <150000>;
+        };
+    };
+    fragment@4 {
+        target = <&rp1_gpio>;
+        __overlay__ {
+            imx678_i2c_off: imx678-i2c-off {
+                // SCL first avoids generating a START while clamping SDA.
+                pins = "gpio39", "gpio38";
+                function = "gpio";
+                bias-disable;
+                output-low;
+            };
+        };
+    };
+};

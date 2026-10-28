@@ -1,0 +1,204 @@
+--- a/imx678.c
++++ b/imx678.c
+@@ -14,6 +14,7 @@
+ #include <linux/i2c.h>
+ #include <linux/media-bus-format.h>
+ #include <linux/module.h>
++#include <linux/pinctrl/consumer.h>
+ #include <linux/property.h>
+ #include <linux/pm_runtime.h>
+ #include <linux/regulator/consumer.h>
+@@ -692,6 +693,10 @@
+ 	unsigned long link_freq_bitmap;
+ 
+ 	struct gpio_desc *reset_gpio;
++	/* MFNavis converter uses a dedicated CM5 I2C6 bus. */
++	struct pinctrl *bus_pinctrl;
++	struct pinctrl_state *bus_active;
++	struct pinctrl_state *bus_off;
+ 	struct regulator_bulk_data supplies[ARRAY_SIZE(imx678_supply_name)];
+ 
+ 	struct v4l2_ctrl_handler ctrl_handler;
+@@ -999,6 +1004,111 @@
+ 	return ret;
+ }
+ 
++static void imx678_put_bus_pinctrl(void *data)
++{
++	pinctrl_put(data);
++}
++
++static int imx678_converter_init(struct i2c_client *client,
++				   struct imx678 *imx678)
++{
++	struct device *dev = &client->dev;
++	int ret;
++
++	if (!device_is_compatible(dev, "mfnavis,imx678-cm5-converter"))
++		return 0;
++
++	if (!imx678->reset_gpio)
++		return dev_err_probe(dev, -EINVAL, "converter needs reset GPIO\n");
++
++	/* Reuse the controller's handle: sensor pinctrl would conflict with it. */
++	imx678->bus_pinctrl = pinctrl_get(client->adapter->dev.parent);
++	if (IS_ERR(imx678->bus_pinctrl))
++		return dev_err_probe(dev, PTR_ERR(imx678->bus_pinctrl),
++				     "failed to get converter bus pinctrl\n");
++	ret = devm_add_action_or_reset(dev, imx678_put_bus_pinctrl,
++				      imx678->bus_pinctrl);
++	if (ret)
++		return ret;
++	imx678->bus_active = pinctrl_lookup_state(imx678->bus_pinctrl, "default");
++	if (IS_ERR(imx678->bus_active))
++		return dev_err_probe(dev, PTR_ERR(imx678->bus_active),
++				     "missing active I2C state\n");
++	imx678->bus_off = pinctrl_lookup_state(imx678->bus_pinctrl, "imx678-off");
++	if (IS_ERR(imx678->bus_off))
++		return dev_err_probe(dev, PTR_ERR(imx678->bus_off),
++				     "missing converter shutdown I2C state\n");
++	return 0;
++}
++
++static int imx678_converter_power_off(struct device *dev)
++{
++	struct i2c_client *client = to_i2c_client(dev);
++	struct imx678 *imx678 = to_imx678(i2c_get_clientdata(client));
++	int ret;
++
++	i2c_lock_bus(client->adapter, I2C_LOCK_ROOT_ADAPTER);
++	ret = pinctrl_select_state(imx678->bus_pinctrl, imx678->bus_off);
++	if (ret) {
++		dev_err(dev, "cannot clamp I2C; keeping converter powered: %d\n", ret);
++		goto unlock;
++	}
++	gpiod_set_value_cansleep(imx678->reset_gpio, 1);
++	fsleep(1000); /* XCLR / oscillator LOW before sequencer disable. */
++	clk_disable_unprepare(imx678->xclk);
++	ret = regulator_bulk_disable(ARRAY_SIZE(imx678_supply_name),
++				     imx678->supplies);
++	fsleep(150000); /* All three rails finish discharging; keep I2C LOW. */
++unlock:
++	i2c_unlock_bus(client->adapter, I2C_LOCK_ROOT_ADAPTER);
++	return ret;
++}
++
++static int imx678_converter_power_on(struct device *dev)
++{
++	struct i2c_client *client = to_i2c_client(dev);
++	struct imx678 *imx678 = to_imx678(i2c_get_clientdata(client));
++	int ret;
++
++	i2c_lock_bus(client->adapter, I2C_LOCK_ROOT_ADAPTER);
++	ret = pinctrl_select_state(imx678->bus_pinctrl, imx678->bus_off);
++	if (ret)
++		goto unlock;
++	gpiod_set_value_cansleep(imx678->reset_gpio, 1);
++	ret = regulator_bulk_enable(ARRAY_SIZE(imx678_supply_name),
++				    imx678->supplies);
++	if (ret)
++		goto unlock;
++	/* cam0_reg startup-delay-us waits 150ms after GPIO34 HIGH. */
++	gpiod_set_value_cansleep(imx678->reset_gpio, 0);
++	ret = clk_prepare_enable(imx678->xclk);
++	if (ret)
++		goto reset;
++	fsleep(5000); /* U10 oscillator startup is up to 3ms. */
++	ret = pinctrl_select_state(imx678->bus_pinctrl, imx678->bus_active);
++	if (ret) {
++		/* A failed mux change may be partial: re-clamp before cutting power. */
++		i2c_unlock_bus(client->adapter, I2C_LOCK_ROOT_ADAPTER);
++		imx678_converter_power_off(dev);
++		return ret;
++	}
++	i2c_unlock_bus(client->adapter, I2C_LOCK_ROOT_ADAPTER);
++
++	ret = imx678_write_common(imx678);
++	if (ret)
++		imx678_converter_power_off(dev);
++	return ret;
++
++reset:
++	gpiod_set_value_cansleep(imx678->reset_gpio, 1);
++	fsleep(1000);
++	regulator_bulk_disable(ARRAY_SIZE(imx678_supply_name), imx678->supplies);
++	fsleep(150000);
++unlock:
++	i2c_unlock_bus(client->adapter, I2C_LOCK_ROOT_ADAPTER);
++	return ret;
++}
++
+ static int imx678_power_on(struct device *dev)
+ {
+ 	struct i2c_client *client = to_i2c_client(dev);
+@@ -1006,6 +1116,9 @@
+ 	struct imx678 *imx678 = to_imx678(sd);
+ 	int ret;
+ 
++	if (imx678->bus_pinctrl)
++		return imx678_converter_power_on(dev);
++
+ 	ret = regulator_bulk_enable(ARRAY_SIZE(imx678_supply_name),
+ 				    imx678->supplies);
+ 	if (ret) {
+@@ -1055,6 +1168,9 @@
+ 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+ 	struct imx678 *imx678 = to_imx678(sd);
+ 
++	if (imx678->bus_pinctrl)
++		return imx678_converter_power_off(dev);
++
+ 	clk_disable_unprepare(imx678->xclk);
+ 	gpiod_set_value_cansleep(imx678->reset_gpio, 1);
+ 	regulator_bulk_disable(ARRAY_SIZE(imx678_supply_name),
+@@ -1334,6 +1450,10 @@
+ 		return dev_err_probe(dev, PTR_ERR(imx678->reset_gpio),
+ 				     "failed to get reset GPIO\n");
+ 
++	ret = imx678_converter_init(client, imx678);
++	if (ret)
++		return ret;
++
+ 	ret = imx678_power_on(dev);
+ 	if (ret)
+ 		return ret;
+@@ -1418,7 +1538,25 @@
+ 	SET_RUNTIME_PM_OPS(imx678_power_off, imx678_power_on, NULL)
+ };
+ 
++static void imx678_shutdown(struct i2c_client *client)
++{
++	struct imx678 *imx678 = to_imx678(i2c_get_clientdata(client));
++
++	if (!imx678->bus_pinctrl)
++		return;
++	pm_runtime_disable(&client->dev);
++	if (!pm_runtime_status_suspended(&client->dev)) {
++		/* Stop the sensor before the I2C bus is clamped for power-down. */
++		cci_write(imx678->cci, IMX678_REG_XMSTA, 0x01, NULL);
++		cci_write(imx678->cci, IMX678_REG_MODE_SELECT,
++			  IMX678_MODE_STANDBY, NULL);
++		imx678_converter_power_off(&client->dev);
++		pm_runtime_set_suspended(&client->dev);
++	}
++}
++
+ static const struct of_device_id imx678_of_match[] = {
++	{ .compatible = "mfnavis,imx678-cm5-converter" },
+ 	{ .compatible = "sony,imx678-aamr", .data = &imx678_aamr_info },
+ 	{ .compatible = "sony,imx678-aaqr", .data = &imx678_aaqr_info },
+ 	/* for non-conforming DTs that rely on runtime check */
+@@ -1436,6 +1574,7 @@
+ 	},
+ 	.probe = imx678_probe,
+ 	.remove = imx678_remove,
++	.shutdown = imx678_shutdown,
+ };
+ 
+ module_i2c_driver(imx678_i2c_driver);
+@@ -1445,3 +1584,5 @@
+ MODULE_AUTHOR("Jai Luthra <jai.luthra@ideasonboard.com>");
+ MODULE_DESCRIPTION("Sony imx678 sensor driver");
+ MODULE_LICENSE("GPL");
++MODULE_VERSION("0.2.0");
++MODULE_INFO(mfnavis_converter, "1");

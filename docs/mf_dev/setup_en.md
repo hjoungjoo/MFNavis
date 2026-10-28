@@ -44,6 +44,38 @@ wget -O /tmp/mfnavis-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavi
 MFNAVIS_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh
 ```
 
+**Fresh installations default to IMX462.** The ordinary setup command also
+installs IMX678 dependencies, the DKMS driver, overlays, generic tuning and menu
+permissions on Pi 5/CM5 Trixie. No camera installation options are required.
+
+After installation, select `Settings > Advanced > Camera Type > IMX678 (Auto)`.
+On CM5, this automatically selects the verified **CSI0 converter** (GPIO34/35,
+four lanes, 74.25 MHz and the board power sequence), then reboots. Switching to
+IMX462/IMX296/IMX477 and back preserves the converter configuration. Selecting
+the already-active IMX678 does not reboot. Power off before changing hardware.
+
+The following environment variables are optional administrative overrides.
+
+| Option | Behavior |
+| --- | --- |
+| `MFNAVIS_CAMERA=keep` (default) | Preserve the existing camera; select IMX462 only when none is configured |
+| `MFNAVIS_CAMERA=imx678-cm5-converter` | Install and select the CM5 CSI0 converter |
+| `MFNAVIS_CAMERA=imx678` | Install and select IMX678; CM5 defaults to the CSI0 converter, saved wiring takes precedence |
+| `MFNAVIS_CAMERA=imx462` / `imx296` / `imx477` | Explicitly select that sensor |
+| `MFNAVIS_INSTALL_IMX678=auto` (default) | Prepare support on Pi 5/CM5 Trixie or when IMX678 is selected |
+| `MFNAVIS_INSTALL_IMX678=true` | Request support on another system, subject to compatibility checks |
+| `MFNAVIS_INSTALL_IMX678=false` | Skip support; rejected when IMX678 is the current/requested camera |
+
+Omit `MFNAVIS_CAMERA` on reinstalls to retain the selected sensor and wiring.
+Preparing support alone does not switch the camera. CM5's first IMX678 menu
+selection defaults to the CSI0 converter; other boards use the generic CAM1,
+two-lane, 24 MHz configuration. Previously saved custom IMX678 wiring is preserved.
+Existing tuning files are preserved. The kernel header metapackage enables
+future DKMS rebuilds; already-installed kernels of the same flavour are also
+prepared before reboot. Missing headers or build failures stop installation.
+Code-only updates remain code-only: use full setup or
+`sudo bash scripts/install_imx678.sh --install` for driver updates.
+
 For a published version, use the tagged-release procedure in the
 [README](../../README.md#2-install-mfnavis-release-or-main) and check that tag's
 OS requirements. A source update does not upgrade Bookworm to Trixie. Back up

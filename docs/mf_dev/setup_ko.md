@@ -57,6 +57,35 @@ wget -O /tmp/mfnavis-setup.sh https://raw.githubusercontent.com/hjoungjoo/MFNavi
 MFNAVIS_INSTALL_BRANCH=main bash /tmp/mfnavis-setup.sh
 ```
 
+**새 설치의 기본 카메라는 IMX462**입니다. 위 일반 설치 명령을 그대로
+사용하면 Pi 5/CM5 Trixie에서 IMX678 드라이버·오버레이·튜닝·메뉴 권한도
+함께 준비됩니다. 사용자가 설치 옵션을 지정할 필요는 없습니다.
+
+설치 이후 `Settings > Advanced > Camera Type > IMX678 (Auto)`를 선택하면
+CM5에서는 **CSI0, 4레인, 74.25 MHz, GPIO34/35 전원·리셋 시퀀스**가 자동
+적용되고 재부팅됩니다. IMX462·IMX296·IMX477로 바꿨다가 IMX678로 돌아와도
+컨버터 설정을 유지합니다. 이미 선택된 IMX678을 다시 선택하면 재부팅하지
+않습니다. 센서 교체는 전원을 끈 상태에서 진행합니다.
+
+아래 환경 변수는 관리·자동화용 선택사항이며 일반 설치에는 필요하지 않습니다.
+
+| 설치 옵션 | 동작 |
+| --- | --- |
+| `MFNAVIS_CAMERA=keep` (기본) | 기존 카메라 보존, 선택이 없는 새 설치만 IMX462 |
+| `MFNAVIS_CAMERA=imx678-cm5-converter` | CM5 CSI0 컨버터 드라이버 설치 및 선택 |
+| `MFNAVIS_CAMERA=imx678` | IMX678 설치 및 선택; CM5는 CSI0 컨버터 기본값, 저장된 배선 옵션 우선 |
+| `MFNAVIS_CAMERA=imx462` / `imx296` / `imx477` | 해당 카메라를 명시적으로 선택 |
+| `MFNAVIS_INSTALL_IMX678=auto` (기본) | Pi 5/CM5 Trixie 또는 IMX678 선택 장치에 지원 설치 |
+| `MFNAVIS_INSTALL_IMX678=true` | 다른 환경에서도 IMX678 준비 요청; 호환성 검증 필수 |
+| `MFNAVIS_INSTALL_IMX678=false` | IMX678 지원 설치 생략; 현재/요청 카메라가 IMX678이면 오류 |
+
+카메라를 바꾸지 않는 재설치에는 `MFNAVIS_CAMERA`를 생략합니다. 설치된
+IMX678은 자동으로 다시 준비하며 부팅 옵션과 사용자 튜닝을 보존합니다.
+기본 지원 준비만으로 기존 IMX462를 IMX678로 바꾸지는 않습니다.
+CM5의 최초 IMX678 선택은 CSI0 컨버터 설정입니다. 다른 보드는 일반 모듈의
+CAM1·2레인·24 MHz 기본값을 사용합니다. 기존에 저장한 사용자 지정 IMX678
+배선 옵션이 있으면 해당 옵션을 우선 보존합니다.
+
 공개 버전은 [README의 태그 설치 절차](../../README_ko.md#2-mfnavis-설치-릴리즈-또는-main)를
 따르고 해당 태그의 OS 요구사항을 확인합니다. 소스 업데이트만으로 Bookworm이
 Trixie로 바뀌지는 않습니다. 새 Trixie OS를 준비하기 전에 `~/MFNavis_data`와
@@ -348,7 +377,9 @@ MFDS는 고정된 바이너리 릴리즈를 사용한다. 다운로드된 `pytho
 
 MFNavis는 IMX678의 **Linux upstream 드라이버와 공식 Raspberry Pi libcamera**를
 사용한다. 현재 Raspberry Pi OS 커널 패키지에 없는 IMX678 드라이버는 Linux
-공식 소스를 변경하지 않고 DKMS 모듈로 빌드한다. MFNavis의 Raspberry Pi용
+공식 원본 소스의 해시를 검증하고, CM5 컨버터 전원 시퀀스 패치를 별도로
+적용해 DKMS 0.2.0 모듈로 빌드한다. 일반 Sony 호환 장치의 시퀀스는 유지한다.
+MFNavis의 Raspberry Pi용
 오버레이와 설치 스크립트는 별도 통합 코드이며, Raspberry Pi가 배포하는
 공식 IMX678 패키지라는 뜻은 아니다.
 
@@ -394,10 +425,35 @@ generic 튜닝·메뉴 전환 권한을 준비한다. 현재 카메라를 중지
 `config.txt`를 변경하거나 재부팅하지 않는다. DKMS는 이후 커널 업데이트 시
 재빌드를 시도한다. 새 커널에서의 빌드 성공 여부는 업데이트 후 확인한다.
 
-전체 설치 시에는 `MFNAVIS_INSTALL_IMX678=true`를 지정해 같은 준비를 포함할
-수 있다. 기본 카메라 선택은 기존 설정을 유지한다.
+전체 설치는 Pi 5/CM5 Trixie에서 IMX678 지원을 기본으로 준비한다.
+새 설치는 IMX462로 시작하며 설치 이후 카메라 메뉴에서 IMX678을 선택한다.
+CM5에서는 컨버터 설정이 자동 적용되므로 설치 옵션은 필요하지 않다.
+재설치의 기본 `keep`은 기존 카메라 선택을 유지한다. 필요한 libcamera·빌드 패키지를
+설치한 뒤 호환성을 검사하며, 커널 헤더 메타패키지를 설치해 이후 OS 커널
+업데이트 시 DKMS 재빌드가 가능하게 한다. 이미 설치된 같은 종류의 새 커널도
+재부팅 전에 모듈을 빌드한다. 빌드 실패나 헤더 누락은 설치 오류로 처리한다.
+코드 전용 `mfnavis_update.sh`는 OS 패키지·드라이버·부팅 설정을 변경하지
+않으므로 드라이버 갱신에는 전체 설치 또는 `install_imx678.sh --install`을 쓴다.
 
 ### 실제 모듈 연결 후
+
+**MFNavis A0 PWR2-PD 컨버터 + CM5 CSI0**는 일반 설치를 마친 뒤 메뉴에서
+`IMX678 (Auto)`를 선택하면 된다. 이전 버전의 설치를 수동으로 보완하거나
+메뉴 접근이 어려운 경우에만 다음 명령으로 준비·선택할 수 있다:
+
+```bash
+sudo bash scripts/install_imx678.sh --activate-converter
+sudo reboot
+```
+
+GPIO34 전원, GPIO35 리셋/발진기, 74.25 MHz, CSI0 4레인 전용
+`imx678-mfnavis-cm5-converter` 설정을 사용한다. 설치 시 기존 부팅 설정을
+백업한다. GPIO0 HIGH 후 150 ms, GPIO1 HIGH 후 5 ms를 기다리며,
+종료 시 전용 I2C의 SDA/SCL을 LOW로 유지한 뒤 GPIO1 LOW → 1 ms →
+GPIO0 LOW → 150 ms 순서를 적용한다. 배선·제약과 패치 출처는
+[컨버터 설명](../../deployment/imx678/README.md)을 참조한다.
+
+다음은 일반 IMX678 모듈용 절차다.
 
 1. 전원을 끈 상태에서 카메라를 연결한다.
 2. 기본 연결은 **CAM1, 2레인, XCLK 24 MHz**다. 다른 연결은 아래 오버레이
@@ -454,7 +510,7 @@ sudo systemctl start mfnavis.service
 실제 렌즈 화각 측정으로 확인한다. 설치 스크립트의 `--check`는 파일·모듈
 준비 상태만 확인하며 실제 촬영 성공을 뜻하지 않는다.
 
-### 이번 검증과 남은 확인
+### 이전 일반 모듈 준비 단계의 검증 기록
 
 - 공식 소스 SHA-256 일치, 현재 커널 모듈 빌드 성공.
 - 테스트 장비에 `mfnavis-imx678/0.1.0` DKMS 설치 및 `modprobe imx678`

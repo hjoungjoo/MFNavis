@@ -2,6 +2,9 @@
 
 from types import SimpleNamespace
 from unittest.mock import Mock
+from pathlib import Path
+import shutil
+import subprocess
 import sys
 
 import numpy as np
@@ -15,6 +18,130 @@ from PiFinder.sqm.camera_profiles import detect_camera_type, get_camera_profile
 from PiFinder.ui import callbacks
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize(
+    "model,overlay",
+    [
+        ("Raspberry Pi Compute Module 5 Rev 1.0\x00", "imx678-mfnavis-cm5-converter"),
+        (
+            "Raspberry Pi Compute Module 5 Lite Rev 1.0\x00",
+            "imx678-mfnavis-cm5-converter",
+        ),
+        ("Raspberry Pi 5 Model B Rev 1.0\x00", "imx678-mfnavis"),
+        ("Raspberry Pi 4 Model B Rev 1.4\x00", "imx678-mfnavis"),
+    ],
+)
+def test_default_overlay_matches_board(tmp_path, model, overlay):
+    model_path = tmp_path / "model"
+    model_path.write_text(model)
+    assert switch_camera._default_imx678_overlay(model_path) == overlay
+
+
+def test_no_board_model_keeps_generic_default(tmp_path):
+    assert (
+        switch_camera._default_imx678_overlay(tmp_path / "absent") == "imx678-mfnavis"
+    )
+
+
+@pytest.mark.parametrize("other_camera", ["imx462", "imx296", "imx477"])
+def test_fresh_cm5_menu_selection_needs_no_install_options(
+    monkeypatch, tmp_path, other_camera
+):
+    # Ordinary setup has installed both overlays, with no saved IMX678 profile.
+    boot = tmp_path / "config.txt"
+    boot.write_text("camera_auto_detect=1\n")
+    (tmp_path / "overlays").mkdir()
+    for name in ("imx678-mfnavis", "imx678-mfnavis-cm5-converter"):
+        (tmp_path / "overlays" / f"{name}.dtbo").touch()
+    monkeypatch.setattr(switch_camera, "get_boot_config_path", lambda: boot)
+    monkeypatch.setattr(callbacks, "get_boot_config_path", lambda: boot)
+    monkeypatch.setattr(
+        switch_camera,
+        "_default_imx678_overlay",
+        lambda: "imx678-mfnavis-cm5-converter",
+    )
+    switch_camera.ensure_default_boot()
+    assert "imx678" not in boot.read_text()
+    system = Mock()
+    system.switch_cam_imx678.side_effect = lambda: switch_camera.switch_boot("imx678")
+    monkeypatch.setattr(callbacks, "sys_utils", system)
+    ui = SimpleNamespace(config_object=Mock(), message=Mock())
+    callbacks.switch_cam_imx678(ui)
+    expected = "[all]\ncamera_auto_detect=0\ndtoverlay=imx678-mfnavis-cm5-converter\n"
+    assert boot.read_text().endswith(expected)
+    system.restart_system.assert_called_once()
+    # Selecting the already-active sensor is idempotent and does not reboot.
+    selected = boot.read_text()
+    callbacks.switch_cam_imx678(ui)
+    assert boot.read_text() == selected
+    system.restart_system.assert_called_once()
+    switch_camera.switch_boot(other_camera)
+    callbacks.switch_cam_imx678(ui)
+    assert boot.read_text().endswith(expected)
+    assert system.restart_system.call_count == 2
+    assert (
+        sum(line.startswith("dtoverlay=imx") for line in boot.read_text().splitlines())
+        == 1
+    )
+
+
+def test_first_pi5_selection_remains_generic(monkeypatch, tmp_path):
+    boot = tmp_path / "config.txt"
+    boot.write_text("dtoverlay=imx462\n")
+    (tmp_path / "overlays").mkdir()
+    (tmp_path / "overlays/imx678-mfnavis.dtbo").touch()
+    monkeypatch.setattr(switch_camera, "get_boot_config_path", lambda: boot)
+    monkeypatch.setattr(
+        switch_camera, "_default_imx678_overlay", lambda: "imx678-mfnavis"
+    )
+    switch_camera.switch_boot("imx678")
+    assert boot.read_text().endswith("dtoverlay=imx678-mfnavis\n")
+
+
+def test_cm5_never_falls_back_when_converter_overlay_is_missing(monkeypatch, tmp_path):
+    boot = tmp_path / "config.txt"
+    original = "dtoverlay=imx462\n"
+    boot.write_text(original)
+    (tmp_path / "overlays").mkdir()
+    (tmp_path / "overlays/imx678-mfnavis.dtbo").touch()
+    monkeypatch.setattr(switch_camera, "get_boot_config_path", lambda: boot)
+    monkeypatch.setattr(
+        switch_camera,
+        "_default_imx678_overlay",
+        lambda: "imx678-mfnavis-cm5-converter",
+    )
+    with pytest.raises(RuntimeError, match="Prepare IMX678"):
+        switch_camera.switch_boot("imx678")
+    assert boot.read_text() == original
+
+
+def test_installed_menu_helper_runs_without_app_python_environment(tmp_path):
+    boot = tmp_path / "config.txt"
+    boot.write_text("camera_auto_detect=1\n")
+    (tmp_path / "overlays").mkdir()
+    for name in ("imx678-mfnavis", "imx678-mfnavis-cm5-converter"):
+        (tmp_path / "overlays" / f"{name}.dtbo").touch()
+    # Same standalone layout as /usr/local/lib/mfnavis; only boot destination
+    # is redirected. Board detection reads the real host, without touching it.
+    helper = tmp_path / "switch_camera.py"
+    shutil.copy(Path(switch_camera.__file__), helper)
+    (tmp_path / "boot_config.py").write_text(
+        f"from pathlib import Path\ndef get_boot_config_path(): return Path({str(boot)!r})\n"
+    )
+
+    def select(*args):
+        subprocess.run([sys.executable, str(helper), *args], check=True)
+
+    select("--default", "imx462")
+    assert "dtoverlay=imx462,clock-frequency=74250000" in boot.read_text()
+    assert "imx678" not in boot.read_text()
+    expected = f"dtoverlay={switch_camera._default_imx678_overlay()}\n"
+    select("imx678")
+    assert boot.read_text().endswith(expected)
+    select("imx462")
+    select("imx678")
+    assert boot.read_text().endswith(expected)
 
 
 @pytest.mark.parametrize("mono", [True, False])
@@ -144,3 +271,42 @@ def test_menu_selects_imx678_without_inheriting_variant(monkeypatch, tmp_path):
     cfg.set_option.assert_not_called()
     system.switch_cam_imx678.assert_called_once()
     system.restart_system.assert_called_once()
+
+
+def test_converter_activation_is_unique_global_and_survives_menu_switch(
+    monkeypatch, tmp_path
+):
+    boot = tmp_path / "config.txt"
+    boot.write_text(
+        "dtoverlay=imx462\n[pi4]\ncamera_auto_detect=0\n"
+        "#dtoverlay=imx678-mfnavis,cam0,4lane\n"
+        "#dtoverlay=imx678-mfnavis-cm5-converter\n"
+    )
+    (tmp_path / "overlays").mkdir()
+    (tmp_path / "overlays/imx678-mfnavis-cm5-converter.dtbo").touch()
+    monkeypatch.setattr(switch_camera, "get_boot_config_path", lambda: boot)
+    switch_camera.switch_boot("imx678", converter=True)
+    expected = boot.read_text()
+    assert expected.endswith(
+        "[all]\ncamera_auto_detect=0\ndtoverlay=imx678-mfnavis-cm5-converter\n"
+    )
+    assert sum(line.startswith("dtoverlay=imx") for line in expected.splitlines()) == 1
+    switch_camera.switch_boot("imx678")
+    assert boot.read_text() == expected
+    switch_camera.switch_boot("imx462")
+    switch_camera.switch_boot("imx678")
+    assert boot.read_text().endswith(
+        "[all]\ncamera_auto_detect=0\ndtoverlay=imx678-mfnavis-cm5-converter\n"
+    )
+
+
+def test_converter_requires_its_own_overlay_before_editing(monkeypatch, tmp_path):
+    boot = tmp_path / "config.txt"
+    original = "dtoverlay=imx462\n"
+    boot.write_text(original)
+    (tmp_path / "overlays").mkdir()
+    (tmp_path / "overlays/imx678-mfnavis.dtbo").touch()
+    monkeypatch.setattr(switch_camera, "get_boot_config_path", lambda: boot)
+    with pytest.raises(RuntimeError, match="Prepare IMX678"):
+        switch_camera.switch_boot("imx678", converter=True)
+    assert boot.read_text() == original

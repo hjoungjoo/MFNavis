@@ -130,6 +130,8 @@ python3 "${MFNAVIS_REPO_DIR}/scripts/check_cedar_free.py" --repo "${MFNAVIS_REPO
 
 source "${MFNAVIS_REPO_DIR}/scripts/mfnavis_setup_runtime.sh"
 mfnavis_select_setup_python
+source "${MFNAVIS_REPO_DIR}/scripts/mfnavis_setup_camera.sh"
+mfnavis_plan_setup_camera
 mfnavis_prepare_indi_archive
 
 bash "${MFNAVIS_REPO_DIR}/scripts/ensure_tetra3_link.sh" "${MFNAVIS_REPO_DIR}"
@@ -311,16 +313,9 @@ fi
 # directly; libinput does not deliver joystick events).
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3-evdev \
     || echo "WARNING: could not install python3-evdev; joystick input will be disabled." >&2
-# Use the product IMX462 sensor on a fresh boot config; keep an existing camera
-# overlay when this script is rerun on a device with a deliberate selection.
-sudo env PYTHONPATH="${MFNAVIS_REPO_DIR}/python" python3 \
-    -m MFNavis.switch_camera --default imx462
-
-# Optional IMX678 preparation keeps the currently selected camera active.
-if [[ "${MFNAVIS_INSTALL_IMX678:-false}" == true ]]; then
-    sudo env MFNAVIS_USER="${MFNAVIS_USER}" bash \
-        "${MFNAVIS_REPO_DIR}/scripts/install_imx678.sh" --install
-fi
+# Prepare the kernel driver before selecting a sensor. By default, preserve the
+# existing camera and prepare IMX678 support on Pi 5 / CM5 with Trixie.
+mfnavis_install_setup_camera
 
 # Keep POSIX shared memory alive across SSH logouts: logind's default
 # RemoveIPC=yes deletes all IPC owned by the MFNavis user (including the

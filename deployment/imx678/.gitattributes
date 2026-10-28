@@ -1,0 +1,2 @@
+# Unified diff context has a leading space before kernel tabs and blank lines.
+*.patch whitespace=-blank-at-eol,-space-before-tab
