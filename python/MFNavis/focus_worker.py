@@ -10,11 +10,13 @@ import numpy as np
 
 
 def _run(requests, results):
-    from PiFinder.focus import focus_hfd
+    from PiFinder.focus_tracker import FocusTracker
+
+    tracker = FocusTracker()
 
     while True:
         try:
-            name, shape, dtype, sigma_k = requests.recv()
+            name, shape, dtype, sigma_k, reset = requests.recv()
         except EOFError:
             return
         started = time.monotonic()
@@ -22,7 +24,7 @@ def _run(requests, results):
         try:
             memory = SharedMemory(name=name)
             frame = np.ndarray(shape, dtype=dtype, buffer=memory.buf)
-            result = focus_hfd(frame, sigma_k=sigma_k)
+            result = tracker.measure(frame, sigma_k=sigma_k, reset=reset)
             response = (result, None, time.monotonic() - started)
         except Exception as exc:
             response = (
@@ -74,7 +76,7 @@ class FocusWorker:
             child_requests.close()
             child_results.close()
 
-    def submit(self, frame, *, sigma_k=5.0):
+    def submit(self, frame, *, sigma_k=5.0, reset=False):
         if not self.available:
             return False
         try:
@@ -86,7 +88,9 @@ class FocusWorker:
                 self._memory = SharedMemory(create=True, size=max(1, frame.nbytes))
             shared = np.ndarray(frame.shape, dtype=frame.dtype, buffer=self._memory.buf)
             np.copyto(shared, frame)
-            self._requests.send((self._memory.name, frame.shape, frame.dtype, sigma_k))
+            self._requests.send(
+                (self._memory.name, frame.shape, frame.dtype, sigma_k, reset)
+            )
             self._started = time.monotonic()
             self._busy = True
             return True

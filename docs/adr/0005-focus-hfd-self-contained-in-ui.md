@@ -4,8 +4,12 @@
 plate solving and preserves native-pixel HFD. Large IMX678 frames made the
 original synchronous main-process implementation block keys for seconds.
 Measurement now runs in one spawned worker with a reusable shared pixel buffer,
-a bounded candidate shortlist, and no pending-frame backlog. `UIPreview` renders
-the matching captured image/result and reuses it for forced redraws. The original
+a bounded candidate shortlist, and no pending-frame backlog. Large frames use
+coarse acquisition followed by native-pixel ROI measurement and tracking;
+measurement runs at most twice per second, only in Stars/Single/Stats. Image
+does not run the measurement worker. The solver pauses during Focus and restarts
+temporal accumulation with fresh input on exit. `UIPreview` renders the matching
+captured image/result and reuses it for forced redraws. The original
 decision below records the 512×512 design; see
 [performance implementation and validation](../FOCUS_PERFORMANCE_ko.md) for the update.
 

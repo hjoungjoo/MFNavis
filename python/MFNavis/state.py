@@ -687,12 +687,52 @@ class SharedStateObj:
         self.__screen = v
 
     def cam_raw(self):
+        from PiFinder.raw_frame_transport import read_frame
+
+        if getattr(self, "_camera_raw_reference", None) is not None:
+            return read_frame(self._camera_raw_reference)
         return self.__cam_raw
 
     def set_cam_raw(self, v):
+        self._camera_raw_reference = None
         self.__cam_raw = v
 
+    def raw_frame_transport(self):
+        return "memfd-v1"
+
+    def camera_raw_reference(self):
+        return getattr(self, "_camera_raw_reference", None)
+
+    def set_camera_raw_refs(self, camera_reference, solver_entry):
+        self._camera_raw_reference = camera_reference
+        self.__cam_raw = None
+        self.__solver_raw = solver_entry
+
+    def focus_active(self):
+        return getattr(self, "_focus_active", False)
+
+    def set_focus_active(self, active):
+        self._focus_active = bool(active)
+
+    def solver_frame_reference(self, newer_than=None):
+        entry = self.__solver_frame
+        if (
+            newer_than is not None
+            and isinstance(entry, dict)
+            and (entry.get("metadata") or {}).get("exposure_end", 0) <= newer_than
+        ):
+            # The solver's 30 Hz idle poll needs no repeated 512px image either.
+            return {"image": None, "metadata": entry["metadata"], "raw": None}
+        return entry
+
     def solver_frame(self):
+        from PiFinder.raw_frame_transport import materialize_raw
+
+        if isinstance(self.__solver_frame, dict):
+            return {
+                **self.__solver_frame,
+                "raw": materialize_raw(self.__solver_frame.get("raw")),
+            }
         return self.__solver_frame
 
     def set_solver_frame(self, v):
@@ -713,7 +753,9 @@ class SharedStateObj:
         self.__solver_frame = v
 
     def solver_raw(self):
-        return self.__solver_raw
+        from PiFinder.raw_frame_transport import materialize_raw
+
+        return materialize_raw(self.__solver_raw)
 
     def set_solver_raw(self, v):
         self.__solver_raw = v

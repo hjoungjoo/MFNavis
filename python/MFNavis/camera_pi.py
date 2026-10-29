@@ -521,8 +521,8 @@ class CameraPI(CameraInterface):
 
         # Uncropped frame for the SEP full-frame detection path (shadow /
         # fallback). Same orientation convention as the cropped frame:
-        # profile rotation applied, crop skipped. The reference is free --
-        # the manager proxy pickles (copies) on set_solver_raw below.
+        # profile rotation applied, crop skipped. Production publishes a locked
+        # memfd reference; legacy state implementations still receive an array.
         solver_full = None
         if getattr(self, "_publish_solver_raw", False) or solver_preprocess_enabled:
             solver_full = sensor_raw
@@ -550,19 +550,41 @@ class CameraPI(CameraInterface):
 
         # Store raw in shared state (before processing) for calibration and analysis
         if hasattr(self, "shared_state"):
-            self.shared_state.set_cam_raw(raw_capture.copy())
+            if not hasattr(self, "_shared_raw_enabled"):
+                getter = getattr(self.shared_state, "raw_frame_transport", lambda: None)
+                self._shared_raw_enabled = getter() == "memfd-v1"
+            solver_entry = None
             if solver_full is not None:
-                self.shared_state.set_solver_raw(
-                    {
-                        "frame": solver_full,
-                        "timestamp": time.time(),
-                        "frame_id": self.last_frame_id,
-                        "frame_sequence": self._capture_sequence,
-                        "sensor_timestamp_ns": sensor_timestamp_ns,
-                        "exposure_us": metadata.get("ExposureTime"),
-                        "gain": metadata.get("AnalogueGain"),
-                    }
-                )
+                solver_entry = {
+                    "timestamp": time.time(),
+                    "frame_id": self.last_frame_id,
+                    "frame_sequence": self._capture_sequence,
+                    "sensor_timestamp_ns": sensor_timestamp_ns,
+                    "exposure_us": metadata.get("ExposureTime"),
+                    "gain": metadata.get("AnalogueGain"),
+                }
+            if self._shared_raw_enabled:
+                from PiFinder.raw_frame_transport import RawFramePublisher
+
+                if not hasattr(self, "_raw_publisher"):
+                    self._raw_publisher = RawFramePublisher()
+                reference = self._raw_publisher.publish(sensor_raw)
+                reference["rotation"] = self.profile.rotation_90
+                camera_reference = {
+                    **reference,
+                    "crop": (*self.profile.crop_y, *self.profile.crop_x),
+                }
+                paused = self.shared_state.focus_active()
+                if solver_entry is not None and not paused:
+                    solver_entry["frame_ref"] = reference
+                else:
+                    solver_entry = None
+                self.shared_state.set_camera_raw_refs(camera_reference, solver_entry)
+            else:
+                self.shared_state.set_cam_raw(raw_capture.copy())
+                if solver_entry is not None:
+                    solver_entry["frame"] = solver_full
+                    self.shared_state.set_solver_raw(solver_entry)
 
         # covert to 32 bit int to avoid overflow
         raw_capture = raw_capture.astype(np.float32)
@@ -582,14 +604,12 @@ class CameraPI(CameraInterface):
             stage_frames[livecam_source] = raw_capture.copy()
 
         # rescale to 8 bit
-        raw_capture = (
-            raw_capture
-            * 255
-            / (2**self.profile.bit_depth - self.profile.bias_offset - 1)
-        )
+        raw_capture *= 255
+        raw_capture /= 2**self.profile.bit_depth - self.profile.bias_offset - 1
 
         # clip to avoid <0 or >255 values
-        raw_capture = np.clip(raw_capture.astype(np.int32), 0, 255).astype(np.uint8)
+        np.clip(raw_capture, 0, 255, out=raw_capture)
+        raw_capture = raw_capture.astype(np.uint8)
         if stage_dump_dir:
             stages.append(("stretched_8bit", raw_capture.copy()))
         if livecam_source == SOURCE_STRETCHED_8BIT:

@@ -174,15 +174,32 @@ def test_slow_result_uses_its_exact_frame_then_submits_latest_only(preview):
     assert p._focus_pending[1]["exposure_end"] == 4
 
 
-def test_image_preview_keeps_refreshing_while_focus_is_busy(preview):
+def test_image_preview_refreshes_without_fetching_raw_or_starting_worker(preview):
     p, worker = preview
     p.display_mode = ui.DISPLAY_IMAGE
+    p._focus_input_image = lambda image: pytest.fail("Image view fetched focus RAW")
     p.update()
     p.metadata = {"exposure_end": 2}
     p.camera_image = Image.new("L", (32, 32), 42)
     p.update()
-    assert not worker.available
+    assert not worker.jobs
+    assert p._focus_worker is None
     assert p.screen.getpixel((0, 0)) == (42, 42, 42)
+
+
+def test_returning_to_image_discards_inflight_work_and_measurement_restarts(preview):
+    p, worker = preview
+    p.update()
+    assert len(worker.jobs) == 1
+    p.display_mode = ui.DISPLAY_IMAGE
+    p.update(force=True)
+    assert worker.closed
+    assert p._focus_pending is None
+    assert p.last_focus_result is None
+    worker.available = True
+    p.display_mode = ui.DISPLAY_STARS
+    p.update(force=True)
+    assert len(worker.jobs) == 2
 
 
 def test_failed_result_clears_hfd_and_exit_discards_inflight_image(preview):

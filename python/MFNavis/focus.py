@@ -81,8 +81,9 @@ class FocusResult:
     too_defocused: bool
     median_fwhm: Optional[float] = None
     blobs: Tuple[Blob, ...] = ()
-    # All regions passing the raw-pixel size test, before shortlisting.
+    # Full detection: all size-filtered regions. ROI modes: refined targets only.
     detected_count: Optional[int] = None
+    measurement_mode: str = "full"
 
 
 def _estimate_background_noise(np_image: np.ndarray) -> Tuple[float, float]:
@@ -189,6 +190,7 @@ def _find_blobs(
     *,
     max_blob_px: int,
     sigma_k: float,
+    min_size_px: int = 2,
 ) -> Tuple[List[Blob], List[Blob], float, Optional[float], int]:
     """Label connected regions above the detection threshold.
 
@@ -224,13 +226,13 @@ def _find_blobs(
     detected_count = None
     if n_labels > MAX_FOCUS_CANDIDATES:
         counts = np.bincount(labeled[mask & (img > threshold)], minlength=n_labels + 1)
-        detected_count = int(np.count_nonzero(counts[1:] >= 2))
+        detected_count = int(np.count_nonzero(counts[1:] >= min_size_px))
         scores = np.full(n_labels + 1, -np.inf, dtype=np.float32)
         np.maximum.at(scores, labeled[mask], (img - threshold)[mask])
         compact = []
         broad = []
         for index, sl in selected:
-            if sl is None or counts[index] < 2:
+            if sl is None or counts[index] < min_size_px:
                 continue
             extent = max(part.stop - part.start for part in sl)
             (broad if extent > max_blob_px else compact).append((index, sl))
@@ -258,7 +260,7 @@ def _find_blobs(
         # so a single-pixel hot pixel -- which smoothing spreads into a small
         # blob -- is still rejected as a one-pixel spike.
         size_px = int(((patch > threshold[sl]) & region_mask).sum())
-        if size_px < 2:
+        if size_px < min_size_px:
             continue
 
         height = sl[0].stop - sl[0].start
@@ -540,6 +542,30 @@ def focus_hfd(
     usable, oversized, background, brightest_peak, detected_count = _find_blobs(
         np_image, max_blob_px=max_blob_px, sigma_k=sigma_k
     )
+    return measure_blobs(
+        np_image,
+        usable,
+        oversized,
+        background,
+        brightest_peak,
+        detected_count,
+        n=n,
+        max_blob_px=max_blob_px,
+    )
+
+
+def measure_blobs(
+    np_image,
+    usable,
+    oversized,
+    background,
+    brightest_peak,
+    detected_count,
+    *,
+    n=4,
+    max_blob_px=50,
+):
+    """Measure refined native-coordinate blobs on the original pixels."""
     display_blobs = tuple(
         sorted(
             (*usable, *oversized),
@@ -561,7 +587,8 @@ def focus_hfd(
             detected_count=detected_count,
         )
 
-    img = np.asarray(np_image, dtype=np.float32)
+    # HFD/FWHM convert only their small apertures to float32.
+    img = np.asarray(np_image)
     hfds = []
     fwhms = []
     for blob in usable[:n]:

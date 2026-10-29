@@ -14,6 +14,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageOps
 
 from PiFinder import focus, mf_wide_focus, utils
 from PiFinder.focus_worker import FocusWorker
+from PiFinder.raw_frame_transport import camera_raw
 from PiFinder.ui.base import GuideKeyMixin, UIModule
 from PiFinder.ui.camera_render import crop_for_zoom
 from PiFinder.ui.marking_menus import MarkingMenu, MarkingMenuOption
@@ -32,7 +33,7 @@ FOCUS_BLOB_MARGIN = 1.35
 FOCUS_VISUAL_MAX_BLOB_PX = 128
 FOCUS_TILE_COUNT = 4
 FOCUS_WINDOW_S = 10.0
-FOCUS_MEASURE_INTERVAL = 0.2
+FOCUS_MEASURE_INTERVAL = 0.5
 HFD_MIN_DISPLAY_SPAN = 1.0
 HFD_RANGE_PADDING = 1.15
 # MF: processed-frame background level (0-255) above which the Image view
@@ -197,12 +198,18 @@ class UIPreview(GuideKeyMixin, UIModule):
         self._close_focus_worker()
         self._reset_focus_cache()
         self._begin_exposure_hold()
+        setter = getattr(self.shared_state, "set_focus_active", None)
+        if callable(setter):
+            setter(True)
 
     def inactive(self):
         """Release once, including MF guide key cleanup."""
         super().inactive()
         self._close_focus_worker()
         self._reset_focus_cache()
+        setter = getattr(self.shared_state, "set_focus_active", None)
+        if callable(setter):
+            setter(False)
         if not self._exposure_hold_active:
             return
         self._exposure_hold_active = False
@@ -271,7 +278,7 @@ class UIPreview(GuideKeyMixin, UIModule):
             manual_focal = self.config_object.get_option("camera_lens_focal_length_mm")
             if not mf_wide_focus.wide_focus_enabled(lens_key, manual_focal):
                 return processed_image
-            raw = self.shared_state.cam_raw()
+            raw = camera_raw(self.shared_state)
             if raw is None:
                 return processed_image
 
@@ -323,6 +330,7 @@ class UIPreview(GuideKeyMixin, UIModule):
         self._last_submitted_time = 0.0
         self._last_submit_at = -float("inf")
         self._bright_preview = None
+        self._focus_context = None
 
     def _close_focus_worker(self):
         worker = getattr(self, "_focus_worker", None)
@@ -373,7 +381,23 @@ class UIPreview(GuideKeyMixin, UIModule):
         wide_mode = self._wide_focus_mode
         self._wide_focus_mode, self._focus_frame_hw = previous_mode, previous_hw
         sigma_k = mf_wide_focus.WIDE_FOCUS_SIGMA_K if wide_mode else 5.0
-        if self._focus_worker.submit(np.asarray(image.convert("L")), sigma_k=sigma_k):
+        context = (
+            metadata.get("exposure_time"),
+            metadata.get("gain"),
+            wide_mode,
+            image.size,
+        )
+        moving = bool(getattr(metadata.get("imu"), "moving", False))
+        try:
+            moving = moving or abs(float(metadata.get("imu_delta") or 0)) > 0.1
+        except (TypeError, ValueError):
+            moving = True
+        if self._focus_worker.submit(
+            np.asarray(image.convert("L")),
+            sigma_k=sigma_k,
+            reset=moving or context != self._focus_context,
+        ):
+            self._focus_context = context
             self._focus_pending = (image, dict(metadata), wide_mode)
             self._last_submitted_time = frame_time
             self._last_submit_at = now
@@ -599,7 +623,7 @@ class UIPreview(GuideKeyMixin, UIModule):
         Image view usable for daytime alignment without touching
         exposure/gain.
         """
-        raw = self.shared_state.cam_raw()
+        raw = camera_raw(self.shared_state)
         if raw is None:
             return None
 
@@ -929,7 +953,7 @@ class UIPreview(GuideKeyMixin, UIModule):
         line_h = self.fonts.small.height + 1
         stats_y = top + self.fonts.huge.height
         lines = (
-            f"FWHM {fwhm}  Stars {detected}",
+            f"FWHM {fwhm}  {'Targets' if result and result.measurement_mode != 'full' else 'Stars'} {detected}",
             f"{exposure_mode} {exposure}  Gain {gain_text}",
         )
         for line in lines:
@@ -971,8 +995,19 @@ class UIPreview(GuideKeyMixin, UIModule):
             self._processed_image = self.camera_image.copy()
             self._bright_preview = None
             self.last_update = last_image_time
-        result_updated = self._poll_focus()
-        self._submit_focus(metadata)
+        result_updated = False
+        if self.display_mode == DISPLAY_IMAGE:
+            if self._focus_worker is not None:
+                self._close_focus_worker()
+                self._last_submitted_time = 0.0
+                self._focus_image = None
+                self._focus_metadata = {}
+                self.last_focus_result = None
+                self._tracked_focus_blobs = ()
+                self._focus_slot_catalog_ids = ()
+        else:
+            result_updated = self._poll_focus()
+            self._submit_focus(metadata)
 
         # Forced redraws (zoom/mode/exposure keys) reuse the captured frame and
         # its result. New results render with their own frame, never a newer

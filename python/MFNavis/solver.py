@@ -151,7 +151,7 @@ def _solver_preprocess_enabled(shared_state) -> bool:
         return False
 
 
-def _read_matching_solver_inputs(shared_state, attempts: int = 2):
+def _read_matching_solver_inputs(shared_state, attempts: int = 2, newer_than=None):
     """Read the newest 512 frame envelope and its matching full RAW.
 
     Production state embeds the corresponding RAW in the 512 envelope, so
@@ -161,7 +161,12 @@ def _read_matching_solver_inputs(shared_state, attempts: int = 2):
 
     latest_frame = None
     for _ in range(max(1, int(attempts))):
-        candidate_frame = shared_state.solver_frame()
+        reference_getter = getattr(shared_state, "solver_frame_reference", None)
+        candidate_frame = (
+            reference_getter(newer_than)
+            if callable(reference_getter)
+            else shared_state.solver_frame()
+        )
         if not (
             isinstance(candidate_frame, dict)
             and "image" in candidate_frame
@@ -169,11 +174,19 @@ def _read_matching_solver_inputs(shared_state, attempts: int = 2):
         ):
             continue
         latest_frame = candidate_frame
+        if (
+            newer_than is not None
+            and candidate_frame["metadata"].get("exposure_end", 0) <= newer_than
+        ):
+            return latest_frame, None  # Do not copy the same large RAW on every poll.
         candidate_raw = (
             candidate_frame["raw"]
             if "raw" in candidate_frame
             else shared_state.solver_raw()
         )
+        from PiFinder.raw_frame_transport import materialize_raw
+
+        candidate_raw = materialize_raw(candidate_raw)
         frame_id = candidate_frame["metadata"].get("frame_id")
         if (
             isinstance(candidate_raw, dict)
@@ -1355,6 +1368,7 @@ def solver(
     align_ra = 0
     align_dec = 0
     last_solve_attempt: float = 0.0
+    focus_paused = False
     last_solve_success = None  # exposure_end of most recent successful solve
     solve_continuity = SolveContinuityGate()
     post_motion_raw_fast_frames = 0
@@ -1564,6 +1578,39 @@ def solver(
                 state_utils.sleep_for_framerate(shared_state)
                 field_capture.poll()
 
+                focus_getter = getattr(shared_state, "focus_active", lambda: False)
+                if focus_getter() is True:
+                    if not focus_paused:
+                        if async_preprocess_worker is not None:
+                            async_preprocess_worker.close(wait=False)
+                            async_preprocess_worker = None
+                            async_preprocess_runner = None
+                        if sep_shadow is not None:
+                            sep_shadow.reset_preprocessor("focus")
+                        async_preprocess_generation += 1
+                        async_preprocess_mode_active = False
+                        preprocessed_fast_trusted = False
+                        post_motion_raw_fast_frames = 0
+                        preprocess_bias.reset()
+                        solve_scheduling.reset("focus")
+                        shared_state.set_solver_preprocessed_frame(None)
+                        shared_state.set_solver_preprocess_status(
+                            {
+                                "enabled": False,
+                                "state": "focus_paused",
+                                "frame_count": 0,
+                            }
+                        )
+                        logger.info("Solver paused for Focus")
+                    focus_paused = True
+                    time.sleep(0.2)
+                    continue
+                if focus_paused:
+                    # A post-Focus exposure must establish fresh temporal evidence.
+                    last_solve_attempt = max(last_solve_attempt, time.time())
+                    focus_paused = False
+                    logger.info("Solver resumed; waiting for a fresh exposure")
+
                 # use the time the exposure started here to
                 # reject images started before the last solve
                 # which might be from the IMU
@@ -1573,7 +1620,9 @@ def solver(
                     solver_frame_getter = getattr(shared_state, "solver_frame", None)
                     if callable(solver_frame_getter):
                         solver_frame_entry, solver_raw_entry = (
-                            _read_matching_solver_inputs(shared_state)
+                            _read_matching_solver_inputs(
+                                shared_state, newer_than=last_solve_attempt
+                            )
                         )
                     if solver_frame_entry is not None:
                         last_image_metadata = solver_frame_entry["metadata"]
