@@ -76,7 +76,8 @@ logger = logging.getLogger("main")
 hardware_platform = "Pi"
 display_hardware = "SSD1351"
 display_device: DisplayBase = DisplayBase()
-keypad_pwm = None
+keypad_led = None
+_startup_lock_acquired = False
 USER_LOCATION_SOURCES = {"WEB", "MANUAL"}
 USER_LOCATION_PREFIXES = ("CONFIG:",)
 SLEW_RATE_POPUP_LABELS = (
@@ -115,30 +116,78 @@ def should_apply_location_fix(current_location: Any, gps_content: dict) -> bool:
     return current_error == 0 or new_error < current_error
 
 
-def init_keypad_pwm():
-    # TODO: Keypad pwm class that can be faked maybe?
-    global keypad_pwm
-    global hardware_platform
-    if hardware_platform == "Pi":
-        from PiFinder.board_config import get_pwm_chip
+def prepare_hardware_settings():
+    """Identify A0 and reconcile FRAM before any startup settings are consumed."""
+    global keypad_led
+    from PiFinder import fram_config
+    from PiFinder.keypad_led import AW9523Keypad, create_keypad_led
 
-        # The keypad PWM lives on a different sysfs chip on the Pi 5 (RP1)
-        # than on the Pi 1-4 SoC; pick it per board so brightness works on
-        # both.  Requires rpi-hardware-pwm >= 0.2.1 for the `chip` argument.
-        keypad_pwm = HardwarePWM(pwm_channel=1, hz=120, chip=get_pwm_chip())
-        keypad_pwm.start(0)
+    fram_config.disable(utils.runtime_dir)
+    try:
+        keypad_led = create_keypad_led()
+    except Exception:
+        logger.exception("Could not identify keypad hardware; FRAM sync disabled")
+        return
+    if isinstance(keypad_led, AW9523Keypad):
+        try:
+            fram_config.startup_sync(
+                Path(utils.data_dir, "config.json"),
+                Path(utils.pifinder_dir, "default_config.json"),
+                utils.runtime_dir,
+            )
+        except Exception:
+            # Unavailable FRAM is not an empty backup: preserve the SD settings.
+            logger.exception("FRAM sync failed; keeping existing config.json")
+
+
+def init_keypad_led(cfg):
+    global keypad_led
+    if hardware_platform != "Pi":
+        return
+    from PiFinder.keypad_led import create_keypad_led
+    from PiFinder.board_config import get_board_mode
+
+    try:
+        if keypad_led is None:
+            keypad_led = create_keypad_led(cfg)
+        else:
+            from PiFinder.keypad_led import AW9523Keypad, _save_board_mode
+            from PiFinder.board_config import A0_MODE, LEGACY_MODE
+
+            _save_board_mode(
+                cfg, A0_MODE if isinstance(keypad_led, AW9523Keypad) else LEGACY_MODE
+            )
+        logger.info(
+            "Board mode: %s; keypad LED driver: %s",
+            get_board_mode(cfg),
+            type(keypad_led).__name__,
+        )
+    except Exception:
+        # An absent/failed LED chip must not prevent camera/navigation startup.
+        # Only a completed absent-chip probe selects PWM; a bus or GPIO
+        # error must not masquerade as a successful legacy identification.
+        logger.exception("Keypad illumination unavailable; check board and boot config")
+        keypad_led = None
+
+
+def close_keypad_led():
+    global keypad_led
+    device, keypad_led = keypad_led, None
+    if device is not None:
+        try:
+            device.close()
+        except Exception:
+            logger.exception("Could not shut down keypad LEDs")
 
 
 def set_keypad_brightness(percentage: float):
-    """
-    keypad brightness between 0-100, although effective range seems 0-12
-    """
-    global keypad_pwm
-    if percentage < 0 or percentage > 100:
-        logger.error("Invalid percentage for keypad brightness")
-        percentage = max(0, min(100, percentage))
-    if keypad_pwm:
-        keypad_pwm.change_duty_cycle(percentage)
+    """Apply the existing 0..100 keypad brightness scale to either driver."""
+    if keypad_led is not None:
+        try:
+            keypad_led.set_brightness(percentage)
+        except Exception:
+            logger.exception("Keypad illumination failed; disabling LEDs")
+            close_keypad_led()
 
 
 def set_brightness(level, cfg):
@@ -149,7 +198,7 @@ def set_brightness(level, cfg):
     global display_device
     display_device.set_brightness(level)
 
-    if keypad_pwm:
+    if keypad_led:
         # determine offset for keypad
         keypad_offsets = {
             "+3": 2,
@@ -515,20 +564,21 @@ def main(
     # Refuse to start if another instance is already running. A second copy
     # would otherwise boot and let its subsystems (web/pos-server ports, cedar
     # shmem, hardware devices) silently collide with the live one.
-    if not utils.acquire_single_instance_lock():
+    if not _startup_lock_acquired and not utils.acquire_single_instance_lock():
         return
 
     # Start log consolidation process first.
     log_helper.start()
 
     cfg = config.Config()
+    cfg.ensure_source_version()
     # Optional SPI clock override (MHz). Lower values reduce display-bus EMI
     # into the GPS band; 0 keeps the per-driver default.
     display_spi_mhz = int(cfg.get_option("display_spi_speed_mhz", 0) or 0)
     display_device = get_display(
         display_hardware, spi_speed_hz=display_spi_mhz * 1_000_000
     )
-    init_keypad_pwm()
+    init_keypad_led(cfg)
     setup_dirs()
 
     from PiFinder.operation_errors import MountErrorGate
@@ -1364,6 +1414,7 @@ def main(
                         goto_guide_process = start_goto_guide_process()
 
         except KeyboardInterrupt:
+            close_keypad_led()
             logger.info("KeyboardInterrupt received: shutting down.")
             tracking_stop_event.set()
             tracking_process.join(timeout=2)
@@ -1555,6 +1606,27 @@ if __name__ == "__main__":
     if args.verbose:
         rlogger.setLevel(logging.DEBUG)
 
+    # Take the lock before GPIO/FRAM access, including before Config is loaded.
+    if not utils.acquire_single_instance_lock():
+        sys.exit(0)
+    _startup_lock_acquired = True
+
+    import atexit
+    import signal
+
+    owner_pid = os.getpid()
+
+    def terminate_with_leds_off(signum, frame):
+        if os.getpid() == owner_pid:
+            close_keypad_led()
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
+
+    signal.signal(signal.SIGTERM, terminate_with_leds_off)
+    atexit.register(close_keypad_led)
+    if not args.fakehardware:
+        prepare_hardware_settings()
+
     import importlib
 
     if args.fakehardware:
@@ -1569,9 +1641,9 @@ if __name__ == "__main__":
 
         display_hardware = hardware_detect.default_display_hardware()
         rlogger.info("using %s display", display_hardware)
-        from rpi_hardware_pwm import HardwarePWM
 
         cfg = config.Config()
+        cfg.ensure_source_version()
         imu = importlib.import_module("PiFinder.imu_pi")
         integrator = importlib.import_module("PiFinder.integrator")
 
@@ -1644,5 +1716,6 @@ if __name__ == "__main__":
     try:
         main(log_helper, args.script, args.fps, args.verbose, args.profile_startup)
     except Exception:
+        close_keypad_led()
         rlogger.exception("Exception in main(). Aborting program.")
         os._exit(1)

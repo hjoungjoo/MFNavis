@@ -104,7 +104,10 @@ def test_retired_tile_settings_removed_without_losing_lens_calibration(config_di
     )
 
     cfg = config.Config()
-    assert _on_disk(config_dir) == retained
+    assert _on_disk(config_dir) == {
+        **retained,
+        "source_version": config.get_source_version(),
+    }
     assert cfg.get_option("wide_solver_enabled") is None
     assert cfg.get_option("mf_wide_excluded_tiles_by_optics") is None
     assert cfg.get_option("wide_solver_calibration_store_v1") == calibration
@@ -180,6 +183,7 @@ def test_legacy_goto_method_reads_without_write_and_migrates_on_save(config_dir)
     assert _on_disk(config_dir) == {
         "indi_goto_method": "mfnavis",
         "camera_exp": 200000,
+        "source_version": config.get_source_version(),
     }
 
 

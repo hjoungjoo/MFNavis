@@ -11,6 +11,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from PiFinder import utils, equipment, locations
+from PiFinder.source_version import get_source_version
 from typing import Any, Optional, Tuple
 import logging
 
@@ -196,6 +197,18 @@ class Config:
             return
         self._refresh_from_disk()
 
+    def ensure_source_version(self):
+        """Stamp the running source after startup restoration, preserving settings."""
+        with self._write_lock():
+            self._refresh_from_disk()
+            if self._config_dict.get("source_version") != get_source_version():
+                previous = dict(self._config_dict)
+                try:
+                    self.dump_config()
+                except Exception:
+                    self._config_dict = previous
+                    raise
+
     def dump_config(self):
         """
         Write config to config file
@@ -203,6 +216,7 @@ class Config:
         Writes to a temporary file and renames it into place so a reader in
         another process never sees a half-written config.json.
         """
+        self._config_dict["source_version"] = get_source_version()
         if "indi_goto_method" in self._config_dict:
             self._config_dict["indi_goto_method"] = normalize_goto_method(
                 self._config_dict["indi_goto_method"]
@@ -212,14 +226,25 @@ class Config:
         )
         try:
             with open(tmp_path, "w") as config_file:
+                os.fchmod(config_file.fileno(), 0o600)
                 json.dump(self._config_dict, config_file, indent=4)
                 config_file.flush()
                 os.fsync(config_file.fileno())
+            # FRAM is authoritative on A0: validate/commit its new slot before
+            # publishing the SD copy. Failure leaves the old file/slot intact.
+            from PiFinder.fram_config import backup_if_enabled
+
+            backup_if_enabled(
+                self.config_file_path,
+                utils.runtime_dir,
+                self._config_dict,
+                self.default_file_path,
+            )
             os.replace(tmp_path, self.config_file_path)
             # Our own write is not a reason to reload on the next read.
             self._file_stamp = self._current_file_stamp()
             self._last_stamp_check = time.monotonic()
-        except OSError:
+        except Exception:
             try:
                 os.remove(tmp_path)
             except OSError:
@@ -256,8 +281,13 @@ class Config:
             return
         with self._write_lock():
             self._refresh_from_disk()
+            previous = dict(self._config_dict)
             self._config_dict.update(options)
-            self.dump_config()
+            try:
+                self.dump_config()
+            except Exception:
+                self._config_dict = previous
+                raise
 
     def get_stored_option(self, option: str, default: Any = None) -> Any:
         """Return only the user config value, without default_config fallback."""

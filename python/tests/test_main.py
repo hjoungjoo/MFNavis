@@ -138,3 +138,69 @@ def test_active_measurement_keeps_progress_awake_until_completion(status_name):
     manager.last_activity = 0.0
     manager.update()
     assert shared_state.power_state() == 0
+
+
+def test_keypad_menu_offsets_off_and_screen_brightness(monkeypatch):
+    from unittest.mock import Mock
+
+    led, display = Mock(), Mock()
+    monkeypatch.setattr(main, "keypad_led", led)
+    monkeypatch.setattr(main, "display_device", display)
+    for option, expected in [("0", 5), ("+3", 10), ("-4", 0.65), ("Off", 0)]:
+        main.set_brightness(100, _Cfg({"keypad_brightness": option}))
+        led.set_brightness.assert_called_with(expected)
+        display.set_brightness.assert_called_with(100)
+    main.set_brightness(0, _Cfg({"keypad_brightness": "+3"}))
+    led.set_brightness.assert_called_with(0)
+
+
+def test_keypad_failure_does_not_break_ui_or_retry_each_frame(monkeypatch):
+    from unittest.mock import Mock
+
+    led = Mock()
+    led.set_brightness.side_effect = OSError("disconnected")
+    monkeypatch.setattr(main, "keypad_led", led)
+    main.set_keypad_brightness(10)
+    assert main.keypad_led is None
+    led.close.assert_called_once()
+    main.set_keypad_brightness(20)
+    led.set_brightness.assert_called_once_with(10)
+
+
+def test_missing_aw9523_does_not_fall_back_to_pwm(monkeypatch):
+    from unittest.mock import Mock
+    from PiFinder import keypad_led
+
+    factory = Mock(side_effect=OSError("no AW9523"))
+    monkeypatch.setattr(main, "keypad_led", None)
+    monkeypatch.setattr(main, "hardware_platform", "Pi")
+    monkeypatch.setattr(keypad_led, "create_keypad_led", factory)
+    main.init_keypad_led(_Cfg({}))
+    assert main.keypad_led is None
+    factory.assert_called_once()
+
+
+def test_fake_hardware_does_not_touch_led_bus(monkeypatch):
+    from unittest.mock import Mock
+    from PiFinder import keypad_led
+
+    factory = Mock()
+    monkeypatch.setattr(main, "keypad_led", None)
+    monkeypatch.setattr(main, "hardware_platform", "Fake")
+    monkeypatch.setattr(keypad_led, "create_keypad_led", factory)
+    main.init_keypad_led(_Cfg({}))
+    factory.assert_not_called()
+
+
+def test_sleep_dim_and_wake_restore_keypad(monkeypatch):
+    from unittest.mock import Mock
+
+    led, display = Mock(), Mock()
+    monkeypatch.setattr(main, "keypad_led", led)
+    monkeypatch.setattr(main, "display_device", display)
+    cfg = _Cfg({"display_brightness": 100, "keypad_brightness": "0"})
+    manager = main.PowerManager(cfg, _PowerSharedState(), display)
+    manager.sleep_screen()
+    led.set_brightness.assert_called_with(1.25)
+    manager.wake_screen()
+    led.set_brightness.assert_called_with(5)

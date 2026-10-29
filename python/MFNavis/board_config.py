@@ -3,9 +3,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+A0_MODE = "MFNavis_A0"
+LEGACY_MODE = "legacy"
+
+
 MODEL_PATH = Path("/proc/device-tree/model")
 PWM_SYSFS_ROOT = Path("/sys/class/pwm")
-# RP1 PWM0 block (the one pwm-2chan routes to GPIO12/13) in /proc/device-tree.
+# RP1 PWM0 block (the PWM overlay routes channel 1 to GPIO13).
 RP1_PWM0_DEVICE = "1f00098000.pwm"
 
 
@@ -83,3 +87,14 @@ def get_pwm_chip(model: str | None = None) -> int:
         return profile.pwm_chip
     chip = _find_rp1_pwm_chip()
     return profile.pwm_chip if chip is None else chip
+
+
+def get_board_mode(cfg) -> str:
+    """Last detected carrier mode; independent of the Raspberry Pi CPU model.
+
+    Startup identification updates this value before hardware workers start.
+    Consumers of future A0-specific behavior should use this shared accessor.
+    No saved mode means the existing legacy behavior, not an inferred A0.
+    """
+    mode = cfg.get_stored_option("board_mode")
+    return mode if mode in (A0_MODE, LEGACY_MODE) else LEGACY_MODE

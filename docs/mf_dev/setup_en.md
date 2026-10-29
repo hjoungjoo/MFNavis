@@ -76,6 +76,131 @@ prepared before reboot. Missing headers or build failures stop installation.
 Code-only updates remain code-only: use full setup or
 `sudo bash scripts/install_imx678.sh --install` for driver updates.
 
+**MFNavis_A0 keypad detection:** at startup, release GPIO12 reset and read
+register `0x10` at I2C address `0x5B`. ID `0x23` selects the AW9523BTQR driver
+and persists `"board_mode": "MFNavis_A0"` in `~/MFNavis_data/config.json`.
+This uses the actual chip, not the CM5 model string. Reprobe on each startup;
+unchanged modes do not rewrite the file. An absent chip selects and saves
+`legacy` with the existing GPIO13 PWM, regardless of the previously saved mode.
+Switching legacy → A0 → legacy requires no manual option or config deletion.
+A missing ACK is retried three times. Bus faults, permission errors and timeouts
+are not interpreted as absence: preserve the saved mode and disable illumination.
+
+Detection lives in `python/MFNavis/keypad_led.py`; shared mode names and the
+`get_board_mode(cfg)` accessor live in `python/MFNavis/board_config.py`.
+Future A0-specific behavior should use that accessor, not infer a carrier from
+the CPU model. Detection itself changes only `board_mode`. Legacy keeps the
+existing settings; A0 uses the FRAM synchronization policy below. Power off before replacing
+boards; identification runs on the next application startup.
+
+No extra option or package is required. Setup reserves GPIO12 for reset with
+`gpio=12=op,dl,pd`, and prepares only GPIO13 for legacy PWM using
+`dtoverlay=pwm,pin=13,func=4`. A0 never starts PWM output. Old `pwm-2chan`
+settings are removed; reboot after changing boot settings.
+
+The chip uses I2C1 (SDA GPIO2, SCL GPIO3), address `0x5B` (AD0/AD1 HIGH),
+and active-low reset GPIO12 (header pin 32). DIM0..15 correspond to LED1..16.
+Existing keypad offsets, Off, display brightness linkage and quarter-brightness
+sleep behavior remain. GCR ISEL=3 and DIM<=128 limit each LED to approximately
+4.64 mA typical, based on the
+[AW9523B V2.4 datasheet](https://xpulabs.github.io/files/datasheet/DS_AW9523B_EN_V2.4.pdf).
+The retained menu scale gives approximately 1.20 mA at display brightness 255
+with keypad offset 0, or 2.36 mA with +3. Very dim nonzero settings use DIM=1;
+Off uses DIM=0. All DIM registers are cleared before enabling LED mode.
+Shutdown/SIGTERM or communication failure asserts reset to turn LEDs off.
+A failed A0 initialization disables illumination without stopping navigation;
+a successfully identified A0 is not treated as legacy on an LED write failure.
+
+When replacing an older CM5 carrier with A0, rerun setup and reboot.
+Code-only updates do not migrate boot settings. On kernel
+`6.18.50+rpt-rpi-2712`, live PWM `unbind` triggers a kernel fault in
+`rp1_pwm_remove`; release the PWM pins by rebooting instead.
+To migrate only these settings
+from the new checkout, run:
+
+```bash
+cd ~/MFNavis
+source mfnavis_paths.sh
+mfnavis_configure_keypad_boot "$(mfnavis_boot_config_path)"
+```
+
+Then reboot. Mock tests cover initialization order, all 16 channels, current
+limits, failure shutdown, menu/sleep integration, chip identification, persistent
+mode reload and boot setup. On 2026-10-29, CM5/A0 hardware passed three
+initialization cycles and acknowledged 12 brightness writes, with chip ID and
+LED mode registers verified and GPIO12 LOW at shutdown. Two app restarts
+confirmed AW9523 driver selection and persisted `board_mode=MFNavis_A0`.
+All 103 related automated tests passed, including bidirectional board changes
+and preservation of all user settings. The user confirmed illumination and
+brightness changes. DIM registers are write-only and cannot be read back;
+current and temperature still require instrument checks.
+
+**MFNavis_A0 FRAM hardware check (2026-10-29):** U12 FM24CL64B-GTR is
+an 8 KiB memory at I2C1 address `0x50` (A0/A1/A2 LOW). Using the
+[manufacturer datasheet](https://www.infineon.com/assets/row/public/documents/10/49/infineon-fm24cl64b-64-kbit-8-k-8-serial-i2c-f-ram-datasheet-en.pdf),
+we tested two-byte memory addressing and immediate reads without write delays.
+Two full reads agreed before backing up the original image. With the app stopped,
+all seven full-memory patterns (00, FF, 55, AA, address low/high and pseudorandom)
+passed over `0x0000–0x1FFF`. Ten single-byte writes at endpoints and address
+boundaries preserved every other byte. The original image was restored with
+an identical SHA-256 and remained unchanged after the app restarted.
+The backup, check script and JSON report are stored on the tested device under
+`~/MFNavis_data/test_data/fram-20261029-8abe582d/`.
+
+This confirms read/write operation with write protection inactive. Power-off
+retention was not tested. The following backup feature was added after this
+hardware check.
+
+**Configuration source version**
+
+Both board modes record `source_version` in `config.json`: the `version.txt`
+release (`version`), full Git commit (`git_commit`), and uncommitted changes
+(`git_dirty`). Git fields are `null` when unavailable. Startup updates this
+metadata after FRAM restoration; persistent settings saves include it as well.
+A0 also commits the metadata to its verified FRAM backup. It identifies the
+source last using/saving the configuration, independently of configuration
+schema and FRAM storage format versions.
+
+**A0 FRAM file storage and configuration synchronization**
+
+FRAM stores named files; `/config.json` is one file alongside future calibration
+or other small data files. Absolute paths form a virtual namespace, not an OS
+mount. Use `PiFinder.fram_fs.open_filesystem()` and its `write_file(name, bytes)`,
+`read_file(name)`, `delete_file(name)`, `list_files()` and `stat()` methods.
+Use the Config API, not raw file writes, to modify application settings.
+
+Two 4 KiB banks alternate complete compressed directory snapshots. Each file has
+SHA-256 for its original bytes; bank metadata and payload have another SHA-256.
+The new bank is read back before its commit marker is written last. Interrupted
+writes or a corrupt newest bank leave the previous valid snapshot available.
+All files share **4,039 compressed bytes** after the bank header. Current settings
+use about 2.35 KB, leaving about 1.69 KB including metadata for future files.
+Capacity errors preserve existing data. Cross-process locks serialize file writes.
+
+After actual A0 detection, synchronization runs before startup settings consumers.
+A valid FRAM `/config.json` is authoritative: replace a different local config
+atomically, retaining its previous contents in `config.before-fram-<hash>.json`.
+No valid config backup means initialize from `default_config.json` plus the detected
+A0 mode and back it up, retaining other valid FRAM files. Bus errors are not empty
+backups, and unknown filesystem versions are not overwritten.
+
+This installation explicitly seeds **current settings first**, as requested.
+Subsequent startups use the FRAM-first/defaults policy. Persistent Config saves
+and user ZIP restores also update and verify FRAM. A failed or oversized backup
+fails the settings change without publishing it to the local file. Session-only
+settings are excluded. Manual SD-only edits are replaced at startup; use the UI,
+web or `Config.set_option/set_options` for persistent changes. Legacy hardware
+continues using the existing file-only storage.
+
+On 2026-10-29, current settings were migrated on the physical A0 device.
+The 5,492-byte config and directory occupy 2,348 compressed bytes, leaving
+1,691 bytes. Hardware checks passed for independent file create/read/delete,
+recovery of a damaged SD config copy, live Config-to-FRAM backup, and actual app
+startup restoring a local-only settings difference. Temporary test entries were
+removed. All 146 related automated tests passed. Backups and the hardware report
+are under `~/MFNavis_data/test_data/fram-config-20261029-504457cb/` on the tested
+device. Physical power-cut testing was not performed.
+
 For a published version, use the tagged-release procedure in the
 [README](../../README.md#2-install-mfnavis-release-or-main) and check that tag's
 OS requirements. A source update does not upgrade Bookworm to Trixie. Back up

@@ -93,3 +93,35 @@ def test_existing_new_setting_takes_priority_over_old_key(tmp_path):
         home=tmp_path,
     )
     assert config.read_text() == "MFNAVIS_APSTA_SHARE_INTERNET=0\n"
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["Raspberry Pi Compute Module 5", "Raspberry Pi 5 Model B", "Raspberry Pi 4"],
+)
+def test_keypad_boot_leaves_reset_free_and_legacy_pwm_available(tmp_path, model):
+    boot = tmp_path / "config.txt"
+    boot.write_text(
+        "[all]\ndtparam=i2c_arm=on\ndtoverlay=imx678-mfnavis-cm5-converter\n"
+        "dtoverlay=pwm,pin=13,func=4\n"
+        "  dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4\n"
+        "[pi4]\ndtparam=spi=on\n"
+    )
+    script = """
+sudo() { "$@"; }
+TEST_BOARD_MODEL="$3"
+mfnavis_board_model() { printf '%s' "$TEST_BOARD_MODEL"; }
+mfnavis_configure_keypad_boot "$2"
+"""
+    _source_paths(script, str(boot), model, home=tmp_path)
+    first = boot.read_text()
+    assert first.endswith(
+        "[all]\ngpio=12=op,dl,pd\ndtoverlay=pwm,pin=13,func=4\n# END MFNavis keypad\n"
+    )
+    assert "dtparam=i2c_arm=on" in first
+    assert "dtoverlay=imx678-mfnavis-cm5-converter" in first
+    assert "[pi4]\ndtparam=spi=on" in first
+    assert first.count("dtoverlay=pwm") == 1
+    assert "pwm-2chan" not in first
+    _source_paths(script, str(boot), model, home=tmp_path)
+    assert boot.read_text() == first

@@ -20,6 +20,14 @@ def create_backup(data_dir, destination):
 
 
 def restore_backup(source, data_dir):
+    from PiFinder import utils
+    from PiFinder.fram_config import config_lock
+
+    with config_lock(utils.runtime_dir):
+        return _restore_backup(source, data_dir)
+
+
+def _restore_backup(source, data_dir):
     root = Path(data_dir).resolve()
     with zipfile.ZipFile(source) as archive:
         entries = []
@@ -83,6 +91,15 @@ def restore_backup(source, data_dir):
                         created_dirs.append(directory)
                     os.replace(replacement, target)
                     installed.append((target, previous))
+                if any(target.name == "config.json" for target, _ in installed):
+                    from PiFinder import utils
+                    from PiFinder.fram_config import sync_restored_file
+
+                    sync_restored_file(
+                        root / "config.json",
+                        utils.runtime_dir,
+                        utils.pifinder_dir / "default_config.json",
+                    )
             except BaseException:
                 rollback_errors = []
                 for target, previous in reversed(installed):

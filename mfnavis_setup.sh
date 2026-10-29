@@ -253,15 +253,9 @@ fi
 
 # Enable interfaces
 BOOT_CONFIG="$(mfnavis_boot_config_path)"
-# Drop any previously-written keypad PWM overlay so we only ever keep the one
-# that matches this board (Pi 1-4 vs Pi 5 / RP1 -- see mfnavis_pwm_overlay).
-sudo sed -i \
-    -e '/^dtoverlay=pwm,/d' \
-    -e '/^dtoverlay=pwm-2chan,/d' \
-    "${BOOT_CONFIG}"
+mfnavis_configure_keypad_boot "${BOOT_CONFIG}"
 for line in \
     "dtparam=spi=on" \
-    "$(mfnavis_pwm_overlay)" \
     "$(mfnavis_uart_overlay)"
 do
     grep -qxF "${line}" "${BOOT_CONFIG}" || echo "${line}" | sudo tee -a "${BOOT_CONFIG}"

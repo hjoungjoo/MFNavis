@@ -137,7 +137,7 @@ When a `CONTEXT.md` defines a term, prefer that term over synonyms in code comme
 **Hardware Abstraction:**
 - Camera interface supporting IMX296 (global shutter), IMX290/462, HQ cameras
 - Display system for SSD1351 OLED and ST7789 LCD with night vision preservation using red channel only
-- Hardware keypad with PWM brightness control
+- Hardware keypad with automatic AW9523B (MFNavis_A0) / legacy PWM brightness control
 - GPS integration via GPSD or direct UBlox protocol
 - IMU sensor integration for motion detection and telescope orientation
 
