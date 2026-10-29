@@ -379,7 +379,16 @@ def test_unanchored_failed_solve_is_not_trusted():
     assert state.current.source == SOURCE_UNAVAILABLE
 
 
-def test_unaligned_imuplus_supplies_provisional_pointing_before_first_solve():
+@pytest.mark.parametrize(
+    "reference,warning",
+    [
+        ("relative", "unaligned IMU heading"),
+        ("startup_magnetic", "startup magnetic heading is approximate"),
+    ],
+)
+def test_unaligned_imuplus_supplies_provisional_pointing_before_first_solve(
+    reference, warning
+):
     service = PointingCoordinateService()
     solved = CoordinateSample.invalid(SOURCE_SOLVE, "test")
     mount = CoordinateSample.invalid(SOURCE_MOUNT, "test")
@@ -389,7 +398,11 @@ def test_unaligned_imuplus_supplies_provisional_pointing_before_first_solve():
         source=SOURCE_IMU,
         quality="low",
         valid=True,
-        metadata={"uses_magnetometer": False, "alignment_applied": False},
+        metadata={
+            "uses_magnetometer": False,
+            "alignment_applied": False,
+            "heading_reference": reference,
+        },
     )
     health = CoordinateHealth()
 
@@ -398,7 +411,8 @@ def test_unaligned_imuplus_supplies_provisional_pointing_before_first_solve():
     assert current.source == SOURCE_IMU
     assert current.radec() == pytest.approx((250.0, 35.0))
     assert current.quality == "low"
-    assert any("unaligned IMU heading" in item for item in health.warnings)
+    assert any(warning in item for item in health.warnings)
+    assert not service._imu_can_supply_absolute_coordinate(current)
 
 
 @pytest.mark.parametrize(

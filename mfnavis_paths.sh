@@ -151,6 +151,30 @@ mfnavis_pwm_overlay() {
     printf '%s\n' 'dtoverlay=pwm,pin=13,func=4'
 }
 
+mfnavis_configure_i2c_boot() {
+    local boot_config="$1"
+    # BNO086/AW9523/FRAM on A0 and legacy BNO055 share GPIO2/3.
+    # RP1 supports hardware clock stretching; older Pis retain software I2C.
+    # Replace individual settings, but preserve compound dtparam lines (which
+    # may also configure unrelated hardware). The final [all] block wins.
+    sudo sed -i -E \
+        -e '/^# BEGIN MFNavis I2C$/,/^# END MFNavis I2C$/d' \
+        -e '/^[[:space:]]*dtparam=i2c_arm(=[^,[:space:]#]+)?[[:space:]]*(#.*)?$/d' \
+        -e '/^[[:space:]]*dtparam=i2c_arm_baudrate=[^,[:space:]#]+[[:space:]]*(#.*)?$/d' \
+        -e '/^[[:space:]]*dtoverlay=i2c-gpio([,#[:space:]]|$)/d' \
+        "${boot_config}" || return
+    {
+        printf '%s\n' '# BEGIN MFNavis I2C' '[all]'
+        if [[ "$(mfnavis_board_profile)" == pi5_class ]]; then
+            printf '%s\n' 'dtparam=i2c_arm=on' 'dtparam=i2c_arm_baudrate=400000'
+        else
+            printf '%s\n' 'dtparam=i2c_arm=off' \
+                'dtoverlay=i2c-gpio,i2c_gpio_sda=2,i2c_gpio_scl=3,bus=3'
+        fi
+        printf '%s\n' '# END MFNavis I2C'
+    } | sudo tee -a "${boot_config}" >/dev/null
+}
+
 mfnavis_configure_keypad_boot() {
     local boot_config="$1"
     # Migrate older installations as well as replacing our own managed block.

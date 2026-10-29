@@ -44,12 +44,24 @@ def _sample(**overrides):
 
 @pytest.mark.unit
 def test_imu_endpoint_returns_healthy_fresh_sample():
-    response = _get_imu(_sample())
+    response = _get_imu(
+        _sample(
+            sensor_model="BNO086",
+            fusion_mode="game_rotation_vector",
+            heading_reference="startup_magnetic",
+            startup_heading_status="acquired",
+        )
+    )
 
     assert response.status_code == 200
     assert response.get_json()["sensor_healthy"] is True
     assert response.get_json()["fresh"] is True
     assert response.get_json()["usable"] is True
+    assert response.get_json()["sensor_model"] == "BNO086"
+    assert response.get_json()["fusion_mode"] == "game_rotation_vector"
+    assert response.get_json()["heading_reference"] == "startup_magnetic"
+    assert response.get_json()["startup_heading_status"] == "acquired"
+    assert response.get_json()["uses_magnetometer"] is False
 
 
 @pytest.mark.unit

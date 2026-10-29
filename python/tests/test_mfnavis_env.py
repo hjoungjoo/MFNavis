@@ -125,3 +125,52 @@ mfnavis_configure_keypad_boot "$2"
     assert "pwm-2chan" not in first
     _source_paths(script, str(boot), model, home=tmp_path)
     assert boot.read_text() == first
+
+
+@pytest.mark.parametrize(
+    "model,hardware",
+    [
+        ("Raspberry Pi Compute Module 5", True),
+        ("Raspberry Pi 5 Model B", True),
+        ("Raspberry Pi 4", False),
+        ("Raspberry Pi 3", False),
+    ],
+)
+def test_i2c_boot_normalizes_conflicts_and_preserves_other_hardware(
+    tmp_path, model, hardware
+):
+    boot = tmp_path / "config.txt"
+    preserved = (
+        "dtoverlay=imx678-mfnavis-cm5-converter\n"
+        "dtparam=fan_temp0_speed=200\n"
+        "dtparam=i2c_vc=on\n"
+        "dtparam=i2c_arm=off,spi=on\n"
+    )
+    boot.write_text(
+        "[all]\ndtparam=i2c_arm=on\n"
+        "  dtparam=i2c_arm_baudrate=100000 # old speed\n"
+        "dtoverlay=i2c-gpio,i2c_gpio_sda=2,i2c_gpio_scl=3,bus=3\n"
+        + preserved
+        + "[pi4]\ndtparam=i2c_arm=off\n"
+    )
+    script = """
+sudo() { "$@"; }
+TEST_BOARD_MODEL="$3"
+mfnavis_board_model() { printf '%s' "$TEST_BOARD_MODEL"; }
+mfnavis_configure_i2c_boot "$2"
+"""
+    _source_paths(script, str(boot), model, home=tmp_path)
+    first = boot.read_text()
+    assert preserved in first
+    assert "100000" not in first
+    block = first.split("# BEGIN MFNavis I2C\n")[1]
+    assert block.startswith("[all]\n")
+    if hardware:
+        assert "dtparam=i2c_arm=on\ndtparam=i2c_arm_baudrate=400000\n" in block
+        assert "dtoverlay=i2c-gpio" not in first
+    else:
+        assert "dtparam=i2c_arm=off\n" in block
+        assert "dtoverlay=i2c-gpio,i2c_gpio_sda=2,i2c_gpio_scl=3,bus=3\n" in block
+        assert "baudrate=" not in first
+    _source_paths(script, str(boot), model, home=tmp_path)
+    assert boot.read_text() == first

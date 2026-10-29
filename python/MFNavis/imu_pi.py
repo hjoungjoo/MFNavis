@@ -12,6 +12,7 @@ from PiFinder import config, imu_calibration
 from PiFinder.multiproclogging import MultiprocLogging
 from PiFinder.types.positioning import ImuSample
 from PiFinder.i2c_bus import get_i2c
+from PiFinder.board_config import A0_MODE, get_board_mode
 import logging
 import quaternion  # Numpy quaternion
 
@@ -33,31 +34,42 @@ class Imu:
     def __init__(self):
         # Blinka can open GPIO while importing the driver on a Raspberry Pi.
         # Pure IMU state/error handling must also be importable without hardware.
-        import adafruit_bno055
-
         cfg = config.Config()
-        i2c = get_i2c()
-        self.sensor = adafruit_bno055.BNO055_I2C(i2c)
+        self.sensor_model = "BNO086" if get_board_mode(cfg) == A0_MODE else "BNO055"
         self.use_magnetometer = bool(cfg.get_option("imu_use_magnetometer", False))
         self.auto_calibration_store = bool(
             cfg.get_option("imu_auto_calibration_store", True)
         )
-        self.fusion_mode = "ndof" if self.use_magnetometer else "imuplus"
-        if self.use_magnetometer:
-            # NDOF mode uses accelerometer, gyroscope, magnetometer, and
-            # fusion data. It improves absolute heading after calibration,
-            # but needs a magnetically clean setup and calibration movement.
-            self.sensor.mode = adafruit_bno055.NDOF_MODE
+        if self.sensor_model == "BNO086":
+            from PiFinder.imu_bno086 import BNO086
+
+            # A0 uses the compass only to seed startup heading, then Game RV.
+            # Keep the stored legacy option intact for a later board change.
+            self.use_magnetometer = False
+            self.sensor = BNO086(get_i2c(), use_magnetometer=False)
+            self.fusion_mode = self.sensor.fusion_mode
         else:
-            # IMUPLUS mode: accelerometer + gyro + fusion data. This is the
-            # legacy drift-limited relative mode and remains the default.
-            self.sensor.mode = adafruit_bno055.IMUPLUS_MODE
+            import adafruit_bno055
+
+            self.sensor = adafruit_bno055.BNO055_I2C(get_i2c())
+            self.fusion_mode = "ndof" if self.use_magnetometer else "imuplus"
+            self.sensor.mode = (
+                adafruit_bno055.NDOF_MODE
+                if self.use_magnetometer
+                else adafruit_bno055.IMUPLUS_MODE
+            )
+        logger.info("Selected %s IMU (%s)", self.sensor_model, self.fusion_mode)
         self.calibration_loaded = False
         self.calibration_saved_now = False
         self._calibration_saved_this_run = False
+        self._next_calibration_save = 0.0
         self._last_calibration_status = None
         self._last_invalid_quat_log = 0.0
-        if self.use_magnetometer and self.auto_calibration_store:
+        if (
+            self.sensor_model == "BNO055"
+            and self.use_magnetometer
+            and self.auto_calibration_store
+        ):
             self._load_saved_calibration()
 
         self.quat_history = [(0, 0, 0, 0)] * QUEUE_LEN
@@ -101,6 +113,18 @@ class Imu:
         self._raw_capture_runtime = bool(enabled)
         self._raw_telemetry = self._raw_telemetry_config or self._raw_capture_runtime
 
+    @property
+    def heading_reference(self):
+        return getattr(
+            self.sensor,
+            "heading_reference",
+            "magnetic" if self.use_magnetometer else "relative",
+        )
+
+    @property
+    def startup_heading_status(self):
+        return getattr(self.sensor, "startup_heading_status", "not_requested")
+
     def _load_saved_calibration(self) -> None:
         try:
             snapshot = imu_calibration.load_snapshot()
@@ -117,6 +141,12 @@ class Imu:
     def _save_current_calibration(self) -> None:
         if self._calibration_saved_this_run:
             return
+        if self.sensor_model == "BNO086":
+            if time.monotonic() < self._next_calibration_save:
+                return
+            self._next_calibration_save = time.monotonic() + 30.0
+            self.calibration_saved_now = self.save_calibration()
+            return
         try:
             snapshot = imu_calibration.snapshot_from_sensor(self.sensor)
             imu_calibration.save_snapshot(snapshot)
@@ -130,17 +160,30 @@ class Imu:
 
     def save_calibration(self) -> bool:
         try:
+            if self.sensor_model == "BNO086":
+                self.sensor.save_calibration()
+                self._calibration_saved_this_run = True
+                logger.info("Saved BNO086 calibration in sensor flash")
+                return True
             snapshot = imu_calibration.snapshot_from_sensor(self.sensor)
             imu_calibration.save_snapshot(snapshot)
             self._calibration_saved_this_run = True
             logger.info("Manually saved BNO055 calibration")
             return True
         except Exception:
-            logger.exception("Could not manually save BNO055 calibration")
+            logger.exception(
+                "Could not manually save %s calibration", self.sensor_model
+            )
             return False
 
     def load_calibration(self) -> bool:
         try:
+            if self.sensor_model == "BNO086":
+                self._invalidate_orientation()
+                self.sensor.load_calibration()
+                self.calibration_loaded = True
+                logger.info("BNO086 restarted with sensor flash calibration")
+                return True
             snapshot = imu_calibration.load_snapshot()
             if not snapshot:
                 logger.warning("No saved BNO055 calibration to load")
@@ -150,17 +193,40 @@ class Imu:
             logger.info("Manually loaded BNO055 calibration")
             return True
         except Exception:
-            logger.exception("Could not manually load BNO055 calibration")
+            logger.exception(
+                "Could not manually load %s calibration", self.sensor_model
+            )
             return False
 
     def clear_calibration(self) -> bool:
         try:
+            if self.sensor_model == "BNO086":
+                self._invalidate_orientation()
+                self.sensor.clear_calibration()
+                self.calibration_loaded = False
+                self._calibration_saved_this_run = False
+                logger.info("Reset BNO086 RAM calibration; flash DCD retained")
+                return True
             cleared = imu_calibration.clear_snapshot()
             logger.info("Cleared BNO055 calibration file: %s", cleared)
             return cleared
         except Exception:
-            logger.exception("Could not clear BNO055 calibration file")
+            logger.exception("Could not clear %s calibration", self.sensor_model)
             return False
+
+    def _invalidate_orientation(self):
+        self.last_read_time = 0.0
+        self.last_io_time = 0.0
+        self.calibration = 0
+        self.calibration_status = (0, 0, 0, 0)
+        self.avg_quat = (0, 0, 0, 0)
+        self.quat_history = [(0, 0, 0, 0)] * QUEUE_LEN
+        self.__moving = False
+        self.gyro = self.accel = None
+
+    def close(self):
+        if self.sensor_model == "BNO086":
+            self.sensor.close()
 
     def moving(self):
         """
@@ -176,9 +242,13 @@ class Imu:
 
         self.last_sample_time = time.time()
 
+        is_bno086 = self.sensor_model == "BNO086"
+        if is_bno086 and not self.sensor.refresh():
+            return
+
         # Throw out non-calibrated data
         status = self.sensor.calibration_status
-        self.last_io_time = time.time()
+        self.last_io_time = self.sensor.sample_time if is_bno086 else time.time()
         self.calibration_status = tuple(int(v) for v in status)
         if self.calibration_status != self._last_calibration_status:
             logger.info(
@@ -189,16 +259,23 @@ class Imu:
         self.calibration = imu_calibration.tracking_calibration_level(
             self.calibration_status
         )
+        if is_bno086:
+            self.calibration = min(self.calibration, self.calibration_status[0])
         if self.calibration == 0:
             logger.warning("NOIMU CAL %s", self.calibration_status)
             return True
         if (
-            self.use_magnetometer
+            (self.use_magnetometer or is_bno086)
             and self.auto_calibration_store
-            and min(self.calibration_status) == 3
+            and min(
+                self.calibration_status
+                if self.use_magnetometer
+                else self.calibration_status[:3]
+            )
+            == 3
         ):
             self._save_current_calibration()
-        # adafruit_bno055 uses quaternion convention (w, x, y, z)
+        # Both adapters expose scalar-first quaternion convention (w, x, y, z).
         quat = self.sensor.quaternion
         if quat[0] is None:
             logger.warning("IMU: Failed to get sensor values")
@@ -210,6 +287,8 @@ class Imu:
             logger.warning("IMU: rejected unreadable quaternion %s", quat)
             return
         if not math.isfinite(quat_norm) or not 0.8 <= quat_norm <= 1.2:
+            if is_bno086:
+                raise OSError(f"Invalid BNO086 quaternion: {quat}")
             now = time.monotonic()
             if now - self._last_invalid_quat_log > 5.0:
                 logger.warning(
@@ -229,7 +308,12 @@ class Imu:
             except (OSError, RuntimeError):
                 self.gyro = None
                 self.accel = None
-        self.last_read_time = time.time()
+        self.last_read_time = self.sensor.sample_time if is_bno086 else time.time()
+
+        if is_bno086:
+            quat = tuple(value / quat_norm for value in quat)
+            if sum(a * b for a, b in zip(quat, self.quat_history[-1])) < 0:
+                quat = tuple(-value for value in quat)
 
         _quat_diff = []
         for i in range(4):
@@ -241,7 +325,7 @@ class Imu:
         # of the integration system in the BNO055
         # When not moving quat output will vaccilate
         # by exactly this amount... so filter this out
-        if self.__reading_diff == 0.0078125:
+        if not is_bno086 and self.__reading_diff == 0.0078125:
             self.__reading_diff = 0
             return
 
@@ -251,7 +335,7 @@ class Imu:
         #
         # NOTE: This is probably due to the double-cover property of quaternions
         # where +q and -q describe the same rotation?
-        if self.__reading_diff > 1.5:
+        if not is_bno086 and self.__reading_diff > 1.5:
             self._flip_count += 1
             if self._flip_count > 10:
                 # with the history initialized to 0,0,0,0 the unit
@@ -323,9 +407,12 @@ def _handle_imu_command(imu, command, console_queue):
             console_queue.put("IMU: no calibration loaded")
     elif command_type == "clear_calibration":
         if imu.clear_calibration():
-            console_queue.put("IMU: calibration cleared")
+            if getattr(imu, "sensor_model", None) == "BNO086":
+                console_queue.put("IMU: RAM cal reset; flash retained")
+            else:
+                console_queue.put("IMU: calibration cleared")
         else:
-            console_queue.put("IMU: no calibration file")
+            console_queue.put("IMU: calibration clear failed")
     else:
         logger.warning("Unknown IMU command: %s", command_type)
 
@@ -399,6 +486,7 @@ def imu_monitor(shared_state, console_queue, log_queue, command_queue=None):
         moving=False,
         calibration_status=(0, 0, 0, 0),
         fusion_mode=getattr(imu, "fusion_mode", "unknown") if imu else "unknown",
+        sensor_model=getattr(imu, "sensor_model", "unknown"),
         uses_magnetometer=getattr(imu, "use_magnetometer", False) if imu else False,
         sensor_healthy=not using_fake,
         consecutive_errors=0,
@@ -468,6 +556,8 @@ def imu_monitor(shared_state, console_queue, log_queue, command_queue=None):
         if update_failed and consecutive_errors >= IMU_REINITIALIZE_AFTER_ERRORS:
             from PiFinder.imu_fake import Imu as ImuFake
 
+            if hasattr(imu, "close"):
+                imu.close()
             imu = ImuFake()
             using_fake = True
             reinitialize_requested = True
@@ -483,6 +573,11 @@ def imu_monitor(shared_state, console_queue, log_queue, command_queue=None):
         imu_sample.status = imu.calibration
         imu_sample.calibration_status = getattr(imu, "calibration_status", None)
         imu_sample.fusion_mode = getattr(imu, "fusion_mode", "unknown")
+        imu_sample.sensor_model = getattr(imu, "sensor_model", "unknown")
+        imu_sample.heading_reference = getattr(imu, "heading_reference", "relative")
+        imu_sample.startup_heading_status = getattr(
+            imu, "startup_heading_status", "not_requested"
+        )
         imu_sample.uses_magnetometer = getattr(imu, "use_magnetometer", False)
         if getattr(imu, "calibration_saved_now", False):
             console_queue.put("IMU: calibration saved")
@@ -523,7 +618,7 @@ def imu_monitor(shared_state, console_queue, log_queue, command_queue=None):
                 full_calibration = imu_sample.status == 3
             if full_calibration:
                 imu_calibrated = True
-                mode_name = "NDOF" if imu_sample.uses_magnetometer else "IMUPLUS"
+                mode_name = imu_sample.fusion_mode.upper()
                 console_queue.put(f"IMU: {mode_name} Calibrated!")
 
         if shared_state is not None:

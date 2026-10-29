@@ -550,9 +550,9 @@ class ImuSample:
 
     quat: quaternion.quaternion
     timestamp: float
-    status: int = 0  # 3 == fully calibrated (BNO055)
+    status: int = 0  # 3 == usable calibration/accuracy for orientation tracking
     moving: bool = False
-    # BNO055 component calibration levels: (system, gyro, accel, mag).
+    # (system/orientation, gyro, accel, mag): BNO055 calibration or SH-2 accuracy.
     calibration_status: Optional[Tuple[int, int, int, int]] = None
     fusion_mode: str = "imuplus"
     uses_magnetometer: bool = False
@@ -567,6 +567,9 @@ class ImuSample:
     consecutive_errors: int = 0
     last_error: Optional[str] = None
     last_success_time: Optional[float] = None
+    sensor_model: str = "unknown"
+    heading_reference: str = "relative"
+    startup_heading_status: str = "not_requested"
 
     def is_calibrated(self) -> bool:
         return self.status == 3
@@ -637,6 +640,9 @@ class ImuSample:
             if self.calibration_status is not None
             else None,
             "fusion_mode": self.fusion_mode,
+            "sensor_model": self.sensor_model,
+            "heading_reference": self.heading_reference,
+            "startup_heading_status": self.startup_heading_status,
             "uses_magnetometer": self.uses_magnetometer,
             "gyro": list(self.gyro) if self.gyro is not None else None,
             "accel": list(self.accel) if self.accel is not None else None,
@@ -660,6 +666,9 @@ class ImuSample:
         state["quat"] = _floats_to_quat(state.get("quat"))
         state.setdefault("calibration_status", None)
         state.setdefault("fusion_mode", "imuplus")
+        state.setdefault("sensor_model", "unknown")
+        state.setdefault("heading_reference", "relative")
+        state.setdefault("startup_heading_status", "not_requested")
         state.setdefault("uses_magnetometer", False)
         state.setdefault("gyro", None)
         state.setdefault("accel", None)

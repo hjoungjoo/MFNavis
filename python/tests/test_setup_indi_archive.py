@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 import pytest
 
@@ -242,3 +243,129 @@ def test_libinput_wheel_failure_stops_before_app_dependencies(installation):
     assert "python-libinput==0.3.0a0" in calls
     assert "requirements-trixie.txt" not in calls
     assert "pip uninstall" not in calls
+
+
+def test_imu_dependency_verification_failure_stops_installation(installation):
+    interpreter = installation / "app-venv/bin/python"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.write_text(
+        '#!/bin/bash\nprintf "python %s\\n" "$*" >> "$CALLS"\n'
+        'if [[ "$1" == "-" ]]; then exit 37; fi\n'
+    )
+    interpreter.chmod(0o755)
+    result = run_helper(
+        installation,
+        "mfnavis_board_profile() { echo pi4; }; "
+        "mfnavis_install_setup_python; echo unexpected",
+        MFNAVIS_PYTHON=str(interpreter),
+    )
+    assert result.returncode == 37
+    assert "unexpected" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    "installed,success", [("1.3.3", True), ("1.2.0", False), (None, False)]
+)
+def test_imu_verification_never_imports_gpio_driver(installation, installed, success):
+    # Run the real installer's metadata check, substituting only package metadata.
+    mock_path = installation / "metadata_stub"
+    mock_path.mkdir()
+    (mock_path / "sitecustomize.py").write_text(
+        "import importlib.metadata as metadata\n"
+        "import sys\n"
+        "from importlib.abc import MetaPathFinder\n"
+        "class NoHardware(MetaPathFinder):\n"
+        "    def find_spec(self, fullname, path=None, target=None):\n"
+        "        if fullname.startswith(('adafruit_bno', 'digitalio', 'board')):\n"
+        "            raise AssertionError('hardware imported during installation')\n"
+        "sys.meta_path.insert(0, NoHardware())\n"
+        f"versions = {{'adafruit-circuitpython-bno055':'5.4.22', 'adafruit-circuitpython-bno08x':{installed!r}}}\n"
+        "def version(name):\n"
+        "    value = versions[name]\n"
+        "    if value is None: raise metadata.PackageNotFoundError(name)\n"
+        "    return value\n"
+        "metadata.version = version\n"
+    )
+    result = run_helper(
+        installation,
+        "mfnavis_verify_imu_dependencies",
+        MFNAVIS_PYTHON=sys.executable,
+        PYTHONPATH=str(mock_path),
+    )
+    assert (result.returncode == 0) is success, result.stderr
+    if not success:
+        assert "adafruit-circuitpython-bno08x" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "codename,code_only", [("trixie", False), ("bookworm", False), ("trixie", True)]
+)
+def test_post_update_uses_shared_runtime_or_exits_without_installing(
+    tmp_path, codename, code_only
+):
+    repo = tmp_path / "repo"
+    (repo / "scripts").mkdir(parents=True)
+    (repo / "data").mkdir()
+    (repo / "data/migrations").mkdir()
+    for migration in (ROOT / "migration_source").glob("*.sh"):
+        (repo / "data/migrations" / migration.stem).touch()
+    calls = repo / "calls"
+    interpreter = repo / "app-python"
+    interpreter.write_text('#!/bin/bash\nprintf "app-python %s\\n" "$*" >> "$CALLS"\n')
+    interpreter.chmod(0o755)
+    (repo / "scripts/mfnavis_setup_runtime.sh").write_text(
+        HELPER.read_text() + "\nmfnavis_select_setup_python() { :; }\n"
+    )
+    (repo / "mfnavis_paths.sh").write_text("""
+mfnavis_board_profile() { echo pi5_class; }
+mfnavis_prepare_apsta_nat_config() { :; }
+mfnavis_prepare_sta_band_config() { :; }
+mfnavis_boot_config_path() { echo "$MFNAVIS_REPO_DIR/boot.txt"; }
+mfnavis_configure_i2c_boot() { echo i2c >> "$CALLS"; }
+mfnavis_configure_keypad_boot() { echo keypad >> "$CALLS"; exit 0; }
+""")
+    for name in (
+        "ensure_tetra3_link.sh",
+        "setup_mfds.sh",
+        "install_runtime_control.sh",
+        "install_keyboard_power_ignore.sh",
+    ):
+        (repo / "scripts" / name).write_text("exit 0\n")
+    shell_env = repo / "shell-env"
+    shell_env.write_text("""
+python3() { echo "system-python $*" >> "$CALLS"; }
+sudo() {
+    printf 'sudo %s\n' "$*" >> "$CALLS"
+    if [[ "$1" == "$MFNAVIS_PYTHON" ]]; then "$@"; fi
+    if [[ "$1" == tee ]]; then cat >/dev/null; fi
+    return 0
+}
+""")
+    result = subprocess.run(
+        ["bash", str(ROOT / "mfnavis_post_update.sh")],
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "MFNAVIS_REPO_DIR": str(repo),
+            "MFNAVIS_DATA_DIR": str(repo / "data"),
+            "MFNAVIS_PYTHON": str(interpreter),
+            "MFNAVIS_OS_CODENAME": codename,
+            "MFNAVIS_CODE_UPDATE": "1" if code_only else "0",
+            "BASH_ENV": str(shell_env),
+            "CALLS": str(calls),
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    log = calls.read_text()
+    if code_only:
+        assert "app-python" not in log and "sudo" not in log
+        assert "i2c\n" not in log
+    else:
+        assert (
+            "requirements-trixie.txt" if codename == "trixie" else "requirements.txt"
+        ) in log
+        assert "system-python -m pip" not in log
+        assert "app-python -\n" in log
+        assert "sudo systemctl daemon-reload" in log
+        assert log.endswith("i2c\nkeypad\n")

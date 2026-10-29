@@ -878,6 +878,12 @@ class PointingCoordinateService:
                 "status": getattr(imu_sample, "status", None),
                 "calibration_status": getattr(imu_sample, "calibration_status", None),
                 "fusion_mode": getattr(imu_sample, "fusion_mode", ""),
+                "heading_reference": getattr(
+                    imu_sample, "heading_reference", "relative"
+                ),
+                "startup_heading_status": getattr(
+                    imu_sample, "startup_heading_status", "not_requested"
+                ),
                 "uses_magnetometer": bool(
                     getattr(imu_sample, "uses_magnetometer", False)
                 ),
@@ -1128,9 +1134,14 @@ class PointingCoordinateService:
                 health.mount_pre_alignment_only = True
                 health.warnings.append("mount readback ignored before sync/alignment")
             if not self._imu_can_supply_absolute_coordinate(imu):
-                health.warnings.append(
-                    "unaligned IMU heading; provisional pointing until solve/alignment"
-                )
+                if (imu.metadata or {}).get("heading_reference") == "startup_magnetic":
+                    health.warnings.append(
+                        "startup magnetic heading is approximate; provisional pointing until solve/alignment"
+                    )
+                else:
+                    health.warnings.append(
+                        "unaligned IMU heading; provisional pointing until solve/alignment"
+                    )
             return imu
 
         if mount.valid and not mount.aligned:

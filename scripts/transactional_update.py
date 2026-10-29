@@ -98,6 +98,8 @@ def update(repo):
             raise RuntimeError(
                 "Dependency/OS/submodule layout changes require a separate staged installation: "
                 + sensitive
+                + "\nRun the normal mfnavis_setup.sh installer to prepare dependencies and boot settings; "
+                "no A0/IMU option is required."
             )
         detector = repo / "python/MFDS"
         if not detector.is_symlink() or not (detector / "PACKAGE.json").is_file():

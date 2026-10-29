@@ -16,7 +16,9 @@ bash "${MFNAVIS_REPO_DIR}/scripts/setup_mfds.sh"
 MFNAVIS_REPO_DIR="$(realpath "${MFNAVIS_REPO_DIR}")"
 MFNAVIS_DATA_DIR="$(realpath -m "${MFNAVIS_DATA_DIR}")"
 export MFNAVIS_REPO_DIR MFNAVIS_DATA_DIR
-sudo python3 -m pip install --break-system-packages -r "${MFNAVIS_REPO_DIR}/python/requirements.txt"
+source "${MFNAVIS_REPO_DIR}/scripts/mfnavis_setup_runtime.sh"
+mfnavis_select_setup_python
+mfnavis_install_setup_python
 mfnavis_prepare_apsta_nat_config
 mfnavis_prepare_sta_band_config
 bash "${MFNAVIS_REPO_DIR}/scripts/install_runtime_control.sh" "${MFNAVIS_USER}"
@@ -112,6 +114,13 @@ fi
 # Keep the device-specific power-key mapping in sync on existing installs too.
 # Idempotent; also installs the rule when the keyboard is not connected.
 bash "${MFNAVIS_REPO_DIR}/scripts/install_keyboard_power_ignore.sh" || return $?
+
+# Normalize runtime and boot settings after older migrations have finished.
+# This is the full/system update path. Code-only activation returned above.
+mfnavis_configure_python_services
+sudo systemctl daemon-reload
+mfnavis_configure_i2c_boot "$(mfnavis_boot_config_path)"
+mfnavis_configure_keypad_boot "$(mfnavis_boot_config_path)"
 
 # DONE
 echo "MFNavis system update complete"

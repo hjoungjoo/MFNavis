@@ -261,35 +261,9 @@ do
     grep -qxF "${line}" "${BOOT_CONFIG}" || echo "${line}" | sudo tee -a "${BOOT_CONFIG}"
 done
 
-# I2C for the BNO055 IMU (and the BQ25895 charger on Rev-4 boards).
-#
-# Pi 5 / CM5 drive I2C through the RP1 controller, which honours clock
-# stretching, so hardware I2C at 400 kbps is safe there.  Pi 4 and earlier use
-# the BCM2835/BCM2711 I2C block, which has a known clock-stretching bug that
-# corrupts transfers with a clock-stretching device like the BNO055.  On those
-# boards, use a software (bit-banged) i2c-gpio bus on the same SDA/SCL pins
-# (GPIO2/GPIO3 -> /dev/i2c-3) instead, and disable the hardware i2c_arm block
-# so it does not fight the software bus for the pins.  Keep the two paths
-# mutually exclusive by removing the other path's lines first.
-if [[ "$(mfnavis_board_profile)" == "pi5_class" ]]; then
-    sudo sed -i \
-        -e '/^dtoverlay=i2c-gpio/d' \
-        "${BOOT_CONFIG}"
-    for line in \
-        "dtparam=i2c_arm=on" \
-        "dtparam=i2c_arm_baudrate=400000"
-    do
-        grep -qxF "${line}" "${BOOT_CONFIG}" || echo "${line}" | sudo tee -a "${BOOT_CONFIG}"
-    done
-else
-    sudo sed -i \
-        -e '/^dtparam=i2c_arm=on/d' \
-        -e '/^dtparam=i2c_arm_baudrate=/d' \
-        "${BOOT_CONFIG}"
-    I2C_GPIO_OVERLAY="dtoverlay=i2c-gpio,i2c_gpio_sda=2,i2c_gpio_scl=3,bus=3"
-    grep -qxF "${I2C_GPIO_OVERLAY}" "${BOOT_CONFIG}" \
-        || echo "${I2C_GPIO_OVERLAY}" | sudo tee -a "${BOOT_CONFIG}"
-fi
+# Shared by fresh installation and full updates; also normalizes old baudrate
+# overrides and section filters without touching the selected camera or fan.
+mfnavis_configure_i2c_boot "${BOOT_CONFIG}"
 if [[ "$(mfnavis_uart_overlay)" == "dtoverlay=uart2-pi5" ]]; then
     sudo sed -i 's/^dtoverlay=uart3/#dtoverlay=uart3/' "${BOOT_CONFIG}"
 fi

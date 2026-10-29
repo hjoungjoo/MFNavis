@@ -119,7 +119,7 @@ When a `CONTEXT.md` defines a term, prefer that term over synonyms in code comme
 - **Camera Process** - Image capture from various camera types (Pi, ASI, debug)
 - **Solver Process** - Plate solving using MF star detection and the Tetra3 solver
 - **GPS Process** - Location/time via GPSD or UBlox direct interface
-- **IMU Process** - Motion tracking with BNO055 sensor
+- **IMU Process** - BNO086 on detected MFNavis_A0 boards, BNO055 on legacy boards
 - **Integrator Process** - Combines solver + IMU data for real-time positioning
 - **Web Server Process** - Web interface and SkySafari integration as a telescope 
 - **Position Server Process** - External protocol support

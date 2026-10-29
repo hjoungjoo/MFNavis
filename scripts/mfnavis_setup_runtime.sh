@@ -88,6 +88,29 @@ mfnavis_install_setup_python() {
         sudo "${MFNAVIS_PYTHON}" -m pip install --break-system-packages \
             -r "${MFNAVIS_REPO_DIR}/python/requirements.txt" || return
     fi
+    mfnavis_verify_imu_dependencies
+}
+
+mfnavis_verify_imu_dependencies() {
+    # Metadata only: importing Blinka can open GPIO, and installation must
+    # succeed with either sensor absent. Prepare both backends without options.
+    "${MFNAVIS_PYTHON}" - <<'PY'
+from importlib.metadata import PackageNotFoundError, version
+import sys
+
+for package, expected in (
+    ("adafruit-circuitpython-bno055", None),
+    # imu_bno086 adapts private SHTP methods in this exact upstream release.
+    ("adafruit-circuitpython-bno08x", "1.3.3"),
+):
+    try:
+        installed = version(package)
+    except PackageNotFoundError:
+        raise SystemExit(f"Missing IMU driver {package} in {sys.executable}")
+    if expected and installed != expected:
+        raise SystemExit(f"IMU driver {package}: expected {expected}, found {installed}")
+    print(f"IMU driver ready: {package} {installed}")
+PY
 }
 
 mfnavis_install_setup_indi() {

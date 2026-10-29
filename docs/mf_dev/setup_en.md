@@ -93,6 +93,65 @@ the CPU model. Detection itself changes only `board_mode`. Legacy keeps the
 existing settings; A0 uses the FRAM synchronization policy below. Power off before replacing
 boards; identification runs on the next application startup.
 
+**A0 IMU selection:** the same detected `board_mode` selects BNO086 at I2C1
+address `0x4B` on A0, and BNO055 on legacy boards. Normal installation includes
+`adafruit-circuitpython-bno08x==1.3.3`; no extra option is needed. Game Rotation
+Vector uses a startup-only compass seed on A0. The initial magnetic field is
+tilt-compensated using Game RV and several stable yaw offsets are averaged.
+Magnetic reports and magnetic calibration are then disabled; a fixed world-yaw
+offset preserves the initial reference while Game RV continues without a reset.
+Acquisition is bounded to five seconds; invalid fields, stale readings or motion
+fall back to relative orientation. Each app start or sensor reinitialization
+reacquires the reference; it is not stored in FRAM/config.json. A0 always uses this
+policy, preserving `imu_use_magnetometer` for legacy boards. Native axes and
+`screen_direction` are retained. `/api/imu` reports
+`heading_reference=startup_magnetic` and `startup_heading_status=acquired`, or
+`relative`/`unavailable` on failure. After startup, `fusion_mode` is
+`game_rotation_vector` and `uses_magnetometer` is false. This is approximate
+magnetic north, not a true-north or precision alignment. Existing location/time
+conversion supplies initial RA/Dec; plate-solve and alignment coordinates retain
+priority.
+
+**Installation and full updates:** normal setup and the full-update path in
+`mfnavis_post_update.sh` share Python dependency installation. Trixie uses the
+runtime `.venv-trixie`; Bookworm uses the selected runtime Python. Both IMU drivers
+are verified through package metadata without importing GPIO drivers or requiring
+connected sensors. A shared helper normalizes Pi 5/CM5 I2C1 to 400 kHz and retains
+software I2C3 on earlier Pis. Full updates apply this and the GPIO12 AW9523 reset
+reservation after legacy migrations. Camera/fan settings and user configuration
+are preserved. Reboot when boot settings change. No A0 or IMU installation option
+is needed; application startup detects the carrier and acquires its compass seed.
+
+`mfnavis_update.sh` remains a code-only transactional updater. Releases adding
+dependencies, including this IMU driver, stop before activation and direct the
+user to normal `mfnavis_setup.sh` installation. Code-only updates do not mutate
+packages or boot settings in the running environment.
+
+BNO086 calibration uses sensor flash DCD, separate from the BNO055 offset file.
+Automatic saving occurs once per run after all required report accuracies reach 3,
+when enabled. Manual save waits for an acknowledgement; load reinitializes the
+sensor to load its DCD (the existence of a previously saved DCD is not detectable).
+On A0, the calibration-clear action resets **RAM calibration**, retaining flash
+DCD, and reports `RAM cal reset; flash retained` in the console, matching
+[CEVA's Clear DCD and Reset semantics](https://github.com/ceva-dsp/sh2/blob/master/sh2.c).
+The adapter separates SHTP transmit sequences and control channels and processes
+batched reports in arrival order. Missing reports for one second or repeated I/O
+errors invalidate the IMU and trigger recovery; a failed A0 BNO086 never silently
+selects BNO055.
+
+The 2026-10-29 CM5/A0 check read product ID `10004563`, firmware `3.12.6`
+(build 62). A 30-second run through the application's `Imu` entry point received
+334 orientations without communication errors, ending at accuracy `(3,3,2,0)`
+and tracking status 3 in the default relative mode. Earlier physical movement
+tests confirmed rotation and settling. Flash erasure, absolute heading calibration
+and telescope/camera axis alignment were not tested.
+
+A subsequent hardware check on the same day confirmed startup compass acquisition
+(`startup_magnetic` / `acquired`), followed by 308 orientations in 30 seconds without
+errors. No magnetic reports arrived after the initial packet drain; only acceleration,
+gyro, linear acceleration and Game RV reports remained active. The device report is
+`MFNavis_data/test_data/bno086-20261029/startup-heading.json`.
+
 No extra option or package is required. Setup reserves GPIO12 for reset with
 `gpio=12=op,dl,pd`, and prepares only GPIO13 for legacy PWM using
 `dtoverlay=pwm,pin=13,func=4`. A0 never starts PWM output. Old `pwm-2chan`

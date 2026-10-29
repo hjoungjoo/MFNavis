@@ -23,11 +23,15 @@ from importlib.abc import MetaPathFinder
 
 class NoHardware(MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname == 'adafruit_bno055':
+        if fullname in ('adafruit_bno055', 'adafruit_bno08x'):
             raise RuntimeError('hardware driver requested')
 
 sys.meta_path.insert(0, NoHardware())
 from PiFinder.imu_pi import Imu, _update_imu_safely
+from PiFinder import imu_pi
+from unittest.mock import Mock
+imu_pi.config.Config = lambda: Mock(get_option=lambda key, default: default)
+imu_pi.get_board_mode = lambda cfg: 'legacy'
 assert callable(_update_imu_safely)
 try:
     Imu()

@@ -179,7 +179,7 @@ The static rotation from the camera optical axis to the aligned (eyepiece) axis,
 _Avoid_: q_cam2scope (earlier working name), cam-to-scope offset.
 
 **IMU**:
-The BNO055 sensor that supplies orientation. Sampled by the IMU process; read by the integrator via `shared_state.imu()`.
+The orientation sensor: BNO086 on a detected MFNavis_A0 carrier, BNO055 on legacy boards. Sampled by the IMU process; read by the integrator via `shared_state.imu()`. Both expose scalar-first `(w,x,y,z)` in native sensor axes, with the existing `screen_direction` camera transform. `sensor_model` identifies the backend; `calibration_status` contains BNO055 calibration levels or BNO086 SH-2 report accuracy levels. A0 acquires an approximate magnetic-north reference at startup, then disables magnetic reports/calibration and uses Game Rotation Vector with a fixed world-yaw offset. `heading_reference=startup_magnetic` is a provisional initial coordinate, not a precision alignment; `uses_magnetometer` remains false during tracking. Acquisition failure falls back to relative heading. `imu_use_magnetometer` continues to govern only legacy BNO055 operation.
 _Avoid_: gyro, sensor.
 
 **`ImuSample`**:
