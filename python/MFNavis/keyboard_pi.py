@@ -12,6 +12,8 @@ from time import monotonic, sleep
 import libinput
 from PiFinder.keyboard_interface import KeyboardInterface
 from PiFinder import keyboard_mapping
+from PiFinder.board_config import A0_MODE, LEGACY_MODE, get_board_mode
+from PiFinder.keypad_a0 import A0Keypad, matrix_keys
 import RPi.GPIO as GPIO
 import logging
 from PiFinder.multiproclogging import MultiprocLogging
@@ -96,8 +98,10 @@ PHYSICAL_MODIFIER_KEYS = PHYSICAL_CTRL_KEYS | PHYSICAL_SHIFT_KEYS | PHYSICAL_ALT
 
 
 class KeyboardPi(KeyboardInterface):
-    def __init__(self, q):
+    def __init__(self, q, board_mode=LEGACY_MODE):
         self.q = q
+        self.board_mode = board_mode
+        self.a0_keypad = A0Keypad(matrix_keys()) if board_mode == A0_MODE else None
 
         # GPIO pin numbers for the rows and columns of the keyboard matrix
         self.cols = [16, 23, 26, 27]
@@ -425,6 +429,9 @@ class KeyboardPi(KeyboardInterface):
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(self.rows, GPIO.IN)
         GPIO.setup(self.cols, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        logger.info("Keypad matrix mode: %s", self.board_mode)
+        if self.a0_keypad is not None:
+            return self._run_a0_keyboard()
         pressed = set()
         alt_sent = False
         hold_counter = 0
@@ -486,8 +493,34 @@ class KeyboardPi(KeyboardInterface):
                                 self.q.put(self.keymap[keycode])
                 GPIO.setup(self.rows[i], GPIO.IN)
 
+    def _scan_matrix(self) -> set[int]:
+        pressed = set()
+        for row, pin in enumerate(self.rows):
+            GPIO.setup(pin, GPIO.OUT, initial=GPIO.LOW)
+            try:
+                for col, col_pin in enumerate(self.cols):
+                    if GPIO.input(col_pin) == GPIO.LOW:
+                        pressed.add(row * len(self.cols) + col)
+            finally:
+                GPIO.setup(pin, GPIO.IN)
+        return pressed
+
+    def _run_a0_keyboard(self):
+        try:
+            while True:
+                if keyboard_key := self.get_keyboard_key():
+                    self.q.put(keyboard_key)
+                for event in self.a0_keypad.update(self._scan_matrix(), monotonic()):
+                    self.q.put(event)
+                sleep(1 / 60)
+        finally:
+            # Only release matrix lines; LED/IMU reset GPIOs belong to others.
+            GPIO.cleanup(self.rows + self.cols)
+
 
 def run_keyboard(q, shared_state, log_queue):
     MultiprocLogging.configurer(log_queue)
-    keyboard = KeyboardPi(q)
+    from PiFinder.config import Config
+
+    keyboard = KeyboardPi(q, board_mode=get_board_mode(Config()))
     keyboard.run_keyboard(log_queue)

@@ -4,8 +4,8 @@
 
 ``keyboard_pi`` attaches the raw Linux key code and press/release state to its
 normal PiFinder keycode.  The main process feeds those events here, allowing
-the settings UI and dispatcher to share one in-process manager while leaving
-the GPIO keypad and Web Remote unchanged.
+the settings UI and dispatcher to share one in-process manager. The A0 matrix
+uses the same protocol with separate identities; legacy/Web input is unchanged.
 """
 
 from __future__ import annotations
@@ -15,6 +15,11 @@ import time
 from typing import Any, Callable, Optional, TypeGuard
 
 from PiFinder.keyboard_interface import KeyboardInterface
+from PiFinder.keypad_a0 import (
+    KEY_LABELS as A0_KEY_LABELS,
+    LEFT_ID as A0_LEFT_ID,
+    NAVIGATION_IDS,
+)
 
 
 CONFIG_KEY = "keyboard_mapping"
@@ -38,7 +43,7 @@ ACTIONS: tuple[tuple[str, str], ...] = (
 # Keep the keys needed to operate menus available at all times. In particular,
 # Left must be able to leave Test Keys, and Enter/arrow keys must retain their
 # normal UI navigation behavior instead of becoming global mount shortcuts.
-RESERVED_KEY_IDS = frozenset(
+RESERVED_KEY_IDS = NAVIGATION_IDS | frozenset(
     {
         "KEY_28",  # Enter
         "KEY_96",  # Keypad Enter
@@ -135,6 +140,8 @@ def key_id(code: int) -> str:
 
 
 def key_label(identifier: str) -> str:
+    if identifier in A0_KEY_LABELS:
+        return A0_KEY_LABELS[identifier]
     try:
         code = int(str(identifier).removeprefix("KEY_"))
     except (TypeError, ValueError):
@@ -341,10 +348,9 @@ class KeyboardMappingManager:
         event_now = time.monotonic() if now is None else now
 
         with self._lock:
-            pass_through_left = (
-                self._capturing
-                and self._capture_allows_left
-                and identifier == "KEY_105"
+            pass_through_left = self._capturing and (
+                identifier == A0_LEFT_ID
+                or (self._capture_allows_left and identifier == "KEY_105")
             )
             if pressed and not repeat:
                 self.last_key = identifier
