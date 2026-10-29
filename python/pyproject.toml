@@ -145,6 +145,12 @@ module = [
 ignore_missing_imports = true
 ignore_errors = true
 
+[[tool.mypy.overrides]]
+# These hardware drivers ship neither stubs nor a py.typed marker. Keep the
+# exception limited to the external modules; our driver code is still checked.
+module = ['adafruit_bno08x', 'adafruit_bno08x.*', 'digitalio']
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = [

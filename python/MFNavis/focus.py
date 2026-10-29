@@ -229,8 +229,8 @@ def _find_blobs(
         detected_count = int(np.count_nonzero(counts[1:] >= min_size_px))
         scores = np.full(n_labels + 1, -np.inf, dtype=np.float32)
         np.maximum.at(scores, labeled[mask], (img - threshold)[mask])
-        compact = []
-        broad = []
+        compact: List[Tuple[int, Tuple[slice, ...]]] = []
+        broad: List[Tuple[int, Tuple[slice, ...]]] = []
         for index, sl in selected:
             if sl is None or counts[index] < min_size_px:
                 continue
