@@ -137,9 +137,7 @@ def test_replacement_star_does_not_inherit_departed_hip_id(monkeypatch):
             replacement,
         ),
     )
-    monkeypatch.setattr(preview_module.focus, "focus_hfd", lambda _image: result)
-
-    preview._measure_focus(np.zeros((512, 512), dtype=np.uint8), record_history=False)
+    preview._apply_focus_result(result)
 
     assert preview._focus_slot_catalog_ids == (1, 2, None, 4)
 

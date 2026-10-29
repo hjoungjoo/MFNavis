@@ -4,7 +4,7 @@
 Self-contained focus-quality measurement for the Focus screen.
 
 This module implements a lightweight star detector and Half-Flux Diameter (HFD)
-measurement that run in the main (UI) process on the raw 512x512 camera frame.
+measurement for a dedicated worker on the raw camera frame.
 It is **deliberately independent** of the solver's tetra3/Cedar centroids and of
 SQM photometry: a badly defocused frame does not plate-solve, so solver-derived
 stars vanish at exactly the moment focus help is needed most. See
@@ -25,8 +25,12 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 from scipy import ndimage
-from scipy.interpolate import interp1d
 from scipy.optimize import linear_sum_assignment
+
+# Limit expensive annular backgrounds / centroids, not the HFD aperture or
+# native pixels. Reserve broad candidates so initial donut focus stays usable.
+MAX_FOCUS_CANDIDATES = 64
+MAX_BROAD_CANDIDATES = 16
 
 
 @dataclass
@@ -77,6 +81,8 @@ class FocusResult:
     too_defocused: bool
     median_fwhm: Optional[float] = None
     blobs: Tuple[Blob, ...] = ()
+    # All regions passing the raw-pixel size test, before shortlisting.
+    detected_count: Optional[int] = None
 
 
 def _estimate_background_noise(np_image: np.ndarray) -> Tuple[float, float]:
@@ -145,16 +151,26 @@ def _detection_threshold(img: np.ndarray, sigma_k: float) -> np.ndarray:
     )
 
     def interpolate(values):
-        # Separable interpolation avoids a full frame of coordinate pairs in
-        # the UI process, especially on the 980px native wide-lens path.
+        # Separable linear extrapolation in float32. scipy interp1d promotes
+        # these full-frame maps to float64 and allocates several large
+        # intermediates for each of the sky, offset and noise grids.
         for axis, length in ((1, width), (0, height)):
             if len(centers[axis]) > 1:
-                values = interp1d(
-                    centers[axis], values, axis=axis, fill_value="extrapolate"
-                )(np.arange(length))
+                coords = np.arange(length, dtype=np.float32)
+                points = centers[axis].astype(np.float32)
+                left = np.clip(np.searchsorted(points, coords) - 1, 0, len(points) - 2)
+                weight = (coords - points[left]) / (points[left + 1] - points[left])
+                shape = [1, 1]
+                shape[axis] = length
+                lower = np.take(values, left, axis=axis)
+                upper = np.take(values, left + 1, axis=axis)
+                upper -= lower
+                upper *= weight.reshape(shape)
+                upper += lower
+                values = upper
             else:
                 values = np.repeat(values, length, axis=axis)
-        return values.astype(np.float32)
+        return values
 
     # Extrapolate gradients to the frame boundary, but do not let a broad
     # central star pull the estimated edge sky below the actual sky floor.
@@ -173,10 +189,10 @@ def _find_blobs(
     *,
     max_blob_px: int,
     sigma_k: float,
-) -> Tuple[List[Blob], List[Blob], float, Optional[float]]:
+) -> Tuple[List[Blob], List[Blob], float, Optional[float], int]:
     """Label connected regions above the detection threshold.
 
-    Returns (usable_blobs, oversized_blobs, background, brightest_peak) where
+    Returns (usable_blobs, oversized_blobs, background, brightest_peak, count) where
     usable_blobs are blobs at least 2 px in size and no larger than the size cap,
     sorted brightest-first. ``oversized_blobs`` contains signal too defocused to
     measure but still useful for the visual focus tiles. ``brightest_peak`` is
@@ -194,23 +210,49 @@ def _find_blobs(
     mask = smoothed > threshold
     labeled, n_labels = ndimage.label(mask)
     if n_labels == 0:
-        return [], [], background, None
+        return [], [], background, None, 0
 
     slices = ndimage.find_objects(labeled)
 
+    # Reject hot pixels and rank all regions cheaply before refining only a
+    # bounded shortlist. A spatial threshold-relative score avoids selecting
+    # only the brightest sky region on a gradient. maximum.at is linear-time;
+    # ndimage.maximum with many labels sorts the entire image in some SciPy
+    # versions. Keep the old exhaustive path for sparse fields.
+    selected = list(enumerate(slices, start=1))
+    brightest_peak = float(img[mask].max())
+    detected_count = None
+    if n_labels > MAX_FOCUS_CANDIDATES:
+        counts = np.bincount(labeled[mask & (img > threshold)], minlength=n_labels + 1)
+        detected_count = int(np.count_nonzero(counts[1:] >= 2))
+        scores = np.full(n_labels + 1, -np.inf, dtype=np.float32)
+        np.maximum.at(scores, labeled[mask], (img - threshold)[mask])
+        compact = []
+        broad = []
+        for index, sl in selected:
+            if sl is None or counts[index] < 2:
+                continue
+            extent = max(part.stop - part.start for part in sl)
+            (broad if extent > max_blob_px else compact).append((index, sl))
+        selected = (
+            sorted(compact, key=lambda item: scores[item[0]], reverse=True)[
+                : MAX_FOCUS_CANDIDATES - MAX_BROAD_CANDIDATES
+            ]
+            + sorted(broad, key=lambda item: scores[item[0]], reverse=True)[
+                :MAX_BROAD_CANDIDATES
+            ]
+        )
+
     usable: List[Blob] = []
     oversized: List[Blob] = []
-    brightest_peak: Optional[float] = None
 
-    for label_idx, sl in enumerate(slices, start=1):
+    for label_idx, sl in selected:
         if sl is None:
             continue
         region_mask = labeled[sl] == label_idx
 
         patch = img[sl]
         peak = float(patch[region_mask].max())
-        if brightest_peak is None or peak > brightest_peak:
-            brightest_peak = peak
 
         # Count pixels above threshold in the RAW frame (not the smoothed copy)
         # so a single-pixel hot pixel -- which smoothing spreads into a small
@@ -258,7 +300,9 @@ def _find_blobs(
     # the focus tiles ahead of a stronger star in a darker part of the frame.
     usable.sort(key=lambda b: b.peak - b.background, reverse=True)
     oversized.sort(key=lambda b: b.peak - b.background, reverse=True)
-    return usable, oversized, background, brightest_peak
+    if detected_count is None:
+        detected_count = len(usable) + len(oversized)
+    return usable, oversized, background, brightest_peak, detected_count
 
 
 def track_blobs(
@@ -413,7 +457,7 @@ def detect_stars(
     ``max_blob_px`` (too defocused to measure) and single-pixel hot pixels.
     Returned blobs are sorted brightest-first.
     """
-    usable, _, _, _ = _find_blobs(np_image, max_blob_px=max_blob_px, sigma_k=sigma_k)
+    usable, _, _, _, _ = _find_blobs(np_image, max_blob_px=max_blob_px, sigma_k=sigma_k)
     return usable[:n]
 
 
@@ -493,7 +537,7 @@ def focus_hfd(
     found; ``too_defocused`` is True when signal is present but every blob is
     larger than ``max_blob_px``.
     """
-    usable, oversized, background, brightest_peak = _find_blobs(
+    usable, oversized, background, brightest_peak, detected_count = _find_blobs(
         np_image, max_blob_px=max_blob_px, sigma_k=sigma_k
     )
     display_blobs = tuple(
@@ -514,6 +558,7 @@ def focus_hfd(
             peak=brightest_peak,
             too_defocused=bool(oversized),
             blobs=display_blobs,
+            detected_count=detected_count,
         )
 
     img = np.asarray(np_image, dtype=np.float32)
@@ -541,6 +586,7 @@ def focus_hfd(
             peak=brightest_peak,
             too_defocused=bool(oversized),
             blobs=display_blobs,
+            detected_count=detected_count,
         )
 
     return FocusResult(
@@ -551,4 +597,5 @@ def focus_hfd(
         too_defocused=False,
         median_fwhm=float(np.median(fwhms)) if fwhms else None,
         blobs=display_blobs,
+        detected_count=detected_count,
     )

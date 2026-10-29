@@ -13,6 +13,7 @@ import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageOps
 
 from PiFinder import focus, mf_wide_focus, utils
+from PiFinder.focus_worker import FocusWorker
 from PiFinder.ui.base import GuideKeyMixin, UIModule
 from PiFinder.ui.camera_render import crop_for_zoom
 from PiFinder.ui.marking_menus import MarkingMenu, MarkingMenuOption
@@ -31,6 +32,7 @@ FOCUS_BLOB_MARGIN = 1.35
 FOCUS_VISUAL_MAX_BLOB_PX = 128
 FOCUS_TILE_COUNT = 4
 FOCUS_WINDOW_S = 10.0
+FOCUS_MEASURE_INTERVAL = 0.2
 HFD_MIN_DISPLAY_SPAN = 1.0
 HFD_RANGE_PADDING = 1.15
 # MF: processed-frame background level (0-255) above which the Image view
@@ -148,6 +150,7 @@ class UIPreview(GuideKeyMixin, UIModule):
         self.focus_history: deque[tuple[float, float]] = deque()
         self._wide_focus_mode = False
         self._focus_frame_hw = (512, 512)
+        self._reset_focus_cache()
 
         # Exposure hold state. See _begin_exposure_hold for why the screen
         # takes the exposure away from auto-exposure while it is open.
@@ -191,11 +194,15 @@ class UIPreview(GuideKeyMixin, UIModule):
         self.focus_history.clear()
         self._wide_focus_mode = False
         self._focus_frame_hw = (512, 512)
+        self._close_focus_worker()
+        self._reset_focus_cache()
         self._begin_exposure_hold()
 
     def inactive(self):
         """Release once, including MF guide key cleanup."""
         super().inactive()
+        self._close_focus_worker()
+        self._reset_focus_cache()
         if not self._exposure_hold_active:
             return
         self._exposure_hold_active = False
@@ -283,16 +290,9 @@ class UIPreview(GuideKeyMixin, UIModule):
         except (AttributeError, TypeError, ValueError):
             return processed_image
 
-    def _measure_focus(
-        self, raw_np: np.ndarray, *, record_history: bool = True
-    ) -> None:
-        """Measure HFD and locate display blobs from one raw frame."""
-        if getattr(self, "_wide_focus_mode", False):
-            self.last_focus_result = focus.focus_hfd(
-                raw_np, sigma_k=mf_wide_focus.WIDE_FOCUS_SIGMA_K
-            )
-        else:
-            self.last_focus_result = focus.focus_hfd(raw_np)
+    def _apply_focus_result(self, result: focus.FocusResult) -> None:
+        """Adopt a completed measurement without doing image analysis in UI."""
+        self.last_focus_result = result
         candidates = tuple(
             blob
             for blob in self.last_focus_result.blobs
@@ -312,8 +312,71 @@ class UIPreview(GuideKeyMixin, UIModule):
             else None
             for _blob, previous_index in tracked_slots
         )
-        if record_history:
-            self._record_focus_sample(self.last_focus_result.median_hfd)
+        self._record_focus_sample(self.last_focus_result.median_hfd)
+
+    def _reset_focus_cache(self):
+        self._focus_worker = None
+        self._focus_pending = None
+        self._focus_image = None
+        self._focus_metadata = {}
+        self._processed_image = None
+        self._last_submitted_time = 0.0
+        self._last_submit_at = -float("inf")
+        self._bright_preview = None
+
+    def _close_focus_worker(self):
+        worker = getattr(self, "_focus_worker", None)
+        if worker is not None:
+            worker.close()
+            self._focus_worker = None
+        self._focus_pending = None
+
+    def _poll_focus(self):
+        if self._focus_worker is None:
+            return False
+        completed = self._focus_worker.poll()
+        if completed is None:
+            return False
+        pending, self._focus_pending = self._focus_pending, None
+        result, error, _seconds = completed
+        if error or pending is None:
+            self.last_focus_result = None
+            self._tracked_focus_blobs = ()
+            self._focus_slot_catalog_ids = ()
+            return True
+        self._adopt_solved_catalog_ids(self._last_focus_frame_time)
+        image, metadata, wide_mode = pending
+        self._focus_image = image
+        self._focus_metadata = metadata
+        self._wide_focus_mode = wide_mode
+        self._focus_frame_hw = (image.height, image.width)
+        self._apply_focus_result(result)
+        self._last_focus_frame_time = metadata["exposure_end"]
+        self._adopt_solved_catalog_ids(self._last_focus_frame_time)
+        return True
+
+    def _submit_focus(self, metadata):
+        frame_time = metadata["exposure_end"]
+        now = time.monotonic()
+        if (
+            frame_time <= self._last_submitted_time
+            or now - self._last_submit_at < FOCUS_MEASURE_INTERVAL
+        ):
+            return
+        if self._focus_worker is None:
+            self._focus_worker = FocusWorker()
+        if not self._focus_worker.available:
+            return
+        # Read RAW only when a worker slot is free. Never queue old frames.
+        previous_mode, previous_hw = self._wide_focus_mode, self._focus_frame_hw
+        image = self._focus_input_image(self._processed_image)
+        wide_mode = self._wide_focus_mode
+        self._wide_focus_mode, self._focus_frame_hw = previous_mode, previous_hw
+        sigma_k = mf_wide_focus.WIDE_FOCUS_SIGMA_K if wide_mode else 5.0
+        if self._focus_worker.submit(np.asarray(image.convert("L")), sigma_k=sigma_k):
+            self._focus_pending = (image, dict(metadata), wide_mode)
+            self._last_submitted_time = frame_time
+            self._last_submit_at = now
 
     def _adopt_solved_catalog_ids(self, frame_time: float) -> None:
         """Attach HIP identities only to blobs from the solved exposure."""
@@ -829,7 +892,15 @@ class UIPreview(GuideKeyMixin, UIModule):
             if result is not None and result.median_fwhm is not None
             else "—"
         )
-        detected = len(result.blobs) if result is not None else 0
+        detected = (
+            (
+                result.detected_count
+                if result.detected_count is not None
+                else len(result.blobs)
+            )
+            if result is not None
+            else 0
+        )
         if self._exposure_hold_active:
             # The saved setting still reads "auto" during the hold; reporting
             # it would contradict the exposure sitting next to it.
@@ -891,57 +962,63 @@ class UIPreview(GuideKeyMixin, UIModule):
             self.draw.rectangle((x0, y, x1, plot_bottom), fill=medium)
 
     def update(self, force: bool = False):
-        if force:
-            self.last_update = 0
-
         metadata = self.shared_state.last_image_metadata()
         last_image_time = metadata["exposure_end"]
-        image_updated = False
-        if last_image_time > self.last_update:
-            image_updated = True
-            raw_image = self.camera_image.copy()
-            focus_image = self._focus_input_image(raw_image)
+        image_updated = (
+            last_image_time > self.last_update or self._processed_image is None
+        )
+        if image_updated:
+            self._processed_image = self.camera_image.copy()
+            self._bright_preview = None
+            self.last_update = last_image_time
+        result_updated = self._poll_focus()
+        self._submit_focus(metadata)
 
-            raw_np = np.asarray(focus_image.convert("L"))
-            if last_image_time != self._last_focus_frame_time:
-                # A solve normally arrives after its image was first rendered.
-                # Identify those retained previous-frame blobs before tracking
-                # their slots onto the newly arrived frame.
-                self._adopt_solved_catalog_ids(self._last_focus_frame_time)
-                self._measure_focus(raw_np)
-                self._last_focus_frame_time = last_image_time
-                # Also handle the less common case where the solver won the
-                # race and published this exposure before the UI copied it.
-                self._adopt_solved_catalog_ids(last_image_time)
-            elif force:
-                # A forced redraw can race the separately published camera
-                # metadata. Re-measure this exact display copy, but do not add
-                # a duplicate point to the time history.
-                self._measure_focus(raw_np, record_history=False)
-
+        # Forced redraws (zoom/mode/exposure keys) reuse the captured frame and
+        # its result. New results render with their own frame, never a newer
+        # image that may have moved while the worker was measuring it.
+        redraw = (
+            force
+            or result_updated
+            or (image_updated and self.display_mode == DISPLAY_IMAGE)
+        )
+        if redraw:
+            raw_image = self._processed_image
+            focus_image = (
+                self._focus_image if self._focus_image is not None else raw_image
+            )
             if self.display_mode == DISPLAY_STARS:
                 self.screen.paste(self._render_focus_tiles(focus_image))
             elif self.display_mode == DISPLAY_IMAGE:
                 # MF: a daylit/saturated processed frame washes out; render
                 # the raw sensor frame instead (daytime alignment path).
                 rendered = None
-                if float(np.median(raw_np)) >= STRETCH_BRIGHT_BACKGROUND:
-                    rendered = self._render_raw_bright_frame()
+                if (
+                    float(np.median(np.asarray(raw_image.convert("L"))))
+                    >= STRETCH_BRIGHT_BACKGROUND
+                ):
+                    # This depends on zoom, so reuse only the focus analysis;
+                    # render the bright preview again when explicitly forced.
+                    if self._bright_preview is None or force:
+                        self._bright_preview = self._render_raw_bright_frame()
+                    rendered = self._bright_preview
                 if rendered is None:
                     rendered = self._render_image_frame(raw_image)
                 self.screen.paste(rendered)
             elif self.display_mode == DISPLAY_STATS:
-                self._draw_stats(raw_np, metadata)
+                self._draw_stats(
+                    np.asarray(focus_image.convert("L")),
+                    self._focus_metadata or metadata,
+                )
             else:
                 self.screen.paste(self._render_brightest_star(focus_image))
-            self.last_update = last_image_time
 
-        if (image_updated or force) and self.display_mode == DISPLAY_STARS:
+        if redraw and self.display_mode == DISPLAY_STARS:
             self._draw_focus_overlay()
-        elif (image_updated or force) and self.display_mode == DISPLAY_SINGLE:
+        elif redraw and self.display_mode == DISPLAY_SINGLE:
             self._draw_single_focus_overlay()
 
-        if image_updated or force:
+        if redraw:
             self._draw_status_bar()
 
         return self.screen_update()

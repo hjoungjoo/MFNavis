@@ -1,5 +1,14 @@
 # Focus-quality indicator: self-contained HFD measured in the UI
 
+**Implementation update (2026-10-30):** The detector remains independent of
+plate solving and preserves native-pixel HFD. Large IMX678 frames made the
+original synchronous main-process implementation block keys for seconds.
+Measurement now runs in one spawned worker with a reusable shared pixel buffer,
+a bounded candidate shortlist, and no pending-frame backlog. `UIPreview` renders
+the matching captured image/result and reuses it for forced redraws. The original
+decision below records the 512×512 design; see
+[performance implementation and validation](../FOCUS_PERFORMANCE_ko.md) for the update.
+
 The focus screen (`UIPreview`) measures focus quality with **Half-Flux Diameter (HFD)** — the diameter enclosing half a star's background-subtracted flux — computed by its **own lightweight star detector** running in the main process on the raw 512×512 frame, deliberately tuned to accept broad, defocused blobs (up to a ~50 px HFD measurement cap). It does **not** reuse the solver's tetra3/Cedar centroids or SQM's photometry. The driving reason: a badly defocused frame **does not plate-solve**, so solver-derived stars (and SQM, which only runs on successful solves) vanish at exactly the moment focus help is needed most. A self-contained detector is the only source of focus feedback that works across the entire defocus range, including the donut phase at the start of a focus sweep. The math lives in a pure `focus.py` module (no UI/PIL deps) so it is unit-testable against synthetic blobs of known width; `UIPreview` owns only raw crop rendering.
 
 ## Considered Options

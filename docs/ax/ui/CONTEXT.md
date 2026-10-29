@@ -188,14 +188,14 @@ _Avoid_: chart label (**Label** is a menu item's identifier), object label, capt
 
 ### Focus indicator
 
-The focus screen's quantitative focus-quality aid. Lives entirely inside `UIPreview` (the **Focus** menu item, titled "CAMERA") in the main process. Self-contained: it does its own star finding and measurement and shares no code with **SQM** photometry.
+The focus screen's quantitative focus-quality aid. `UIPreview` (the **Focus** menu item, titled "CAMERA") renders and handles keys in the main process; one spawned `FocusMeasure` process performs detection and measurement. A shared pixel buffer holds at most one in-flight frame. Completed measurements stay paired with that exact image; while busy, newer frames are skipped for measurement, and the next job uses the latest frame. Self-contained: it does its own star finding and measurement and shares no code with **SQM** photometry.
 
 **HFD** (Half-Flux Diameter):
 The focus-quality metric — the diameter (in pixels) of the circle enclosing half a star's background-subtracted flux: `2 · Σ(fluxᵢ·rᵢ) / Σ(fluxᵢ)` over aperture pixels. Lower = sharper. Chosen over FWHM because it stays stable and monotonic on saturated cores and broad defocused blobs, where a Gaussian fit fails.
 _Avoid_: FWHM (a different, fit-based metric — not what we compute), star size, spot size, sharpness.
 
 **Detected star**:
-A blob the focus screen's own lightweight detector finds in the raw 512×512 frame, deliberately tuned to accept broad/defocused blobs. HFD is measured on blobs up to a ~50 px size cap; broader blobs remain available for visual magnification. The few brightest measurable stars are what HFD is measured on. Distinct from a **matched star** (the solver's tetra3 catalog match), which goes to zero when defocused.
+A blob the focus screen's own detector finds in the raw frame (512×512 normally; native pixels for wide lenses), deliberately tuned to accept broad/defocused blobs. HFD is measured on blobs up to a ~50 px size cap; broader blobs remain available for visual magnification. Crowded fields use a threshold-relative signal shortlist of at most 48 measurable and 16 broad candidates before expensive background/centroid refinement; sparse fields retain exhaustive refinement. The few brightest refined measurable stars are what HFD is measured on. The Stats count includes all regions passing the raw-pixel size test, before shortlisting. Distinct from a **matched star** (the solver's tetra3 catalog match), which goes to zero when defocused.
 _Avoid_: centroid (reserve for the solver/SQM sense), matched star, blob (in prose; fine informally).
 
 **Focus HFD** (the reported value):

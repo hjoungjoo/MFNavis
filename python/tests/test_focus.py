@@ -9,6 +9,46 @@ import pytest
 from PiFinder import focus
 
 
+@pytest.mark.unit
+def test_crowded_field_bounds_refinement_preserves_raw_hfd_and_broad_candidates(
+    monkeypatch,
+):
+    image = np.full((512, 512), 10, dtype=np.float32)
+    for y in range(32, 480, 32):
+        for x in range(32, 480, 32):
+            image[y - 1 : y + 2, x - 1 : x + 2] = 45
+    for y, x in ((32, 32), (32, 64), (64, 32), (64, 64)):
+        image[y - 1 : y + 2, x - 1 : x + 2] = 200
+    image[350:450, 350:450] = 70  # Keep a broad defocused target too.
+    image[16, 16] = 255  # A hot pixel must not enter the shortlist.
+    monkeypatch.setattr(
+        focus, "_detection_threshold", lambda img, sigma: np.full_like(img, 20)
+    )
+    original = image.copy()
+    calls = []
+    background = focus._local_background
+
+    def counted(*args):
+        calls.append(1)
+        return background(*args)
+
+    monkeypatch.setattr(focus, "_local_background", counted)
+    limited = focus.focus_hfd(image)
+    assert len(calls) <= 2 * focus.MAX_FOCUS_CANDIDATES
+    assert len(limited.blobs) <= focus.MAX_FOCUS_CANDIDATES
+    assert limited.detected_count > focus.MAX_FOCUS_CANDIDATES
+    assert any(blob.extent > 50 for blob in limited.blobs)
+    assert not any(
+        abs(blob.x - 16) < 2 and abs(blob.y - 16) < 2 for blob in limited.blobs
+    )
+    np.testing.assert_array_equal(image, original)
+    monkeypatch.setattr(focus, "MAX_FOCUS_CANDIDATES", 100000)
+    exhaustive = focus.focus_hfd(image)
+    assert limited.median_hfd == pytest.approx(exhaustive.median_hfd, abs=1e-6)
+    assert limited.detected_count == exhaustive.detected_count
+    assert limited.blobs[:4] == exhaustive.blobs[:4]
+
+
 def _gaussian_frame(
     sigma,
     *,
