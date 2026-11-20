@@ -186,3 +186,6 @@ wifi_status.txt
 /graft/
 /.indi-install.lock
 /.imx678-build/
+
+# Graphify local code graph; regenerate with `graphify update .`.
+/graphify-out/
