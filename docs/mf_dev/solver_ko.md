@@ -37,6 +37,13 @@ RAW 패턴은 풀려도 좌표 게시가 2회 연속 보류되면 다음 프레�
 오래된 비동기 결과는 현재 프레임의 새 solve로 게시하지 않는다.
 원본/전처리의 bias 보정은 대응 관측으로 학습하고 불일치나 기준 변경 시 초기화한다.
 
+정지 상태의 작은 진동은 IMU의 순간 `moving` 플래그만으로 전처리를 초기화하지 않는다.
+`SolverMotionGate`가 해당 관측의 정상·보정 완료·신선한 IMU 자세를 확인하고,
+노출 구간 각도 변화 또는 고정 기준 자세 대비 변화가 기존 기준인 0.1도를 초과할 때
+이동으로 판정한다. 기준 자세를 매 프레임 따라 옮기지 않아 조금씩 계속 이동하는
+경우도 검출한다. 모터 이동 신호는 즉시 반영하고, 자세를 검증할 수 없으면 기존
+`moving` 판정을 유지한다. 영상 품질·좌표 연속성 승인 기준은 변경하지 않는다.
+
 ## 품질과 광학
 
 이동 프레임 판정, false-solve 방어, `SolveContinuityGate`, optics/FOV 검증은
@@ -50,9 +57,12 @@ RAW 패턴은 풀려도 좌표 게시가 2회 연속 보류되면 다음 프레�
 `utils.runtime_dir/solver_scheduling_status.json`에서 설정/실행 모드, 전환 이유,
 frame ID·generation·처리 시간을 확인한다. 노출 시간, 계산 지연, 성공 관측 갱신 간격은
 서로 다른 지표다. 전체 성능 비교에는 검출기 버전과 실제 실행 바이너리의 provenance를 포함한다.
+`motion.reason`과 `motion.displacement_deg`는 작은 IMU 흔들림, 노출 중 이동,
+관측 사이 자세 변경, 모터 이동을 구분한다. 같은 진단은 솔빙 캡처 기록에도 남는다.
 
 - [솔버](../../python/MFNavis/solver.py), [스케줄러](../../python/MFNavis/solver_scheduling.py), [SEP 복구](../../python/MFNavis/sep_shadow.py).
 - [스케줄링 검사](../../python/tests/test_solver_scheduling.py), [프레임 pairing](../../python/tests/test_solver_frame_pairing.py).
+- [미세 진동·실제 이동 구분](../../python/tests/test_solver_motion.py).
 - [관측 승인](../../python/tests/test_solve_acceptance.py), [전처리 후보](../../python/tests/test_solver_preprocessed_candidates.py), [FOV 조건](../../python/tests/test_solver_optics_gate.py).
 
 Cedar/SEP 조사·광각 타일 설계·전처리 초기 실험은 [솔빙 이력](../history/development/solver.md)에서

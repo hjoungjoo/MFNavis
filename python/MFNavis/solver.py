@@ -43,6 +43,7 @@ from PiFinder.optics import OpticalTrainResolver, build_optical_train
 from PiFinder.latest_frame_worker import LatestFrameWorker
 from PiFinder.preprocess_bias import PreprocessBiasTracker
 from PiFinder.solver_scheduling import SolverSchedulingPolicy
+from PiFinder.solver_motion import SolverMotionGate
 from PiFinder.solver_capture import CaptureRecorder
 from PiFinder.sep_shadow import (
     MAX_FRAME_AGE_S,
@@ -1371,6 +1372,7 @@ def solver(
     focus_paused = False
     last_solve_success = None  # exposure_end of most recent successful solve
     solve_continuity = SolveContinuityGate()
+    solve_motion = SolverMotionGate()
     post_motion_raw_fast_frames = 0
     preprocessed_fast_trusted = False
     async_preprocess_worker = None
@@ -1721,16 +1723,9 @@ def solver(
                         if async_preprocess_worker is not None:
                             async_preprocess_worker.clear_pending()
                     imu_sample = last_image_metadata.get("imu")
-                    frame_moving = bool(getattr(imu_sample, "moving", False))
-                    try:
-                        frame_moving = (
-                            frame_moving
-                            or abs(float(last_image_metadata.get("imu_delta") or 0.0))
-                            > 0.1
-                        )
-                    except (TypeError, ValueError):
-                        frame_moving = True
-                    frame_moving = frame_moving or _mount_motion_active()
+                    frame_moving = solve_motion.evaluate(
+                        last_image_metadata, mount_moving=_mount_motion_active()
+                    )
                     if frame_moving:
                         if not async_motion_seen:
                             async_preprocess_generation += 1
@@ -2719,6 +2714,7 @@ def solver(
                             "exposure_end": last_solve_attempt,
                             "preprocessing_enabled": solver_preprocess_enabled,
                             "frame_moving": frame_moving,
+                            "motion": solve_motion.status(),
                             "fast_raw_after_motion": fast_raw_after_motion,
                             "async_active": async_preprocess_mode_active,
                             "raw_solved": raw_solution_diagnostic is not None,
@@ -3010,6 +3006,7 @@ def solver(
                             "bias": preprocess_bias.status(),
                             "generation": async_preprocess_generation,
                             "frame_moving": frame_moving,
+                            "motion": solve_motion.status(),
                             "fast_raw_after_motion": fast_raw_after_motion,
                             "target_pixel": target_pixel_key,
                             "optics": {
