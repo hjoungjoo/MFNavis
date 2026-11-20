@@ -325,6 +325,40 @@ try:
         assert client.disconnected
 
     @pytest.mark.unit
+    def test_site_time_device_timeout_survives_backward_clock_step(monkeypatch):
+        from types import SimpleNamespace
+        from PiFinder import mountcontrol_indi as mci
+
+        mono, wall = [100.0], [1_800_000_000.0]
+
+        def sleep(seconds):
+            mono[0] += seconds
+            wall[0] -= 86400
+            # Regression guard: the former wall-clock loop would never expire.
+            assert mono[0] < 111
+
+        client = SimpleNamespace(
+            setServer=lambda *a: None,
+            connectServer=lambda: True,
+            getDevice=lambda name: None,
+            get_telescope_device=lambda: None,
+            disconnectServer=lambda: None,
+        )
+        monkeypatch.setattr(mci, "PiFinderIndiClient", lambda: client)
+        monkeypatch.setattr(
+            sys_utils.importlib.util, "find_spec", lambda name: object()
+        )
+        monkeypatch.setattr(sys_utils.time, "monotonic", lambda: mono[0])
+        monkeypatch.setattr(sys_utils.time, "time", lambda: wall[0])
+        monkeypatch.setattr(sys_utils.time, "sleep", sleep)
+        result = sys_utils.apply_indi_onstep_location_time(
+            utc_datetime="2026-11-21T00:00:00+00:00", device_name="LX200 OnStepX"
+        )
+        assert not result["ok"]
+        assert "Could not find INDI device" in result["stderr"]
+        assert 110 <= mono[0] < 111
+
+    @pytest.mark.unit
     def test_serial_without_modem_control_suppresses_lines_and_hangup(monkeypatch):
         import termios
 

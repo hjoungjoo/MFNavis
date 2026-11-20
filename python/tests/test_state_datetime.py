@@ -184,3 +184,32 @@ def test_datetime_ignores_wall_clock_steps(monkeypatch):
     monotonic_time[0] += 5
 
     assert shared_state.utc_datetime() == initial + datetime.timedelta(seconds=5)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("days", [-30, 30])
+def test_gps_corrects_large_civil_time_error_in_both_directions(frozen_clock, days):
+    shared_state = SharedStateObj()
+    gps = datetime.datetime(2026, 11, 21, tzinfo=UTC)
+    shared_state.set_datetime(gps + datetime.timedelta(days=days))
+    shared_state.set_datetime(gps)
+    assert shared_state.utc_datetime() == gps
+    assert not shared_state.datetime_is_manual()
+
+
+@pytest.mark.unit
+def test_gps_still_ignores_small_backward_jitter(frozen_clock):
+    shared_state = SharedStateObj()
+    gps = datetime.datetime(2026, 11, 21, tzinfo=UTC)
+    shared_state.set_datetime(gps)
+    shared_state.set_datetime(gps - datetime.timedelta(seconds=1))
+    assert shared_state.utc_datetime() == gps
+
+
+@pytest.mark.unit
+def test_gps_large_correction_preserves_manual_time_override(frozen_clock):
+    shared_state = SharedStateObj()
+    manual = datetime.datetime(2026, 11, 21, tzinfo=UTC)
+    shared_state.set_datetime(manual, force=True)
+    shared_state.set_datetime(manual - datetime.timedelta(days=30))
+    assert shared_state.utc_datetime() == manual

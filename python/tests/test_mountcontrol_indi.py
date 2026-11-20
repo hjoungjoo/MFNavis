@@ -1664,6 +1664,231 @@ def test_sync_location_time_sends_provisional_time_while_clock_untrusted(monkeyp
     assert "provisional" in statuses[-1][1]
 
 
+@pytest.fixture
+def automatic_site(monkeypatch):
+    from datetime import timedelta
+
+    mount = DummyConnectedMount()
+    clock = [100.0]
+    source = SimpleNamespace(
+        location=SimpleNamespace(lock=True, lat=37.5, lon=127.0, altitude=30.0),
+        utc=datetime(2026, 11, 21, tzinfo=timezone.utc),
+        trusted=False,
+        available=True,
+        accept=True,
+        acknowledge=True,
+    )
+    mount.shared_state = SimpleNamespace(
+        location=lambda: source.location,
+        datetime=lambda: (
+            source.utc + timedelta(seconds=clock[0] - 100) if source.available else None
+        ),
+        datetime_is_manual=lambda: False,
+    )
+    monkeypatch.setattr(mci.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        mci.gps_time_sync, "clock_is_trusted", lambda **kw: source.trusted
+    )
+    monkeypatch.setattr(mount, "_indi_mount_is_busy", lambda: False)
+    monkeypatch.setattr(mount, "_use_direct_onstep_location_time_sync", lambda: False)
+    monkeypatch.setattr(sys_utils, "write_onstep_location_cache", lambda *a: None)
+    sent = []
+
+    def send(**values):
+        sent.append(values)
+        if source.acknowledge and source.accept:
+            mount.receive_sync_property(
+                "GEOGRAPHIC_COORD",
+                "ok",
+                {"LAT": values["latitude"], "LONG": values["longitude"]},
+                mount._client_generation,
+            )
+            mount.receive_sync_property(
+                "TIME_UTC",
+                "ok",
+                {"UTC": values["utc_datetime"].isoformat()},
+                mount._client_generation,
+            )
+        return {"ok": source.accept}
+
+    monkeypatch.setattr(sys_utils, "apply_indi_onstep_location_time", send)
+
+    def poll(seconds=1.0):
+        clock[0] += seconds
+        mount._check_automatic_location_time_sync()
+
+    return mount, source, sent, poll
+
+
+@pytest.mark.parametrize("late_source", ["connection", "location", "time"])
+def test_automatic_site_sync_waits_for_connection_and_gps(automatic_site, late_source):
+    mount, source, sent, poll = automatic_site
+    mount.connected = late_source != "connection"
+    source.location.lock = late_source != "location"
+    source.available = late_source != "time"
+    poll()
+    assert not sent
+    mount.connected = source.location.lock = source.available = True
+    poll()
+    poll()
+    assert len(sent) == 1
+    assert mount._automatic_site_synced is not None
+    assert sent[0]["latitude"] == 37.5
+    assert sent[0]["longitude"] == 127.0
+    # Automatic initialization must not enter the unpark/enable-tracking path.
+    assert mount._initial_site_request is None
+
+
+def test_automatic_site_sync_ignores_elapsed_time_and_gps_jitter(automatic_site):
+    mount, source, sent, poll = automatic_site
+    poll()
+    poll()
+    source.location.lat += 0.00001
+    source.location.lon -= 0.00001
+    source.location.altitude += 2
+    poll(3600)
+    assert len(sent) == 1
+    assert mount._automatic_site_synced is not None
+
+
+@pytest.mark.parametrize("change", ["location", "forward", "backward", "trust"])
+def test_automatic_site_sync_replaces_boot_values(automatic_site, change):
+    from datetime import timedelta
+
+    mount, source, sent, poll = automatic_site
+    poll()
+    poll()
+    if change == "location":
+        source.location.lat = -33.8
+        source.location.lon = 151.2
+    elif change == "trust":
+        source.trusted = True
+    else:
+        source.utc += timedelta(days=30 if change == "forward" else -30)
+    poll()
+    poll()
+    assert len(sent) == 2
+    assert mount._automatic_site_synced["latitude"] == source.location.lat
+    assert mount._automatic_site_synced["datetime"] == sent[-1]["utc_datetime"]
+    poll()
+    assert len(sent) == 2
+
+
+@pytest.mark.parametrize("failure", ["send", "missing_ack", "wrong_ack", "alert"])
+def test_automatic_site_sync_retries_until_verified(automatic_site, failure):
+    mount, source, sent, poll = automatic_site
+    source.accept = failure != "send"
+    source.acknowledge = failure not in {"missing_ack", "wrong_ack", "alert"}
+    poll()
+    if failure in {"wrong_ack", "alert"}:
+        _site_ack(mount, state="alert" if failure == "alert" else "ok", lat=10)
+    poll(9)
+    assert mount._automatic_site_synced is None
+    assert len(sent) == 1
+    source.accept = source.acknowledge = True
+    poll(30)
+    poll()
+    assert len(sent) == 2
+    assert mount._automatic_site_synced is not None
+
+
+def test_automatic_site_sync_reapplies_after_reconnect(automatic_site):
+    mount, _source, sent, poll = automatic_site
+    poll()
+    poll()
+    mount._client_generation += 1
+    poll()
+    poll()
+    assert len(sent) == 2
+    assert mount._automatic_site_synced["generation"] == mount._client_generation
+
+
+def test_automatic_site_sync_retries_partial_write_even_if_source_reverts(
+    automatic_site,
+):
+    mount, source, sent, poll = automatic_site
+    poll()
+    poll()
+    source.location.lat = 35.0
+    source.accept = False
+    poll()
+    assert mount._automatic_site_synced is None
+    source.location.lat = 37.5
+    source.accept = True
+    poll(30)
+    poll()
+    assert len(sent) == 3
+    assert mount._automatic_site_synced["latitude"] == 37.5
+
+
+def test_automatic_site_sync_defers_during_motion(automatic_site, monkeypatch):
+    mount, _source, sent, poll = automatic_site
+    monkeypatch.setattr(mount, "_indi_mount_is_busy", lambda: True)
+    poll()
+    assert not sent
+    monkeypatch.setattr(mount, "_indi_mount_is_busy", lambda: False)
+    poll()
+    poll()
+    assert len(sent) == 1
+
+
+def test_automatic_site_sync_does_not_accept_cached_matching_ack(automatic_site):
+    mount, source, _sent, poll = automatic_site
+    mount.receive_sync_property(
+        "GEOGRAPHIC_COORD",
+        "ok",
+        {"LAT": 37.5, "LONG": 127.0},
+        mount._client_generation,
+    )
+    mount.receive_sync_property(
+        "TIME_UTC",
+        "ok",
+        {"UTC": source.utc.isoformat()},
+        mount._client_generation,
+    )
+    source.acknowledge = False
+    poll()
+    poll()
+    assert mount._automatic_site_synced is None
+    poll(9)
+    assert mount.statuses[-1][0] == "sync_failed"
+
+
+def test_automatic_direct_site_sync_preserves_tracking_off(monkeypatch):
+    mount = DummyConnectedMount()
+    monkeypatch.setattr(mount, "_cached_tracking_enabled", lambda: False)
+    monkeypatch.setattr(mount, "disconnect", lambda: None)
+    monkeypatch.setattr(
+        mount,
+        "_onstep_connection_config",
+        lambda: {
+            "connection_type": "network",
+            "network_host": "localhost",
+            "network_port": 9999,
+            "serial_port": "",
+        },
+    )
+    monkeypatch.setattr(
+        sys_utils, "sync_onstep_location_time_exclusive", lambda **kw: {"ok": True}
+    )
+    monkeypatch.setattr(sys_utils, "write_onstep_location_cache", lambda *a: None)
+    connections, tracking = [], []
+    monkeypatch.setattr(mount, "connect", lambda **kw: connections.append(kw) or True)
+    monkeypatch.setattr(mount, "set_tracking", lambda on: tracking.append(on) or True)
+    assert mount._sync_location_time_direct_onstep(
+        37.5,
+        127.0,
+        30.0,
+        datetime(2026, 11, 21, tzinfo=timezone.utc),
+        reconnect_after=True,
+        preserve_mount_state=True,
+    )
+    assert connections == [
+        {"announce": False, "sync_on_connect": False, "preserve_mount_state": True}
+    ]
+    assert tracking == [False]
+
+
 def test_guide_cycles_leave_selector_until_manual_speed_requested(monkeypatch):
     mount = DummyConnectedMount()
     mount.slew_rate = 6

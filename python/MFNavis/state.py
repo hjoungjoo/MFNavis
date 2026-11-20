@@ -660,7 +660,9 @@ class SharedStateObj:
             curtime = self.__datetime + datetime.timedelta(
                 seconds=time.monotonic() - self.__datetime_time
             )
-            if curtime < dt:
+            # Ignore small out-of-order receiver samples, but allow a real
+            # correction in either direction (e.g. an RTC restored in future).
+            if curtime < dt or (curtime - dt).total_seconds() >= 2.0:
                 self.__datetime_time = time.monotonic()
                 self.__datetime = dt
 

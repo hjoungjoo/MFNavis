@@ -673,6 +673,9 @@ class MountControlIndi(
         self._initial_site_reset_attempted = False
         self._initial_site_recovering = False
         self._initial_site_expected_time: Any = None
+        self._automatic_site_synced: Optional[dict[str, Any]] = None
+        self._automatic_site_pending: Optional[dict[str, Any]] = None
+        self._automatic_site_next_check = 0.0
         self._sync_fault_recovery: Optional[dict[str, Any]] = None
         self.shared_state = shared_state
         self.imu_command_queue = imu_command_queue
@@ -782,7 +785,7 @@ class MountControlIndi(
         # suppressed so an offline mount does not fill the log every retry.
         self._auto_connect_failures = 0
         # True while the last location/time sync carried an untrusted
-        # (provisional) clock -- the A5 hook replaces it once trusted.
+        # (provisional) clock -- automatic reconciliation replaces it once trusted.
         self._time_sync_provisional = False
         # Monotonic deadline for re-applying the user's slew rate after a
         # GUIDE_RATE write. The OnStepX driver maps GUIDE_RATE onto the
@@ -931,6 +934,13 @@ class MountControlIndi(
                 else "waiting_location"
             ),
             "initial_location_reset_attempted": self._initial_site_reset_attempted,
+            "automatic_location_sync_state": (
+                "verifying"
+                if self._automatic_site_pending
+                else "ready"
+                if self._automatic_site_synced
+                else "waiting_location_time"
+            ),
             "sync_fault_recovery_pending": self._sync_fault_recovery is not None,
             "tracking_enabled": self._cached_tracking_enabled(),
             "slew_rate": self.slew_rate,
@@ -3173,10 +3183,14 @@ class MountControlIndi(
         elevation: float | None,
         dt: Any,
         reconnect_after: bool,
+        preserve_mount_state: bool = False,
     ) -> bool:
         onstep_cfg = self._onstep_connection_config()
         was_connected = self.connected or (
             self.client is not None and self.client.isServerConnected()
+        )
+        tracking_before = (
+            self._cached_tracking_enabled() if preserve_mount_state else None
         )
 
         if self.client is not None:
@@ -3229,8 +3243,117 @@ class MountControlIndi(
         )
 
         if reconnect_after and was_connected:
+            if preserve_mount_state:
+                connected = self.connect(
+                    announce=False, sync_on_connect=False, preserve_mount_state=True
+                )
+                if connected and tracking_before is False:
+                    return self.set_tracking(False)
+                return connected
             return self.connect(announce=False, sync_on_connect=False)
         return True
+
+    def _check_automatic_location_time_sync(self) -> None:
+        """Reconcile GPS/civil time after connection, with bounded retries.
+
+        Keep this in the mount process: a GPS fix can precede the connection,
+        and a failed send must not consume the only notification of that fix.
+        Automatic site updates never unpark or enable tracking.
+        """
+        now = time.monotonic()
+        if now < self._automatic_site_next_check:
+            return
+        self._automatic_site_next_check = now + 1.0
+        if not self.connected or not self._device_is_connected():
+            self._automatic_site_pending = None
+            self._automatic_site_synced = None
+            return
+        pending = self._automatic_site_pending
+        if pending is not None:
+            if pending["generation"] != self._client_generation:
+                self._automatic_site_pending = None
+                return
+            failure = self._location_time_ack_failure(
+                pending, pending["datetime"], pending["sequence"], pending["deadline"]
+            )
+            if failure is None:
+                return
+            self._automatic_site_pending = None
+            if failure:
+                self._automatic_site_next_check = now + 30.0
+                self._write_controller_status("sync_failed", failure)
+            else:
+                self._automatic_site_synced = pending
+                self._write_controller_status(
+                    "connected", "Automatic location/time sync verified"
+                )
+            return
+        if (
+            self._initial_site_recovering
+            or (
+                self._initial_site_request is not None
+                and not self._initial_site_complete
+                and not self._initial_site_failed
+            )
+            or self._manual_motion_direction is not None
+            or self._goto_motion is not None
+            or self._pending_sync_goto is not None
+            or self._pending_goto_refine is not None
+            or self._guide_correction_enabled
+            or self._multipoint_align is not None
+            or now < self._guide_pulse_until
+            or getattr(self, "_motion_limit", {}).get("latched")
+            or self._indi_mount_is_busy() is not False
+        ):
+            return
+        # Do not initialize the mount from datetime.now() or a cached default
+        # site. Wait for an actual civil time and locked observer location.
+        dt = self.shared_state.datetime()
+        lat, lon, alt, _ = self._shared_location_time_values()
+        if dt is None or lat is None or lon is None:
+            return
+        utc = sys_utils.parse_indi_utc_datetime(dt)
+        trusted = self._manual_datetime_active() or gps_time_sync.clock_is_trusted()
+        current: dict[str, Any] = {
+            "latitude": lat,
+            "longitude": lon,
+            "elevation": alt,
+            "datetime": utc,
+            "clock_offset": utc.timestamp() - now,
+            "trusted": trusted,
+            "generation": self._client_generation,
+        }
+        previous = self._automatic_site_synced
+        if previous is not None and previous["generation"] == self._client_generation:
+            delta_lon = (lon - previous["longitude"] + 180) % 360 - 180
+            altitude_changed = (
+                alt is not None
+                and previous["elevation"] is not None
+                and abs(alt - previous["elevation"]) >= 100
+            )
+            if (
+                abs(lat - previous["latitude"]) < 0.001
+                and abs(delta_lon) < 0.001
+                and not altitude_changed
+                and abs(current["clock_offset"] - previous["clock_offset"]) < 2.0
+                and not (trusted and not previous["trusted"])
+            ):
+                return
+        # Invalidate smooth tracking before changing its astronomical frame.
+        if self._smooth_runtime is not None:
+            self._smooth_runtime.cancel("location_time_changed")
+        # A partial write can invalidate the previous confirmed site/time.
+        # Keep retrying even if the desired values return to that old snapshot.
+        self._automatic_site_synced = None
+        with self._sync_property_lock:
+            current["sequence"] = self._sync_property_sequence
+        current["deadline"] = now + 8.0
+        if not self._sync_location_time_once(preserve_mount_state=True):
+            self._automatic_site_next_check = time.monotonic() + 30.0
+            return
+        # Direct LX200 sync may reconnect and replace the receipt generation.
+        current["generation"] = self._client_generation
+        self._automatic_site_pending = current
 
     def sync_location_time(
         self,
@@ -3314,6 +3437,20 @@ class MountControlIndi(
     def _initial_location_ack_failure(self) -> Optional[str]:
         if not self._initial_site_write_ok:
             return "Initial location/time command failed"
+        return self._location_time_ack_failure(
+            self._initial_site_request or {},
+            self._initial_site_expected_time,
+            self._initial_site_after_sequence,
+            self._initial_site_deadline,
+        )
+
+    def _location_time_ack_failure(
+        self,
+        expected: dict[str, Any],
+        expected_time: Any,
+        after_sequence: int,
+        deadline: float,
+    ) -> Optional[str]:
         # The direct LX200 helper already checks its command replies, and
         # reconnecting replaces the INDI client/receipt generation.
         if self._use_direct_onstep_location_time_sync():
@@ -3323,26 +3460,19 @@ class MountControlIndi(
                 self._sync_property_receipts.get(n)
                 for n in ("GEOGRAPHIC_COORD", "TIME_UTC")
             ]
-        fresh = [
-            r
-            for r in receipts
-            if r and r["sequence"] > self._initial_site_after_sequence
-        ]
+        fresh = [r for r in receipts if r and r["sequence"] > after_sequence]
         if any(r["state"] == "alert" for r in fresh):
             return "Driver rejected initial location/time sync"
         if len(fresh) == 2 and all(r["state"] in {"idle", "ok"} for r in fresh):
             try:
                 site, clock = fresh[0]["values"], fresh[1]["values"]
-                expected = self._initial_site_request or {}
                 delta_lon = (
                     float(site["LONG"]) - float(expected["longitude"]) + 180
                 ) % 360 - 180
                 delta_time = abs(
                     (
                         sys_utils.parse_indi_utc_datetime(clock["UTC"])
-                        - sys_utils.parse_indi_utc_datetime(
-                            self._initial_site_expected_time
-                        )
+                        - sys_utils.parse_indi_utc_datetime(expected_time)
                     ).total_seconds()
                 )
                 if (
@@ -3353,7 +3483,7 @@ class MountControlIndi(
                     return ""
             except (KeyError, TypeError, ValueError):
                 pass
-        if time.monotonic() >= self._initial_site_deadline:
+        if time.monotonic() >= deadline:
             return "Timeout confirming initial location/time sync"
         return None
 
@@ -3440,6 +3570,7 @@ class MountControlIndi(
         latitude: Optional[float] = None,
         longitude: Optional[float] = None,
         elevation: Optional[float] = None,
+        preserve_mount_state: bool = False,
     ) -> bool:
         try:
             # A4 clock-trust gate, softened (2026-08-08): an untrusted clock
@@ -3447,7 +3578,7 @@ class MountControlIndi(
             # no longer blocks the send -- a mount with NO time refuses every
             # slew, which strands a field session that only needs to reach a
             # solvable patch of sky. The provisional time is recoverable: the
-            # A5 hook re-sends site/time (and drops the tracking target) as
+            # Automatic reconciliation re-sends site/time as
             # soon as the clock steps or becomes trusted, and the PiFinder
             # GoTo method re-anchors the mount frame from plate solves.
             # Multi-point alignment still requires a trusted clock (its model
@@ -3494,6 +3625,7 @@ class MountControlIndi(
                     elevation,
                     dt,
                     reconnect_after=reconnect_after,
+                    preserve_mount_state=preserve_mount_state,
                 )
 
             if latitude is None and longitude is None and dt is None:
@@ -7067,6 +7199,11 @@ class MountControlIndi(
                 self.shared_state.smooth_tracking("fault", "executor_error")
             self._check_sync_fault_recovery()
             self._check_initial_location_sync()
+            try:
+                self._check_automatic_location_time_sync()
+            except Exception:
+                logger.exception("Automatic location/time sync failed")
+                self._automatic_site_next_check = time.monotonic() + 30.0
             self._check_usb_serial_reinsert()
             self._check_manual_motion_deadline()
             self._publish_manual_motion_progress()

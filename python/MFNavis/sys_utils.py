@@ -1650,9 +1650,9 @@ def apply_indi_onstep_location_time(
         }
 
     try:
-        start = time.time()
+        start = time.monotonic()
         device = None
-        while time.time() - start < 10.0:
+        while time.monotonic() - start < 10.0:
             if hasattr(client, "getDevice"):
                 try:
                     device = client.getDevice(device_name)
@@ -1697,8 +1697,8 @@ def apply_indi_onstep_location_time(
                         "stderr": f"Could not connect INDI device {device_name}",
                         "properties": properties,
                     }
-                start = time.time()
-                while time.time() - start < 8.0:
+                start = time.monotonic()
+                while time.monotonic() - start < 8.0:
                     try:
                         if device.isConnected():
                             break
