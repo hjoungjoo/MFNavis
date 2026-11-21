@@ -144,6 +144,17 @@
 
   $(function(){
 
+    function loadGuideHistory() {
+      const preview = document.querySelector('.livecam-preview-shell');
+      if (preview) {
+        import('./guide_history.js').then(({ mountGuideHistory }) => {
+          if (preview.isConnected) mountGuideHistory(preview);
+        });
+      }
+    }
+    loadGuideHistory();
+    document.addEventListener('pf:navigated', loadGuideHistory);
+
     $('.sidenav').sidenav();
     applyTheme(currentTheme());
     updateFullscreenButtons();

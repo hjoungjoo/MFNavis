@@ -128,3 +128,45 @@ console.log(JSON.stringify(values));
     )
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["statusSolveResult"] == "Success (0s ago)"
+
+
+def test_guide_history_optical_errors_and_accepted_pulses():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is needed to execute guide history calculations")
+    script = """
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const source = readFileSync('guide_history.js').toString('base64');
+const {measuredError, acceptedPulses, rms, guideTarget} =
+  await import('data:text/javascript;base64,' + source);
+const target = [0.01, 60.01];
+const solved = {valid:true, source:'solve', quality:'high', timestamp:100,
+  ra:200, dec:10, metadata:{source_ra:359.99, source_dec:60, last_solve_success:100}};
+const error = measuredError(solved, target, 101, 90);
+assert.ok(Math.abs(error.ra - 36) < 1e-6);
+assert.ok(Math.abs(error.dec - 36) < 1e-6);
+assert.equal(measuredError({...solved, source:'pifinder_imu_estimate'}, target, 101, 90), null);
+assert.equal(measuredError(solved, target, 120, 90), null);
+assert.equal(measuredError(solved, target, 101, 101), null);
+assert.equal(measuredError({...solved, metadata:{...solved.metadata, last_solve_attempt:101}},
+  target, 101, 90), null);
+assert.deepEqual(rms([{ra:3, dec:4},{ra:-3, dec:-4}]), {ra:3, dec:4, total:5});
+assert.equal(rms([]), null);
+const active = {active_target_ra:0, active_target_dec:0};
+assert.deepEqual(guideTarget({...active, service_state:'running', phase:'pifinder_goto'}), [0,0]);
+assert.equal(guideTarget({...active, service_state:'idle', phase:'complete'}), null);
+const line = changes => 'INFO Guide pulse event ' + JSON.stringify(
+  {accepted:true, sent_wall:100, target, direction:'west', duration_ms:260, ...changes});
+const pulses = acceptedPulses(['unrelated', 'Guide pulse event {', line({}), line({direction:'north'}),
+  line({accepted:false}), line({sent_wall:10}), line({target:[0,0]})], target, 90, 101);
+assert.deepEqual(pulses.map(p => [p.axis, p.value]), [['ra', -260], ['dec', 260]]);
+"""
+    result = subprocess.run(
+        [node, "--input-type=module", "-e", script],
+        cwd=Path(__file__).parents[1] / "views/js",
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr

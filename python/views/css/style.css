@@ -44,6 +44,46 @@ body {
   --pf-scrollbar-thumb-hover: #949494;
 }
 
+#livecam-guide {
+  --guide-ra: #79bdff;
+  --guide-dec: #ffa285;
+  --guide-plot: #20242a;
+}
+html[data-theme="red"] #livecam-guide {
+  --guide-ra: var(--pf-link);
+  --guide-dec: var(--pf-text-muted);
+  --guide-plot: var(--pf-bg);
+}
+#livecam-guide .guide-heading, #livecam-guide .guide-readout {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+#livecam-guide .guide-readout {
+  font-variant-numeric: tabular-nums;
+  margin: 0.6rem 0 0.25rem;
+}
+#livecam-guide canvas {
+  display: block;
+  width: 100%;
+  background: var(--guide-plot);
+  border-radius: 3px;
+}
+#livecam-guide .guide-errors { height: 158px; }
+#livecam-guide .guide-pulses { height: 91px; }
+#livecam-guide .guide-ra { color: var(--guide-ra); }
+#livecam-guide .guide-dec { color: var(--guide-dec); }
+#livecam-guide .guide-dec::before, #livecam-guide .guide-ra::before {
+  content: '';
+  display: inline-block;
+  width: 1.1em;
+  margin: 0 0.35em 0.2em 0.6em;
+  border-top: 2px solid currentColor;
+}
+#livecam-guide .guide-dec::before { border-top-style: dashed; }
+
 html[data-theme="red"] {
   --pf-bg: #080000;
   --pf-bar: #260303;
