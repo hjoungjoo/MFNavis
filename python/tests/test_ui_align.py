@@ -15,8 +15,8 @@ class _Config:
     def __init__(self) -> None:
         self.saved = None
 
-    def set_option(self, name, value) -> None:
-        self.saved = (name, value)
+    def save_target_pixel(self, value) -> None:
+        self.saved = value
 
 
 class _SharedState:
@@ -66,7 +66,7 @@ def test_align_waits_for_solver_response_without_polling():
     )
     assert command_queues["console"].get_nowait() == "Alignment Set"
     assert shared_state.target_pixel == (123.0, 234.0)
-    assert config.saved == ("target_pixel", (123.0, 234.0))
+    assert config.saved == (123.0, 234.0)
 
 
 def test_align_cancels_after_solver_timeout(monkeypatch):
@@ -151,5 +151,6 @@ def test_lcd_alignment_is_saved_but_runtime_alignment_and_reset_are_not(
     # Saving another setting must preserve the last successful LCD alignment,
     # and a new shared state must restore that saved point rather than RAM.
     cfg.set_option("display_flip", True)
-    assert tuple(config.Config().get_option("target_pixel")) == (123.0, 234.0)
+    assert config.Config().active_target_pixel() == (123.0, 234.0)
+    assert tuple(config.Config().get_option("target_pixel")) == (200.0, 210.0)
     assert tuple(SharedStateObj().target_pixel()) == (123.0, 234.0)

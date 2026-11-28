@@ -1945,7 +1945,9 @@ def test_maintenance_alignment_handoff_is_explicit_validated_and_consumed(
     service.shared_state = SimpleNamespace(set_target_pixel=Mock())
     monkeypatch.setattr(iggs.utils, "runtime_dir", tmp_path)
     monkeypatch.setattr(
-        iggs.config, "Config", lambda: SimpleNamespace(get_option=lambda *a: [221, 274])
+        iggs.config,
+        "Config",
+        lambda: SimpleNamespace(active_target_pixel=lambda: (221, 274)),
     )
     payload = dict(
         created_wall=999.0, target_pixel=[227, 277], saved_target_pixel=[221, 274]

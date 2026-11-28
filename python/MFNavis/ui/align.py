@@ -110,8 +110,14 @@ def align_on_radec(
 
     # success, set all the things...
     command_queues["console"].put(_("Alignment Set"))
+    try:
+        config_object.save_target_pixel(target_pixel)
+    except ValueError:
+        logging.getLogger(__name__).warning(
+            "Telescope or alignment point changed during solve"
+        )
+        return False
     shared_state.set_target_pixel(target_pixel)
-    config_object.set_option("target_pixel", target_pixel)
     guide_queue = command_queues.get("goto_guide")
     if (
         guide_queue is not None
@@ -147,17 +153,11 @@ class UIAlign(UIModule):
         self.fov = self.desired_fov
         self.set_fov(self.desired_fov)
         self.align_mode = False
+        self.alignment_scope = None
         self.visible_stars = None
         self.star_list = np.empty((0, 2))
         self.alignment_star = None
-        # target_pixel is (Y, X) in native camera space; scale to display space.
-        target_pixel = self.shared_state.target_pixel() or (256, 256)
-        scale_x = self.display_class.resX / CAMERA_NATIVE_RES
-        scale_y = self.display_class.resY / CAMERA_NATIVE_RES
-        self.marker_position = (
-            target_pixel[1] * scale_x,
-            target_pixel[0] * scale_y,
-        )
+        self.marker_position = self._target_pixel_marker()
 
         # Marking menu definition
         self.marking_menu = MarkingMenu(
@@ -229,6 +229,19 @@ class UIAlign(UIModule):
         self.draw.line(
             [x_pos + 3, y_pos, x_pos + 8, y_pos],
             fill=self.colors.get(255),
+        )
+
+    def _target_pixel_marker(self):
+        """The active alignment point, in display space, as (x, y).
+
+        target_pixel is (Y, X) in native camera space. It belongs to the
+        active telescope, so this is read again each time align mode starts
+        rather than once at preload.
+        """
+        target_pixel = self.config_object.active_target_pixel()
+        return (
+            target_pixel[1] * self.display_class.resX / CAMERA_NATIVE_RES,
+            target_pixel[0] * self.display_class.resY / CAMERA_NATIVE_RES,
         )
 
     def set_fov(self, fov):
@@ -463,6 +476,9 @@ class UIAlign(UIModule):
         if self.align_mode:
             self.align_mode = False
 
+            if self.alignment_scope != self.config_object.alignment_scope():
+                self.alignment_star = None
+                self.message(_("Alignment failed"), 2)
             if self.alignment_star is not None:
                 self.message(_("Aligning..."), 0.1)
                 if align_on_radec(
@@ -485,6 +501,14 @@ class UIAlign(UIModule):
                     self.message(_("Alignment failed"), 2)
         else:
             self.align_mode = True
+            self.alignment_scope = self.config_object.alignment_scope()
+            # Start from the active telescope's point with no star chosen.
+            # A star left over from an earlier alignment would pull the
+            # marker back to it in draw_marker(), and SQUARE would then
+            # re-align on that old star -- onto whichever telescope is now
+            # active.
+            self.alignment_star = None
+            self.marker_position = self._target_pixel_marker()
         self.update(force=True)
 
     def key_up(self):

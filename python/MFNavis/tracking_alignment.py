@@ -183,6 +183,10 @@ class AlignmentDispatcher:
                 cfg.get_option("smooth_tracking_profile", {}) or {}
             ),
             optics=optics_identity(cfg, shared),
+            telescope=cfg.get_option("equipment.active_telescope"),
+            telescope_index=(cfg.get_option("equipment", {}) or {}).get(
+                "active_telescope_index"
+            ),
             target_pixel=tuple(shared.target_pixel()),
             mount_sync_enabled=bool(
                 command.get("origin") == "skysafari"
@@ -291,6 +295,9 @@ class AlignmentDispatcher:
         if (
             p["control"] != control_epoch(service.mountcontrol_queue)
             or p["generation"] != motion["generation"]
+            or cfg.get_option("equipment.active_telescope") != p["telescope"]
+            or (cfg.get_option("equipment", {}) or {}).get("active_telescope_index")
+            != p["telescope_index"]
             or tuple(shared.target_pixel()) != p["target_pixel"]
             or fingerprint(cfg.get_option("smooth_tracking_profile", {}) or {})
             != p["profile_hash"]
@@ -362,9 +369,9 @@ class AlignmentDispatcher:
             )
             return
         if decision == "solved_alignment":
-            shared.set_target_pixel(pixel)
             if p.get("origin") == "lcd":
-                cfg.set_option("target_pixel", pixel)
+                cfg.save_target_pixel(pixel)
+            shared.set_target_pixel(pixel)
             reason = "accepted_solve"
             if p["mount_sync_enabled"]:
                 from PiFinder.calc_utils import catalog_to_equinox_of_date
@@ -446,6 +453,10 @@ class AlignmentDispatcher:
             result=decision,
             reason=reason,
             target_identity=p["target"].identity,
+            telescope=cfg.get_option("equipment.active_telescope"),
+            telescope_index=(cfg.get_option("equipment", {}) or {}).get(
+                "active_telescope_index"
+            ),
             target_pixel=tuple(shared.target_pixel()),
             tracking=tracking,
         )

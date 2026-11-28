@@ -303,12 +303,16 @@ def test_user_takeover_waits_if_original_speed_cannot_be_restored(
 def test_disconnect_stops_approach_before_restoring_and_closing(approach, monkeypatch):
     mount = approach[0]
     start_burst(mount)
-    closed = []
+    client = mount.client
+    rate_at_disconnect = []
     monkeypatch.setattr(
-        mount.client, "disconnectServer", lambda: closed.append(True), raising=False
+        client,
+        "disconnectServer",
+        lambda: rate_at_disconnect.append(client.switches[-1]),
+        raising=False,
     )
     mount.disconnect()
-    assert closed
+    assert mount.client is None
     assert mount._manual_motion_direction is None
     assert mount._manual_approach is None
-    assert mount.client.switches[-1][1:] == ("TELESCOPE_SLEW_RATE", "7")
+    assert rate_at_disconnect[-1][1:] == ("TELESCOPE_SLEW_RATE", "7")

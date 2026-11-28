@@ -218,6 +218,10 @@ location, prefix the command with `MFNAVIS_DATA_DIR=/absolute/path`.
 See the [quick-start manual](./docs/source/quick_start.rst) and
 [user manual](./docs/source/user_guide.rst) for detailed device operation.
 
+The Named Stars catalog contains 578 entries indexed by Hipparcos number. For example, Vega is `Nam 91262`. Star lists open in name view and accept up to six digits for WDS and Named Stars numbers. Existing object bookmarks follow their corrected objects. The five retired SAC double-star listings remain in observation logs. The device rebuilds the catalog cache on first use.
+
+Select the telescope in Equipment on the device or web when moving the finder. Daytime and LCD star alignment save its own point. An unaligned telescope uses the previous shared alignment. SkySafari alignment and the LCD alignment screen's 1-key reset apply to the current session.
+
 ### 5. MF feature documentation
 
 The [MF additional-features index](docs/mf_dev/README.md)

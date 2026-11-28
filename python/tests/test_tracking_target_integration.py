@@ -499,7 +499,7 @@ def dispatcher_scene(
     )
     cfg = SimpleNamespace(
         get_option=lambda k, default=None: settings.get(k, default),
-        set_option=Mock(),
+        save_target_pixel=Mock(),
     )
     target = TrackingTarget(40.0, 20.0, "MOON")
     ephemeris = Mock(
@@ -551,7 +551,7 @@ def test_common_dispatcher_completes_once_and_uses_remaining_wait(
         monkeypatch.setattr("PiFinder.tracking_alignment.time.monotonic", lambda: 8.0)
         dispatcher.tick(cfg)
         assert ledger.update()["status"]["result"] == "solved_alignment"
-        assert cfg.set_option.call_count == 1
+        assert cfg.save_target_pixel.call_count == 1
     else:
         previous = deepcopy(status)
         dispatcher.submit(command, cfg)
@@ -559,9 +559,9 @@ def test_common_dispatcher_completes_once_and_uses_remaining_wait(
         assert ledger.update()["status"] == previous
         assert shared.set_target_pixel.call_count == int(solved)
         if solved:
-            cfg.set_option.assert_called_once_with("target_pixel", (260, 250))
+            cfg.save_target_pixel.assert_called_once_with((260, 250))
         else:
-            cfg.set_option.assert_not_called()
+            cfg.save_target_pixel.assert_not_called()
 
 
 @pytest.mark.parametrize("origin", ["lcd", "skysafari", "web", "user"])
@@ -571,9 +571,9 @@ def test_common_dispatcher_persists_only_successful_lcd_alignment(monkeypatch, o
     assert ledger.update()["status"]["result"] == "solved_alignment"
     shared.set_target_pixel.assert_called_once_with((260, 250))
     if origin == "lcd":
-        cfg.set_option.assert_called_once_with("target_pixel", (260, 250))
+        cfg.save_target_pixel.assert_called_once_with((260, 250))
     else:
-        cfg.set_option.assert_not_called()
+        cfg.save_target_pixel.assert_not_called()
 
 
 @pytest.mark.parametrize("sync_result", [True, False, "timeout"])
@@ -617,7 +617,7 @@ def test_skysafari_solved_alignment_syncs_eod_before_arming_video(
     )
     dispatcher.tick(cfg)
     assert start.call_count == int(sync_result is True)
-    cfg.set_option.assert_not_called()
+    cfg.save_target_pixel.assert_not_called()
 
 
 def test_skysafari_unsolved_arrival_never_sends_mount_sync(monkeypatch):
@@ -627,7 +627,7 @@ def test_skysafari_unsolved_arrival_never_sends_mount_sync(monkeypatch):
     dispatcher.submit(alignment_command(40, 20, origin="skysafari"), cfg)
     assert ledger.update()["status"]["result"] == "user_center_arrival"
     assert shared.set_target_pixel.call_count == 0
-    cfg.set_option.assert_not_called()
+    cfg.save_target_pixel.assert_not_called()
     assert service._forward_to_mountcontrol.call_count == 1
     assert (
         service._forward_to_mountcontrol.call_args.args[0]["type"]

@@ -43,6 +43,9 @@ class Config:
     def get_option(self, key, default=None):
         return self.options.get(key, default)
 
+    def save_target_pixel(self, pixel):
+        self.options["target_pixel"] = pixel
+
     def set_option(self, key, value):
         self.options[key] = value
 

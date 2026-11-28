@@ -77,7 +77,8 @@ CATALOG_GROUPS: List[Tuple[str, List[str]]] = [
             "Lyn",
         ],
     ),
-    ("Double & Variable Stars", ["WDS", "SaM", "RDS", "SaR", "TLK", "Str"]),
+    ("Double & Variable Stars", ["WDS", "SaM", "RDS", "SaR", "TLK"]),
+    ("Named Stars", ["Str", "Nam"]),
     ("Observing Lists", ["Ta2", "SaA"]),
 ]
 
@@ -89,6 +90,7 @@ CATALOG_PRIORITY = [
     "H",
     "NGC",
     "IC",
+    "Nam",
     "Str",
     "Col",
     "Har",
@@ -160,6 +162,18 @@ def _db() -> sqlite3.Connection:
 def _query(sql: str, params: Tuple = ()) -> List[sqlite3.Row]:
     with _db_lock:
         return _db().execute(sql, params).fetchall()
+
+
+def _canonical_object_id(object_id: int) -> int:
+    # An installation using its previous object database already uses these IDs.
+    if not _query(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'legacy_object_aliases'"
+    ):
+        return object_id
+    rows = _query(
+        "SELECT object_id FROM legacy_object_aliases WHERE legacy_id = ?", (object_id,)
+    )
+    return rows[0]["object_id"] if rows else object_id
 
 
 def _json_response(data: Any, status: int = 200) -> Response:
@@ -911,7 +925,10 @@ def register_catalog_routes(app, server_instance):
     def catalogs_api_altitude(object_id):
         if not _auth_ok():
             return _json_response({"error": "Unauthorized"}, 401)
-        rows = _query("SELECT ra, dec FROM objects WHERE id = ?", (object_id,))
+        rows = _query(
+            "SELECT ra, dec FROM objects WHERE id = ?",
+            (_canonical_object_id(object_id),),
+        )
         if not rows:
             return _json_response({"error": "Object not found"}, 404)
         ra, dec = rows[0]["ra"], rows[0]["dec"]
@@ -1064,7 +1081,7 @@ def register_catalog_routes(app, server_instance):
         obj = CompositeObject.from_dict(
             {
                 "id": bundle["co_id"],
-                "object_id": object_id,
+                "object_id": bundle["object_id"],
                 "obj_type": bundle["obj_type"],
                 "ra": bundle["ra"],
                 "dec": bundle["dec"],
@@ -1468,6 +1485,7 @@ def register_catalog_routes(app, server_instance):
     # ──────────────────────────────────────────────────────────────
 
     def _load_object_bundle(object_id: int) -> Optional[Dict[str, Any]]:
+        object_id = _canonical_object_id(object_id)
         rows = _query(
             """
             SELECT o.id, o.obj_type, o.ra, o.dec, o.const, o.size, o.mag,

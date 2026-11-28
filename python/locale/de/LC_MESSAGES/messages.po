@@ -6184,3 +6184,7 @@ msgstr ""
 #~ "nicht rückgängig gemacht werden. Bist du"
 #~ " sicher?"
 
+
+#: MFNavis/ui/menu_structure.py
+msgid "Named Stars"
+msgstr "Benannte Sterne"

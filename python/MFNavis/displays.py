@@ -142,7 +142,7 @@ class DisplayPygame_320(Layout320, DisplayBase):
 class DisplaySSD1351(DisplayBase):
     resolution = (128, 128)
 
-    def __init__(self, bus_speed_hz=32000000):
+    def __init__(self, bus_speed_hz=20_000_000):
         # init display  (SPI hardware)
         serial = display_spi(bus_speed_hz=bus_speed_hz)
         device_serial = ssd1351(serial, rotate=0, bgr=True)
@@ -594,7 +594,7 @@ def get_display(display_hardware: str, spi_speed_hz: int = 0) -> DisplayBase:
         return DisplayPygame_320()
 
     if display_hardware == "ssd1351":
-        return DisplaySSD1351(bus_speed_hz=spi_speed_hz or 32000000)
+        return DisplaySSD1351(bus_speed_hz=spi_speed_hz or 20_000_000)
 
     if display_hardware == "ssd1333":
         return DisplaySSD1333(bus_speed_hz=spi_speed_hz or 40000000)
@@ -604,4 +604,4 @@ def get_display(display_hardware: str, spi_speed_hz: int = 0) -> DisplayBase:
 
     else:
         print("Hardware platform not recognized")
-        return DisplaySSD1351(bus_speed_hz=spi_speed_hz or 32000000)
+        return DisplaySSD1351(bus_speed_hz=spi_speed_hz or 20_000_000)

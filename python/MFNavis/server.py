@@ -202,6 +202,17 @@ def eyepiece_from_form(form) -> Eyepiece:
     )
 
 
+def replace_telescope(equipment, index: int, telescope: Telescope) -> None:
+    """Overwrite the telescope at ``index`` with an edited record.
+
+    The edit form has no alignment field, so the record it builds has no
+    alignment point; carry the existing one over, or saving an edit would
+    silently un-align the telescope.  Raises IndexError for a bad index.
+    """
+    telescope.target_pixel = equipment.telescopes[index].target_pixel
+    equipment.telescopes[index] = telescope
+
+
 def telescope_from_form(form) -> Telescope:
     """Build a Telescope from submitted form values.
 
@@ -1348,11 +1359,11 @@ class Server:
 
             try:
                 if instrument_id >= 0:
-                    cfg.equipment.telescopes[instrument_id] = instrument
+                    replace_telescope(cfg.equipment, instrument_id, instrument)
                 else:
                     try:
                         index = cfg.equipment.telescopes.index(instrument)
-                        cfg.equipment.telescopes[index] = instrument
+                        replace_telescope(cfg.equipment, index, instrument)
                     except ValueError:
                         cfg.equipment.telescopes.append(instrument)
 
@@ -1378,7 +1389,7 @@ class Server:
             cfg = config.Config()
             if not 0 <= instrument_id < len(cfg.equipment.telescopes):
                 return equipment_page_error(_("No such instrument"))
-            cfg.equipment.telescopes.pop(instrument_id)
+            cfg.equipment.remove_telescope(instrument_id)
             cfg.save_equipment()
             self.ui_queue.put("reload_config")
             return app.jinja_env.get_template("equipment.html").render(
@@ -1991,6 +2002,7 @@ class Server:
                 goto_guide_status=_goto_guide_status(),
                 pointing_coordinate_status=_pointing_coordinate_status(),
                 web_motion_keepalive_ms=int(WEB_MOTION_KEEPALIVE_INTERVAL * 1000),
+                goto_rate_percentages=sys_utils.ONSTEPX_GOTO_PERCENTAGES,
                 slew_rate_labels=[
                     "Off",
                     "1/2x - VSlow",
@@ -2614,6 +2626,30 @@ class Server:
                 if request.headers.get("X-Requested-With") == "XMLHttpRequest":
                     return _indi_json_response(ok=False, error=str(e))
                 return _render_indi_page(error_message=str(e))
+
+        @app.route("/indi/goto_rate", methods=["POST"])
+        @auth_required
+        def indi_goto_rate():
+            try:
+                _require_onstepx_driver(_indi_config_values())
+                percent = float(request.form.get("percent", ""))
+                if percent not in sys_utils.ONSTEPX_GOTO_PERCENTAGES:
+                    raise ValueError(_("Invalid GoTo speed"))
+                status = _mount_control_status()
+                if not status.get("goto_rate") or not sys_utils.is_onstepx_device_name(
+                    status.get("device")
+                ):
+                    raise ValueError(_("GoTo speed is unavailable"))
+                _queue_mount_command(
+                    {
+                        "type": "set_goto_rate",
+                        "percent": percent,
+                        "connection_epoch": status["connection_epoch"],
+                    }
+                )
+                return _indi_json_response(message=_("Command sent"))
+            except (RuntimeError, ValueError) as e:
+                return _indi_json_response(ok=False, error=str(e))
 
         @app.route("/indi/guide_rate", methods=["POST"])
         @auth_required

@@ -848,7 +848,7 @@ class IndiGotoGuideService:
             if not 0 <= time.time() - float(payload["created_wall"]) <= 60:
                 return
             cfg = config.Config()
-            if list(cfg.get_option("target_pixel")) != payload["saved_target_pixel"]:
+            if list(cfg.active_target_pixel()) != payload["saved_target_pixel"]:
                 return
             pixel = tuple(float(v) for v in payload["target_pixel"])
             if len(pixel) != 2 or not all(

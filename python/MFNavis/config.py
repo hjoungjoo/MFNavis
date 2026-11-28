@@ -9,6 +9,7 @@ import fcntl
 import os
 import time
 from contextlib import contextmanager
+from copy import deepcopy
 from pathlib import Path
 from PiFinder import utils, equipment, locations
 from PiFinder.source_version import get_source_version
@@ -27,6 +28,33 @@ REFRESH_INTERVAL = 0.25
 def normalize_goto_method(value: Any) -> Any:
     """Accept the legacy GoTo mode while exposing the MFNavis setting value."""
     return "mfnavis" if value == "pifinder" else value
+
+
+# The target pixel lives in the square native camera frame the solver works
+# in (see SharedStateObj.target_pixel); (Y, X) centre means "no alignment
+# offset known".
+CAMERA_NATIVE_RES = 512
+IMAGE_CENTER_PIXEL = (CAMERA_NATIVE_RES / 2, CAMERA_NATIVE_RES / 2)
+
+
+def _as_target_pixel(value) -> Optional[tuple[float, float]]:
+    """``value`` as a (Y, X) float pair inside the camera frame, or None.
+
+    Anything else -- the wrong shape, a non-number, a bool (which float()
+    would happily turn into 0 or 1), NaN/inf, or a pixel off the frame -- is
+    not a point the solver can use.
+    """
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    if any(isinstance(v, bool) for v in value):
+        return None
+    try:
+        y, x = (float(v) for v in value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not all(0.0 <= v < CAMERA_NATIVE_RES for v in (y, x)):
+        return None  # also rejects NaN, which fails every comparison
+    return (y, x)
 
 
 class Config:
@@ -71,51 +99,8 @@ class Config:
                     self._config_dict.pop(option, None)
                 self.dump_config()
 
-        # Load the equipment config
-        eq_config = self.get_option("equipment")
-        if eq_config is None:
-            self.equipment = equipment.Equipment(telescopes=[], eyepieces=[])
-        else:
-            # do a little bit of validation here
-
-            # get default equipment
-            default_eq = self._default_config_dict.get("equipment")
-            if not default_eq:
-                # if we don't have defaults, something is very wrong
-                self.equipment = equipment.Equipment(telescopes=[], eyepieces=[])
-                return
-
-            if not eq_config.get("telescopes", []):
-                # use default valuES
-                eq_config["telescopes"] = default_eq["telescopes"]
-
-            if not eq_config.get("eyepieces", []):
-                # use default valuES
-                eq_config["eyepieces"] = default_eq["eyepieces"]
-
-            if eq_config.get("active_telescope_index", 1000) >= len(
-                eq_config["telescopes"]
-            ):
-                eq_config["active_telescope_index"] = 0
-
-            if eq_config.get("active_eyepiece_index", 1000) >= len(
-                eq_config["eyepieces"]
-            ):
-                eq_config["active_eyepiece_index"] = 0
-
-            try:
-                self.equipment = equipment.Equipment.from_dict(eq_config)
-            except (ValueError, TypeError, KeyError):
-                # A value the equipment dataclasses can't decode used to
-                # abort main() before the UI came up — an unusable PiFinder
-                # (#291).  Fall back to the defaults and keep booting; the
-                # web forms validate everything they write, so a config
-                # that lands here was hand-edited or written by an older
-                # release.
-                logger.exception(
-                    "Could not load saved equipment; falling back to defaults"
-                )
-                self.equipment = equipment.Equipment.from_dict(default_eq)
+        self.equipment = self._decode_equipment(self.get_option("equipment"))
+        self._equipment_snapshot = self.equipment.to_dict()
 
         # Load the locations config
         loc_config = self.get_option("locations")
@@ -124,11 +109,92 @@ class Config:
         else:
             self.locations = locations.Locations.from_dict(loc_config)
 
+    def _decode_equipment(self, settings):
+        defaults = self._default_config_dict.get("equipment")
+        if not defaults or settings is None:
+            return equipment.Equipment(telescopes=[], eyepieces=[])
+        values = deepcopy(settings)
+        for key, index in (
+            ("telescopes", "active_telescope_index"),
+            ("eyepieces", "active_eyepiece_index"),
+        ):
+            if not values.get(key):
+                values[key] = deepcopy(defaults[key])
+            if values.get(index, 1000) >= len(values[key]):
+                values[index] = 0
+        for record in values["telescopes"]:
+            if not isinstance(record, dict):
+                continue
+            pixel = record.get("target_pixel")
+            if pixel is not None and _as_target_pixel(pixel) is None:
+                logger.warning(
+                    "Ignoring unusable alignment point %r on telescope %r",
+                    pixel,
+                    record.get("name"),
+                )
+                record["target_pixel"] = None
+        try:
+            return equipment.Equipment.from_dict(values)
+        except (ValueError, TypeError, KeyError):
+            logger.exception("Could not load saved equipment; falling back to defaults")
+            return equipment.Equipment.from_dict(defaults)
+
+    def _latest_equipment(self):
+        self._refresh_from_disk()
+        return self._decode_equipment(
+            self._config_dict.get(
+                "equipment", self._default_config_dict.get("equipment")
+            )
+        )
+
+    def _write_equipment(self, updated):
+        previous = self._config_dict.copy()
+        self._config_dict["equipment"] = updated.to_dict()
+        try:
+            self.dump_config()
+        except Exception:
+            self._config_dict = previous
+            raise
+        self.equipment = updated
+        self._equipment_snapshot = updated.to_dict()
+
     def save_equipment(self):
+        """Apply the fields edited on the LCD or web to the latest equipment.
+
+        Another process can align a telescope while this menu is open.
+        Selecting an eyepiece or editing the telescope must retain its point.
         """
-        Saves the equipment object state
-        """
-        self.set_option("equipment", self.equipment.to_dict())
+        edited = self.equipment
+        before = equipment.Equipment.from_dict(self._equipment_snapshot)
+        with self._write_lock():
+            updated = self._latest_equipment()
+            if edited.telescopes != before.telescopes:
+                if updated.telescopes != before.telescopes:
+                    raise ValueError("Telescope list changed during edit")
+                for index, scope in enumerate(edited.telescopes):
+                    # A web form replaces a renamed record in its original slot.
+                    # When removing a row, match surviving records by value.
+                    if scope in before.telescopes:
+                        old = before.telescopes.index(scope)
+                    elif len(edited.telescopes) == len(before.telescopes):
+                        old = index
+                    else:
+                        continue
+                    scope.target_pixel = updated.telescopes[old].target_pixel
+                updated.telescopes = edited.telescopes
+            if edited.eyepieces != before.eyepieces:
+                updated.eyepieces = edited.eyepieces
+            if edited.active_telescope_index != before.active_telescope_index:
+                if (
+                    updated.telescopes != edited.telescopes
+                    and edited.active_telescope is not None
+                ):
+                    updated.set_active_telescope(edited.active_telescope)
+                else:
+                    updated.active_telescope_index = edited.active_telescope_index
+            if edited.active_eyepiece_index != before.active_eyepiece_index:
+                updated.active_eyepiece_index = edited.active_eyepiece_index
+            self._write_equipment(updated)
 
     def save_locations(self):
         """
@@ -349,6 +415,54 @@ class Config:
             return self._config_dict.get(
                 option, self._default_config_dict.get(option, default)
             )
+
+    def alignment_scope(self):
+        """Identify the selected record even when two scopes share one pixel."""
+        return self.equipment.active_telescope_index, self.equipment.active_telescope
+
+    def active_target_pixel(self) -> tuple[float, float]:
+        """The alignment point the solver should use now, as (Y, X).
+
+        The active telescope's own point if it has been aligned; otherwise
+        the global ``target_pixel`` (the point every telescope shared before
+        alignment became per-telescope, and the one used when no telescope
+        is selected); otherwise the image centre.  A stored value that is
+        not a usable pixel is skipped rather than raised, so a hand-edited
+        config cannot stop the solver.
+        """
+        telescope = self.equipment.active_telescope
+        if telescope is not None:
+            pixel = _as_target_pixel(telescope.target_pixel)
+            if pixel is not None:
+                return pixel
+        pixel = _as_target_pixel(self.get_option("target_pixel"))
+        if pixel is not None:
+            return pixel
+        return IMAGE_CENTER_PIXEL
+
+    def save_target_pixel(self, target_pixel) -> None:
+        """Persist a new alignment point, (Y, X), for the active telescope.
+
+        With no telescope selected it goes to the global ``target_pixel``,
+        which is also what every not-yet-aligned telescope falls back to.
+        """
+        pixel = _as_target_pixel(target_pixel)
+        if pixel is None:
+            raise ValueError(f"Not a target pixel: {target_pixel!r}")
+        telescope = self.equipment.active_telescope
+        if telescope is None:
+            self.set_option("target_pixel", list(pixel))
+        else:
+            with self._write_lock():
+                updated = self._latest_equipment()
+                if (
+                    updated.active_telescope_index
+                    != self.equipment.active_telescope_index
+                    or updated.active_telescope != telescope
+                ):
+                    raise ValueError("Active telescope changed during alignment")
+                updated.active_telescope.target_pixel = list(pixel)
+                self._write_equipment(updated)
 
     def reset_filters(self):
         """

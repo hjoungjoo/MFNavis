@@ -270,26 +270,37 @@
       </div>
     </div>
     <div class="row">
-      <div class="col s12 m6 indi-park-actions">
+      <div class="col s12 indi-park-actions">
         <button type="button" data-park-action="SET_HOME" class="btn">{{ _('At Home') }}</button>
         <button type="button" data-park-action="RETURN_HOME" class="btn">{{ _('Return Home') }}</button>
         <button type="button" data-park-action="PARK" class="btn">{{ _('Park') }}</button>
         <button type="button" data-park-action="UNPARK" class="btn">{{ _('Unpark') }}</button>
         <button type="button" data-park-action="SET_PARK" class="btn">{{ _('Set-Park') }}</button>
       </div>
-      <div class="col s12 m6">
-        <div class="input-field col s8">
+    </div>
+    <div class="row">
+        <div class="input-field col s6 m4">
           <select name="slew_rate" id="slew_rate">
             {% for label in slew_rate_labels %}
             <option value="{{ loop.index0 }}" {% if manual_slew_rate|int == loop.index0 %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
-          <label class="active">{{ _('Manual Slew Rate') }}</label>
+          <label class="active" for="slew_rate">{{ _('Manual Slew Rate') }}</label>
         </div>
-        <div class="input-field col s4">
-          <span id="indi_action_status" class="grey-text"></span>
+        <div class="input-field col s6 m4">
+          <select id="goto_rate" disabled>
+            <option value="" disabled selected>{{ _('Unavailable') }}</option>
+            {% for percent in goto_rate_percentages %}
+            <option value="{{ percent }}">{{ percent }}%</option>
+            {% endfor %}
+          </select>
+          <label class="active" for="goto_rate">{{ _('GoTo Speed') }}</label>
         </div>
-      </div>
+        <div class="input-field col s12 m4">
+          <button type="button" id="reset_goto_rate" class="btn" disabled>{{ _('Reset GoTo to 100%') }}</button>
+        </div>
+        <span id="goto_rate_feedback" class="col s12 grey-text" role="status"></span>
+        <span id="indi_action_status" class="col s12 grey-text"></span>
     </div>
     <div class="row">
       <div class="col s12">
@@ -645,6 +656,10 @@ document.addEventListener('DOMContentLoaded', function() {
   var networkSettings = document.getElementById('network_settings');
   var usbSettings = document.getElementById('usb_settings');
   var slewRate = document.getElementById('slew_rate');
+  var gotoRate = document.getElementById('goto_rate');
+  var resetGotoRate = document.getElementById('reset_goto_rate');
+  var gotoStatus = {};
+  var gotoTimer = null;
   var actionStatus = document.getElementById('indi_action_status');
   var reloadLocationValues = document.getElementById('reload_location_values');
   var locationTimeForm = document.getElementById('location_time_form');
@@ -1465,6 +1480,7 @@ document.addEventListener('DOMContentLoaded', function() {
       updateGotoGuideStatus(payload.goto_guide_status || {});
       updateLocationTimeSyncStatus(payload.location_time_sync_status || {});
       var mcs = payload.mount_control_status || {};
+      updateGotoRate(mcs);
       updateSerialDiscovery(mcs);
       if (mcs.raw_mount_status) {
         setText('indi_raw_mount_status_value', textOrDash(mcs.raw_mount_status));
@@ -1558,6 +1574,67 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(function() { setActionStatus('{{ _("Command sent") }}'); })
         .catch(function(error) { setActionStatus(error.message); });
     });
+  }
+
+  function renderGotoRate() {
+    var rate = gotoStatus.goto_rate;
+    var value = rate && rate.percent != null ? String(rate.percent) : '';
+    var preset = Array.from(gotoRate.options).slice(1).some(function(opt) {
+      return opt.value === value;
+    });
+    var selected = preset ? value : '';
+    var label = !preset && value ? value + '%' : '{{ _("Unavailable") }}';
+    var disable = !rate || gotoTimer !== null;
+    if (gotoRate.value !== selected || gotoRate.disabled !== disable ||
+        gotoRate.options[0].text !== label) {
+      gotoRate.options[0].text = label;
+      gotoRate.value = selected;
+      gotoRate.disabled = disable;
+      M.FormSelect.init(gotoRate);
+    }
+    setButtonEnabled(resetGotoRate, !disable);
+  }
+
+  function finishGotoRequest(message) {
+    clearTimeout(gotoTimer);
+    gotoTimer = null;
+    setText('goto_rate_feedback', message);
+    renderGotoRate();
+  }
+
+  function updateGotoRate(status) {
+    if (!gotoRate) return;
+    var previous = gotoStatus;
+    gotoStatus = status;
+    var rate = status.goto_rate;
+    if (gotoTimer !== null) {
+      if (!rate || previous.connection_epoch !== status.connection_epoch) {
+        finishGotoRequest('{{ _("GoTo speed is unavailable") }}');
+      } else if (rate.sequence !== previous.goto_rate.sequence) {
+        finishGotoRequest(rate.state === 'ok' ? '' : '{{ _("GoTo speed change failed") }}');
+      }
+    } else {
+      renderGotoRate();
+    }
+  }
+
+  function requestGotoRate(percent) {
+    if (!gotoStatus.goto_rate || gotoTimer !== null) return;
+    gotoTimer = setTimeout(function() {
+      finishGotoRequest('{{ _("GoTo speed was not confirmed") }}');
+    }, 10000);
+    var timer = gotoTimer;
+    setText('goto_rate_feedback', '{{ _("Setting") }}');
+    renderGotoRate();
+    postIndiAction('/indi/goto_rate', {percent: percent}).catch(function(error) {
+      if (gotoTimer === timer) finishGotoRequest(error.message);
+    });
+  }
+
+  if (gotoRate) {
+    updateGotoRate({{ mount_control_status|tojson }});
+    gotoRate.addEventListener('change', function() { requestGotoRate(gotoRate.value); });
+    resetGotoRate.addEventListener('click', function() { requestGotoRate(100); });
   }
 
   var pulseGuideRateForm = document.getElementById('pulse_guide_rate_form');

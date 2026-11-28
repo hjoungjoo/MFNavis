@@ -296,6 +296,12 @@ pifinder_menu = {
                                     "value": "Str",
                                 },
                                 {
+                                    "name": _("Named Stars"),
+                                    "class": UIObjectList,
+                                    "objects": "catalog",
+                                    "value": "Nam",
+                                },
+                                {
                                     "name": _("SAC Doubles"),
                                     "class": UIObjectList,
                                     "objects": "catalog",
@@ -467,6 +473,10 @@ pifinder_menu = {
                                         {
                                             "name": _("Bright Named"),
                                             "value": "Str",
+                                        },
+                                        {
+                                            "name": _("Named Stars"),
+                                            "value": "Nam",
                                         },
                                         {
                                             "name": _("SAC Doubles"),

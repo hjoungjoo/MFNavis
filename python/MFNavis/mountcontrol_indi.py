@@ -238,6 +238,12 @@ if PyIndi is not None:
     class PiFinderIndiClient(PyIndi.BaseClient):
         """Minimal INDI client that finds a telescope-like device."""
 
+        # SWIG can invoke a late callback when the instance attributes are
+        # already gone. Such a callback no longer owns a mount connection.
+        mount_control: Any = None
+        telescope_device: Any = None
+        _last_disconnect_log_monotonic: Optional[float] = None
+
         # Emit at most one disconnect WARNING per this many seconds. A dead
         # INDI server makes the client library fire serverDisconnected on a
         # tight reconnect loop; logging every event streams WARNINGs into
@@ -252,14 +258,14 @@ if PyIndi is not None:
             self.preferred_device_name = sys_utils.get_indi_profile_device_name()
             # Monotonic timestamp of the last disconnect WARNING we emitted,
             # so repeats within _DISCONNECT_LOG_INTERVAL_S drop to DEBUG.
-            self._last_disconnect_log_monotonic: Optional[float] = None
+            self._last_disconnect_log_monotonic = None
 
         def get_telescope_device(self):
             return self.telescope_device
 
         def _wait_for_property(self, device, property_name: str, timeout: float = 5.0):
-            start_time = time.time()
-            while time.time() - start_time < timeout:
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
                 prop = device.getProperty(property_name)
                 if prop:
                     return prop
@@ -412,7 +418,10 @@ if PyIndi is not None:
         def newProperty(self, prop):
             # Definitions populate the UI, but may contain driver startup
             # defaults. They are not a measured telemetry acknowledgement.
-            if prop.getName() == "Slew elevation Limit":
+            if prop.getName() == sys_utils.ONSTEPX_GOTO_RATE:
+                # This driver reads the controller before defining the property.
+                self.updateProperty(prop)
+            elif prop.getName() == "Slew elevation Limit":
                 nvp = PyIndi.PropertyNumber(prop)
                 self._notify_alignment_limits(
                     prop.getName(),
@@ -440,6 +449,10 @@ if PyIndi is not None:
                 }
 
         def removeProperty(self, prop):
+            if prop.getName() == sys_utils.ONSTEPX_GOTO_RATE:
+                self._record_sync_property(
+                    prop.getName(), PyIndi.IPS_IDLE, {}, prop.getDeviceName()
+                )
             self._notify_alignment_limits(prop.getName(), prop.getDeviceName(), {})
 
         def newNumber(self, nvp):
@@ -459,6 +472,7 @@ if PyIndi is not None:
             if nvp.name not in {
                 "EQUATORIAL_EOD_COORD",
                 "GUIDE_RATE",
+                sys_utils.ONSTEPX_GOTO_RATE,
                 "GEOGRAPHIC_COORD",
             }:
                 return
@@ -537,6 +551,8 @@ if PyIndi is not None:
             # coordinate pushes are silently dropped and the readback only
             # advances on the 5 s status heartbeat — far too slow for the
             # pointing fusion to attribute slew motion to the mount.
+            if self.mount_control is None:
+                return
             try:
                 if prop.getName() == "CONNECTION":
                     self._notify_alignment_limits(prop.getName(), prop.getDeviceName())
@@ -585,6 +601,7 @@ if PyIndi is not None:
                 if prop.getName() not in {
                     "EQUATORIAL_EOD_COORD",
                     "GUIDE_RATE",
+                    sys_utils.ONSTEPX_GOTO_RATE,
                     "GEOGRAPHIC_COORD",
                 }:
                     return
@@ -625,6 +642,11 @@ if PyIndi is not None:
             clientlogger.info("Connected to INDI server")
 
         def serverDisconnected(self, code):
+            # A deliberate disconnect detaches the owner before native teardown.
+            # Standalone clients have no mount state to update either.
+            owner = self.mount_control
+            if owner is None:
+                return
             now = time.monotonic()
             last = self._last_disconnect_log_monotonic
             if last is None or now - last >= self._DISCONNECT_LOG_INTERVAL_S:
@@ -632,11 +654,10 @@ if PyIndi is not None:
                 self._last_disconnect_log_monotonic = now
             else:
                 clientlogger.debug("Disconnected from INDI server: %s", code)
-            if self.mount_control is not None:
-                self.mount_control.mark_disconnected(
-                    f"INDI server disconnected: {code}",
-                    client_generation=self.generation,
-                )
+            owner.mark_disconnected(
+                f"INDI server disconnected: {code}",
+                client_generation=self.generation,
+            )
 
 else:
 
@@ -945,6 +966,7 @@ class MountControlIndi(
             "tracking_enabled": self._cached_tracking_enabled(),
             "slew_rate": self.slew_rate,
             "manual_slew_rate": self.slew_rate,
+            "goto_rate": self._goto_rate_status(),
             "manual_speed_apply_state": self._manual_speed_apply_state,
             "manual_motion_owner": self._manual_motion_origin,
             "pulse_guide_rate": self.guide_rate_we,
@@ -1895,14 +1917,7 @@ class MountControlIndi(
         if sync_on_connect and direct_sync_for_onstep:
             self.sync_location_time(reconnect_after=False)
 
-        if self.client is not None:
-            self._client_generation += 1
-            try:
-                self.client.disconnectServer()
-            except Exception:
-                logger.debug("Could not close previous INDI client", exc_info=True)
-        self.client = None
-        self.device = None
+        self._close_indi_client()
 
         self._client_generation += 1
         self.client = PiFinderIndiClient(self, generation=self._client_generation)
@@ -2509,16 +2524,26 @@ class MountControlIndi(
         self._console("INDI mount\nrebooted")
         return True
 
+    def _close_indi_client(self) -> None:
+        client = self.client
+        if client is not None:
+            self._client_generation += 1
+            if hasattr(client, "mount_control"):
+                client.mount_control = None
+        self.connected = False
+        self.device = None
+        self.client = None
+        if client is not None:
+            try:
+                client.disconnectServer()
+            except Exception:
+                logger.exception("Could not disconnect from INDI server")
+
     def disconnect(self) -> None:
         if self._manual_approach is not None:
             self._guide_correction_enabled = False
             self._cancel_manual_approach()
-        if self.client is not None:
-            try:
-                self.client.disconnectServer()
-            except Exception:
-                logger.exception("Could not disconnect from INDI server")
-        self.connected = False
+        self._close_indi_client()
         self._write_controller_status("stopped", "Mount-control process stopped")
 
     def _stored_onstep_connection_config(
@@ -2676,13 +2701,7 @@ class MountControlIndi(
 
         endpoint_changed = host != self.indi_host or port != self.indi_port
         if endpoint_changed and self.client is not None:
-            try:
-                self.client.disconnectServer()
-            except Exception:
-                logger.debug("Could not close old INDI endpoint", exc_info=True)
-            self.client = None
-            self.device = None
-            self.connected = False
+            self._close_indi_client()
         self.indi_host = host
         self.indi_port = port
         return self.reconcile_onstep_connection_config(allow_fallback_apply=False)
@@ -3347,12 +3366,12 @@ class MountControlIndi(
         self._automatic_site_synced = None
         with self._sync_property_lock:
             current["sequence"] = self._sync_property_sequence
-        current["deadline"] = now + 8.0
         if not self._sync_location_time_once(preserve_mount_state=True):
             self._automatic_site_next_check = time.monotonic() + 30.0
             return
         # Direct LX200 sync may reconnect and replace the receipt generation.
         current["generation"] = self._client_generation
+        current["deadline"] = time.monotonic() + 8.0
         self._automatic_site_pending = current
 
     def sync_location_time(
@@ -3394,12 +3413,12 @@ class MountControlIndi(
             self._initial_site_sent_connected = self._device_is_connected()
             with self._sync_property_lock:
                 self._initial_site_after_sequence = self._sync_property_sequence
-            self._initial_site_deadline = time.monotonic() + 8.0
         ok = self._sync_location_time_once(
             reconnect_after, include_default_location, latitude, longitude, elevation
         )
         if initial:
             self._initial_site_write_ok = ok
+            self._initial_site_deadline = time.monotonic() + 8.0
         return ok
 
     def _check_initial_location_sync(self) -> None:
@@ -3636,6 +3655,15 @@ class MountControlIndi(
                 return False
 
             try:
+                connection = None
+                if self.client is not None and self.device is not None:
+                    if not self._device_is_connected():
+                        self._write_controller_status(
+                            "sync_failed",
+                            "INDI device disconnected before site/time sync",
+                        )
+                        return False
+                    connection = (self.client, self.device)
                 result = sys_utils.apply_indi_onstep_location_time(
                     latitude=latitude,
                     longitude=longitude,
@@ -3644,6 +3672,7 @@ class MountControlIndi(
                     server_host=self.indi_host,
                     server_port=self.indi_port,
                     device_name=self._indi_device_name(),
+                    connected=connection,
                 )
             except Exception as exc:
                 logger.exception("INDI location/time sync failed")
@@ -5182,6 +5211,7 @@ class MountControlIndi(
             "ON_COORD_SET",
             "EQUATORIAL_EOD_COORD",
             "GUIDE_RATE",
+            sys_utils.ONSTEPX_GOTO_RATE,
             "TELESCOPE_SLEW_RATE",
             "GEOGRAPHIC_COORD",
             "TIME_UTC",
@@ -6014,6 +6044,36 @@ class MountControlIndi(
                 "Tracking frequency re-assert failed (%.5f Hz)",
                 self._track_freq_target_hz,
             )
+
+    def _goto_rate_status(self):
+        with self._sync_property_lock:
+            receipt = self._sync_property_receipts.get(sys_utils.ONSTEPX_GOTO_RATE)
+        if (
+            not self.connected
+            or not receipt
+            or receipt["client_generation"] != self._client_generation
+            or "PERCENT" not in receipt["values"]
+        ):
+            return None
+        percent = receipt["values"]["PERCENT"]
+        return {
+            "percent": percent if math.isfinite(percent) and percent > 0 else None,
+            "state": receipt["state"],
+            "sequence": receipt["sequence"],
+        }
+
+    def set_goto_rate(self, percent, connection_epoch) -> bool:
+        if (
+            percent not in sys_utils.ONSTEPX_GOTO_PERCENTAGES
+            or connection_epoch != self._client_generation
+            or self.client is None
+            or self._goto_rate_status() is None
+            or not sys_utils.is_onstepx_device_name(self._indi_device_name())
+        ):
+            return False
+        return self.client.set_number(
+            self.device, sys_utils.ONSTEPX_GOTO_RATE, {"PERCENT": percent}
+        )
 
     def _read_driver_guide_rate(self) -> Optional[tuple[float, float]]:
         properties = sys_utils.get_indi_onstep_properties(
@@ -7102,6 +7162,8 @@ class MountControlIndi(
             self.change_slew_rate(-1)
         elif command_type == "set_slew_rate":
             self.set_slew_rate(int(command.get("rate", self.slew_rate)))
+        elif command_type == "set_goto_rate":
+            self.set_goto_rate(command.get("percent"), command.get("connection_epoch"))
         elif command_type == "set_guide_rate":
             self.set_guide_rate(command["rate"])
         elif command_type == "set_track_freq":

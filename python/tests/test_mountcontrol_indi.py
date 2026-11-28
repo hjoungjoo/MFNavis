@@ -590,6 +590,32 @@ def test_real_indi_number_callback_snapshots_values_and_state():
     assert receipts == [("EQUATORIAL_EOD_COORD", "busy", {"RA": 8.8, "DEC": 49.5}, 7)]
 
 
+@pytest.mark.skipif(mci.PyIndi is None, reason="requires installed INDI bindings")
+def test_late_indi_property_callback_tolerates_removed_owner(caplog):
+    client = mci.PiFinderIndiClient()
+    del client.mount_control  # SWIG can dispatch after Python state teardown.
+    prop = SimpleNamespace(getName=lambda: "OnStep Status")
+    client.updateProperty(prop)
+    client.serverDisconnected(0)
+    assert not caplog.records
+
+
+def test_close_indi_client_detaches_before_native_disconnect():
+    mount = DummyConnectedMount()
+    generation = mount._client_generation
+    client = SimpleNamespace(mount_control=mount)
+
+    def disconnect():
+        assert client.mount_control is None
+        assert mount._client_generation > generation
+        assert mount.client is None and mount.device is None
+
+    client.disconnectServer = disconnect
+    mount.client = client
+    mount._close_indi_client()
+    assert not mount.connected
+
+
 def test_manual_motion_deadman_sends_stop_after_expired_lease():
     mount = DummyMountControl()
 
@@ -1732,6 +1758,7 @@ def test_automatic_site_sync_waits_for_connection_and_gps(automatic_site, late_s
     poll()
     poll()
     assert len(sent) == 1
+    assert sent[0]["connected"] == (mount.client, mount.device)
     assert mount._automatic_site_synced is not None
     assert sent[0]["latitude"] == 37.5
     assert sent[0]["longitude"] == 127.0
@@ -3276,6 +3303,29 @@ def _slew_rate_ack(mount, rate, state="ok"):
     mount.receive_sync_property(
         "TELESCOPE_SLEW_RATE", state, {str(rate): True}, mount._client_generation
     )
+
+
+def test_goto_rate_uses_driver_readback_and_ignores_previous_connection(monkeypatch):
+    mount = DummyConnectedMount()
+    monkeypatch.setattr(mount.device, "getDeviceName", lambda: "LX200 OnStepX")
+    epoch = mount._client_generation
+    prop = "ONSTEPX_GOTO_RATE"
+    assert not mount.set_goto_rate(50, epoch)
+    mount.receive_sync_property(prop, "ok", {"PERCENT": 150.0}, epoch)
+    assert not mount.set_goto_rate(0, epoch)
+    mount.handle_command(
+        {"type": "set_goto_rate", "percent": 100, "connection_epoch": epoch}
+    )
+    assert mount.client.numbers == [("LX200 OnStepX", prop, {"PERCENT": 100})]
+    assert mount._status_fields()["goto_rate"]["percent"] == 150
+    mount.receive_sync_property(prop, "alert", {"PERCENT": 150.0}, epoch)
+    assert mount._goto_rate_status()["state"] == "alert"
+    mount.receive_sync_property(prop, "ok", {"PERCENT": 100.0}, epoch)
+    assert mount._goto_rate_status()["percent"] == 100
+    mount._client_generation += 1
+    assert mount._goto_rate_status() is None
+    assert not mount.set_goto_rate(50, epoch)
+    assert not mount.client.switches
 
 
 @pytest.mark.parametrize("mount_type", ["Alt/Az", "Equatorial"])

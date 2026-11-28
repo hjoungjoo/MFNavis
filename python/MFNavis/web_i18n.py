@@ -155,6 +155,7 @@ CATALOG_LABELS = {
     "SaR": N_("Saguaro red star catalog"),
     "TLK": N_("Northern variable star catalog"),
     "Str": N_("Named bright stars"),
+    "Nam": N_("Named Stars"),
     "Ta2": N_("TAAS 200 observing list"),
     "SaA": N_("Saguaro asterism catalog"),
     "PL": N_("Planets & Moon — live positions computed on device"),

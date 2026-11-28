@@ -85,6 +85,33 @@ def test_invalid_guide_rate_never_queued(motion_client, value):
     assert queue.empty()
 
 
+@pytest.mark.parametrize("percent", ["25", "50", "100", "150", "200"])
+def test_goto_rate_targets_connected_driver_epoch(motion_client, tmp_path, percent):
+    client, queue, _ = motion_client
+    (tmp_path / "mount_control_status.json").write_text(
+        json.dumps(
+            {
+                "goto_rate": {"percent": 150, "state": "ok", "sequence": 2},
+                "connection_epoch": 8,
+                "device": "LX200 OnStepX",
+            }
+        )
+    )
+    assert client.post("/indi/goto_rate", data={"percent": percent}).status_code == 200
+    assert queue.get_nowait() == {
+        "type": "set_goto_rate",
+        "connection_epoch": 8,
+        "percent": float(percent),
+    }
+
+
+@pytest.mark.parametrize("percent", ["50", "0", "66.7", "NaN", "300", ""])
+def test_unavailable_or_invalid_goto_rate_never_queued(motion_client, percent):
+    client, queue, _ = motion_client
+    assert client.post("/indi/goto_rate", data={"percent": percent}).status_code == 400
+    assert queue.empty()
+
+
 def test_no_controller_does_not_fall_back_to_unmanaged_motion(motion_client):
     client, queue, server = motion_client
     server.mountcontrol_queue = None

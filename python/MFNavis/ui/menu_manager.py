@@ -5,7 +5,7 @@ from PIL import Image
 from PiFinder import utils
 from PiFinder.operation_errors import requires_error_dialog
 from PiFinder.ui.base import UIModule
-from PiFinder.ui import menu_structure
+from PiFinder.ui import callbacks, menu_structure
 from PiFinder.ui.object_details import UIObjectDetails
 from PiFinder.displays import DisplayBase
 from PiFinder.ui.text_menu import UITextMenu
@@ -159,6 +159,8 @@ def dyn_menu_equipment(cfg):
         "select": "single",
         "label": "select_telescope",
         "config_option": "equipment.active_telescope",
+        # Each telescope keeps its own alignment point.
+        "post_callback": callbacks.apply_target_pixel,
         "items": telescope_menu_items,
     }
 

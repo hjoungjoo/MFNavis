@@ -35,7 +35,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--spi-hz",
         type=int,
-        default=32000000,
+        default=20_000_000,
         help="SPI clock for SSD1351 display tests",
     )
     parser.add_argument("--exposure-us", type=int, default=100, help="Manual exposure")

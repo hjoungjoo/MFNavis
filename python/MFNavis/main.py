@@ -1110,8 +1110,15 @@ def main(
                 elif ui_command == "push_object":
                     menu_manager.jump_to_label("recent")
                 elif ui_command == "reload_config":
+                    previous_scope = cfg.alignment_scope()
+                    previous_pixel = cfg.active_target_pixel()
                     cfg.load_config()
                     gps_time_monitor.update_config(cfg)
+                    if (
+                        previous_scope != cfg.alignment_scope()
+                        or previous_pixel != cfg.active_target_pixel()
+                    ):
+                        shared_state.set_target_pixel(cfg.active_target_pixel())
                 elif ui_command == "clear_goto_method_override":
                     # This is intentionally session-only; the Web INDI form
                     # already saved its persistent GoTo Type separately.

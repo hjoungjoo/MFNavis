@@ -145,6 +145,8 @@ def _get_config_option(option: str, default):
         except Exception:
             logger.warning("Could not reload SkySafari server config", exc_info=True)
         _config_last_loaded = now
+    if option == "target_pixel":
+        return pos_server_config.active_target_pixel()
     return pos_server_config.get_option(option, default)
 
 

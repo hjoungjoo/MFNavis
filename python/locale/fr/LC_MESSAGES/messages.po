@@ -6450,3 +6450,7 @@ msgstr ""
 #~ msgid "This will take effect immediately and can not be undone. Are you sure?"
 #~ msgstr "Ceci prendra effet immédiatement et est irréversible. Êtes-vous sûr ?"
 
+
+#: MFNavis/ui/menu_structure.py
+msgid "Named Stars"
+msgstr "Etoiles nommées"

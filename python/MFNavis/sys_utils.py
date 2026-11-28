@@ -81,6 +81,8 @@ DEFAULT_INDI_SERVER_HOST = "localhost"
 DEFAULT_INDI_SERVER_PORT = 7624
 DEFAULT_ONSTEP_NETWORK_PORT = 9999
 ONSTEPX_DEVICE_NAME = "LX200 OnStepX"
+ONSTEPX_GOTO_RATE = "ONSTEPX_GOTO_RATE"
+ONSTEPX_GOTO_PERCENTAGES = (25, 50, 100, 150, 200)
 LEGACY_ONSTEP_DEVICE_NAME = "LX200 OnStep"
 DEFAULT_ONSTEP_DEVICE_NAME = ONSTEPX_DEVICE_NAME
 DEFAULT_INDI_PROFILE_NAME = "MF_PiFinder"
@@ -1591,13 +1593,16 @@ def apply_indi_onstep_location_time(
     server_host: str = DEFAULT_INDI_SERVER_HOST,
     server_port: int = DEFAULT_INDI_SERVER_PORT,
     device_name: str | None = None,
+    *,
+    connected: tuple[Any, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Apply OnStep location/time using PyIndi vector updates.
 
     indi_setprop sends number/text elements as individual updates on some
     versions, which can zero unspecified GEOGRAPHIC_COORD elements. PyIndi keeps
-    the full vector intact, matching the live PiFinder INDI client path.
+    the full vector intact. The mount process can supply its already-connected
+    client and device, so the write and acknowledgement share one connection.
     """
     device_name = resolve_indi_device_name(device_name)
     properties = build_indi_location_time_properties(
@@ -1637,22 +1642,26 @@ def apply_indi_onstep_location_time(
             "OFFSET": f"{offset_hours:.2f}",
         }
 
-    client = PiFinderIndiClient()
+    owns_client = connected is None
     restore_tracking_off = False
-    client.setServer(server_host, server_port)
-    if not client.connectServer():
-        return {
-            "ok": False,
-            "returncode": 1,
-            "stdout": "",
-            "stderr": f"Could not connect to INDI server {server_host}:{server_port}",
-            "properties": properties,
-        }
+    if connected is None:
+        device = None
+        client = PiFinderIndiClient()
+        client.setServer(server_host, server_port)
+        if not client.connectServer():
+            return {
+                "ok": False,
+                "returncode": 1,
+                "stdout": "",
+                "stderr": f"Could not connect to INDI server {server_host}:{server_port}",
+                "properties": properties,
+            }
+    else:
+        client, device = connected
 
     try:
         start = time.monotonic()
-        device = None
-        while time.monotonic() - start < 10.0:
+        while device is None and time.monotonic() - start < 10.0:
             if hasattr(client, "getDevice"):
                 try:
                     device = client.getDevice(device_name)
@@ -1683,12 +1692,12 @@ def apply_indi_onstep_location_time(
                 "properties": properties,
             }
 
-        if client._wait_for_property(device, "CONNECTION", timeout=2.0):
+        if owns_client and client._wait_for_property(device, "CONNECTION", timeout=2.0):
             try:
-                connected = bool(device.isConnected())
+                device_connected = bool(device.isConnected())
             except Exception:
-                connected = False
-            if not connected:
+                device_connected = False
+            if not device_connected:
                 if not client.set_switch(device, "CONNECTION", "CONNECT"):
                     return {
                         "ok": False,
@@ -1750,7 +1759,8 @@ def apply_indi_onstep_location_time(
                     "Could not preserve tracking OFF after site/time sync"
                 )
         finally:
-            client.disconnectServer()
+            if owns_client:
+                client.disconnectServer()
 
 
 def restart_indi_web_manager(timeout: float = 30.0) -> dict[str, Any]:

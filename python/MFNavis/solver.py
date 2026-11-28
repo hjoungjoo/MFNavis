@@ -59,7 +59,11 @@ from PiFinder.sqm import SQM as SQMCalculator
 from PiFinder.sqm.camera_profiles import get_camera_profile
 from PiFinder.sqm.black_level import BlackLevelTracker
 from PiFinder.sqm.clouds import CloudEstimator
-from PiFinder.sqm.radiometer import RadiometerAccumulator, extract_photometry_image
+from PiFinder.sqm.radiometer import (
+    RadiometerAccumulator,
+    analogue_gain_ratio,
+    extract_photometry_image,
+)
 from PiFinder.sqm.wings import WingEstimator
 from PiFinder.state import SQM as SQMState
 from PiFinder.types.positioning import (
@@ -522,6 +526,7 @@ def update_radiometric_sqm(
             float(sample["exposure_sec"]),
             float(sample["background_per_pixel"]),
             stable=not cloudy_now,
+            gain_ratio=analogue_gain_ratio(sample, sqm_calculator.profile),
         )
 
     current_sqm = shared_state.sqm()

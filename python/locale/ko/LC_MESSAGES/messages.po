@@ -6976,3 +6976,25 @@ msgstr "도착: 솔빙 대기"
 #: views/network.html:178
 msgid "Add"
 msgstr "추가"
+
+msgid "GoTo Speed"
+msgstr "GoTo 속도"
+
+msgid "Reset GoTo to 100%"
+msgstr "100%로 초기화"
+
+msgid "Invalid GoTo speed"
+msgstr "선택할 수 없는 GoTo 속도입니다"
+
+msgid "GoTo speed is unavailable"
+msgstr "현재 마운트에서 GoTo 속도를 설정할 수 없습니다"
+
+msgid "GoTo speed change failed"
+msgstr "GoTo 속도 변경에 실패했습니다"
+
+msgid "GoTo speed was not confirmed"
+msgstr "마운트에서 GoTo 속도 변경을 확인하지 못했습니다"
+
+#: MFNavis/ui/menu_structure.py
+msgid "Named Stars"
+msgstr "공식 별 이름"

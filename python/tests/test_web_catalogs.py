@@ -1099,3 +1099,18 @@ def test_catalog_observation_planet(observation_store):
         assert rows[0]["sequence"] == PLANET_SEQUENCE.index("MOON") + 1
     finally:
         db.close()
+
+
+def test_pre_update_bookmarks_and_push_resolve_the_same_sky_object(web_app):
+    app, server = web_app
+    client = _login(app.test_client())
+    assert _m31_object_id() == 224
+    assert client.get("/catalogs/object/224").status_code == 200
+    # The corrected catalog joins NGC 20 and NGC 6. Both old public IDs work.
+    for object_id in (20, 6):
+        assert client.get(f"/catalogs/object/{object_id}").status_code == 200
+        assert client.post(f"/catalogs/api/push/{object_id}").status_code == 200
+        assert server.shared_state.ui_state().recent[-1].object_id == 6
+    # A rejected historical double star must never open or push another target.
+    assert client.get("/catalogs/object/13653").status_code == 404
+    assert client.post("/catalogs/api/push/13653").status_code == 404

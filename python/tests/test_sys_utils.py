@@ -261,8 +261,9 @@ try:
     @pytest.mark.unit
     @pytest.mark.parametrize("tracking_before", [False, True])
     @pytest.mark.parametrize("sync_succeeds", [False, True])
+    @pytest.mark.parametrize("reuse_client", [False, True])
     def test_site_time_sync_preserves_tracking_even_on_partial_failure(
-        monkeypatch, tracking_before, sync_succeeds
+        monkeypatch, tracking_before, sync_succeeds, reuse_client
     ):
         from types import SimpleNamespace
         from PiFinder import mountcontrol_indi as mci
@@ -312,17 +313,24 @@ try:
                 self.disconnected = True
 
         client = Client()
-        monkeypatch.setattr(mci, "PiFinderIndiClient", lambda: client)
+
+        def new_client():
+            assert not reuse_client, "Must use the existing INDI connection"
+            return client
+
+        monkeypatch.setattr(mci, "PiFinderIndiClient", new_client)
         monkeypatch.setattr(mci, "PyIndi", SimpleNamespace(ISS_ON=1))
         monkeypatch.setattr(
             sys_utils.importlib.util, "find_spec", lambda name: object()
         )
         result = sys_utils.apply_indi_onstep_location_time(
-            utc_datetime="2026-09-27T00:00:00+00:00", device_name="LX200 OnStepX"
+            utc_datetime="2026-09-27T00:00:00+00:00",
+            device_name="LX200 OnStepX",
+            connected=(client, client.device) if reuse_client else None,
         )
         assert result["ok"] is sync_succeeds
         assert client.device.tracking is tracking_before
-        assert client.disconnected
+        assert client.disconnected is not reuse_client
 
     @pytest.mark.unit
     def test_site_time_device_timeout_survives_backward_clock_step(monkeypatch):
